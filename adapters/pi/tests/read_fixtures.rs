@@ -12,7 +12,7 @@ fn fixture_dir() -> PathBuf {
     p
 }
 
-fn install(config_file: PathBuf, home: PathBuf) -> HarnessInstallation {
+fn install(config_file: PathBuf, _home: PathBuf) -> HarnessInstallation {
     HarnessInstallation {
         id: uuid::Uuid::new_v4(),
         harness_type: HarnessType::Pi,
