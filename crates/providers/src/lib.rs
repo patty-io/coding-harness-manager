@@ -46,7 +46,14 @@ pub fn resolve_credential(ref_: &CredentialRef, store: &dyn SecretStore) -> Opti
 
 fn discovery_url(endpoint: &ProviderEndpoint) -> String {
     let path = endpoint.discovery_path.as_deref().unwrap_or("/v1/models");
-    format!("{}{}", endpoint.base_url.trim_end_matches('/'), path)
+    let base = endpoint.base_url.trim_end_matches('/');
+    // Avoid doubling /v1 when the base already ends in /v1.
+    let normalized_path = if base.ends_with("/v1") && path.starts_with("/v1/") {
+        &path[3..]
+    } else {
+        path
+    };
+    format!("{}{}", base, normalized_path)
 }
 
 fn request_builder(
@@ -123,6 +130,39 @@ pub async fn discover_models(
         _ => return Err(ProviderError::Unreachable),
     }
     let body: serde_json::Value = resp.json().await.map_err(|_| ProviderError::Malformed)?;
+    // Some providers (Z.AI anthropic, etc.) return HTTP 200 with a body that
+    // indicates an auth failure. Detect that and surface it correctly.
+    if let Some(err) = body.get("error") {
+        let msg = err.get("message").and_then(|m| m.as_str()).unwrap_or("");
+        let lc = msg.to_ascii_lowercase();
+        if lc.contains("auth")
+            || lc.contains("token")
+            || lc.contains("key")
+            || lc.contains("credential")
+            || lc.contains("permission")
+        {
+            return Err(ProviderError::Auth);
+        }
+    }
+    if let Some(code) = body.get("code").and_then(|c| c.as_i64())
+        && (400..500).contains(&code)
+    {
+        let msg = body
+            .get("msg")
+            .and_then(|m| m.as_str())
+            .unwrap_or("")
+            .to_ascii_lowercase();
+        if msg.contains("auth")
+            || msg.contains("token")
+            || msg.contains("key")
+            || msg.contains("credential")
+            || msg.contains("permission")
+            || msg.contains("expired")
+            || msg.contains("incorrect")
+        {
+            return Err(ProviderError::Auth);
+        }
+    }
     let data = body
         .get("data")
         .and_then(|d| d.as_array())

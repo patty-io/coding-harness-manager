@@ -55,7 +55,7 @@ impl KeychainStore {
     }
 
     fn account(&self, key: &str) -> String {
-        format!("{}:{}", self.service, key)
+        key.to_string()
     }
 }
 
