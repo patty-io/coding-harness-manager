@@ -144,8 +144,12 @@ fn parse_provider_file(raw: &str, file_id: &str, state: &mut ParsedState) {
             .and_then(|v| v.as_str())
             .unwrap_or("chat");
         // strip provider prefix from the selected model id ("zai/glm-5.2" -> "glm-5.2")
-        let remote_id = model_id.split('/').last().unwrap_or(model_id).to_string();
-        let mut route = ModelRoute {
+        let remote_id = model_id
+            .split('/')
+            .next_back()
+            .unwrap_or(model_id)
+            .to_string();
+        let route = ModelRoute {
             id: Uuid::new_v4(),
             endpoint_id: Uuid::new_v4(),
             model_identity_id: None,
