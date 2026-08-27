@@ -101,18 +101,20 @@ pub fn detect_conflicts(
 ) -> Vec<Conflict> {
     let mut conflicts = Vec::new();
     for r in registry {
-        if let Some(h) = harness_skills.iter().find(|s| s.name == r.name) {
-            if r.content_hash != h.content_hash && h.content_hash.is_some() {
-                conflicts.push(Conflict {
-                    kind: "content-mismatch".into(),
-                    name: r.name.clone(),
-                    detail: format!(
-                        "canonical {} vs harness {}",
-                        r.content_hash.as_deref().unwrap_or("?"),
-                        h.content_hash.as_deref().unwrap_or("?")
-                    ),
-                });
-            }
+        if let Some(h) =
+            harness_skills.iter().find(|s| s.name == r.name)
+            && r.content_hash != h.content_hash
+            && h.content_hash.is_some()
+        {
+            conflicts.push(Conflict {
+                kind: "content-mismatch".into(),
+                name: r.name.clone(),
+                detail: format!(
+                    "canonical {} vs harness {}",
+                    r.content_hash.as_deref().unwrap_or("?"),
+                    h.content_hash.as_deref().unwrap_or("?")
+                ),
+            });
         }
     }
     for h in harness_skills.iter().filter(|s| s.symlinked) {

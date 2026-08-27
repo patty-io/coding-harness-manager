@@ -4,7 +4,6 @@ use chm_core::domain::harness::{BindingType, HarnessSkillBinding};
 use chm_core::domain::skills::Skill;
 use chm_database::repos::harness::list_installations;
 use chm_database::repos::skills::{create_skill, list_skill_bindings, list_skills};
-use chm_harness_sdk::adapter::types::HarnessAdapter;
 use serde::Serialize;
 use sqlx::{Pool, Sqlite};
 use tauri::State;
