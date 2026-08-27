@@ -101,8 +101,7 @@ pub fn detect_conflicts(
 ) -> Vec<Conflict> {
     let mut conflicts = Vec::new();
     for r in registry {
-        if let Some(h) =
-            harness_skills.iter().find(|s| s.name == r.name)
+        if let Some(h) = harness_skills.iter().find(|s| s.name == r.name)
             && r.content_hash != h.content_hash
             && h.content_hash.is_some()
         {

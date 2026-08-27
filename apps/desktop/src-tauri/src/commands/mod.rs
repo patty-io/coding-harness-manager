@@ -1,10 +1,13 @@
 pub mod dashboard;
 pub mod endpoints;
 pub mod import;
+pub mod launcher;
 pub mod mcp;
 pub mod models;
+pub mod profiles;
 pub mod provider_actions;
 pub mod providers;
 pub mod scan;
+pub mod sets;
 pub mod skills;
 pub mod sync;

@@ -83,6 +83,16 @@ pub fn run() {
             commands::skills::adopt_canonical_dir,
             commands::skills::bind_skill_cmd,
             commands::skills::unbind_skill_cmd,
+            commands::profiles::list_profiles_cmd,
+            commands::profiles::create_profile_cmd,
+            commands::profiles::delete_profile_cmd,
+            commands::profiles::launch_profile_cmd,
+            commands::sets::list_sets_cmd,
+            commands::sets::create_set_cmd,
+            commands::sets::add_set_item_cmd,
+            commands::sets::remove_set_item_cmd,
+            commands::sets::apply_set_preview_cmd,
+            commands::sets::apply_set_cmd,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
