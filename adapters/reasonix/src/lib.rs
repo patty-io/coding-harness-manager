@@ -113,7 +113,7 @@ impl HarnessAdapter for ReasonixAdapter {
         _install: &HarnessInstallation,
         native_plan: &NativePlan,
     ) -> Result<ApplyResult, AdapterError> {
-        writer::apply_native_plan(native_plan).map_err(|e| AdapterError::Invalid(e))
+        writer::apply_native_plan(native_plan).map_err(AdapterError::Invalid)
     }
 
     fn validate(&self, install: &HarnessInstallation) -> Result<ValidationReport, AdapterError> {
