@@ -1,0 +1,68 @@
+{
+  "env": {
+    "DISABLE_AUTOUPDATER": "1",
+    "CLAUDE_CODE_DISABLE_MOUSE": "1"
+  },
+  "attribution": {
+    "commit": "",
+    "pr": ""
+  },
+  "permissions": {
+    "allow": [
+      "mcp__codegraph__*"
+    ],
+    "defaultMode": "bypassPermissions"
+  },
+  "hooks": {
+    "UserPromptSubmit": [
+      {
+        "matcher": "",
+        "hooks": []
+      },
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "/Users/patrickrho/.nvm/versions/node/v24.7.0/bin/node /Users/patrickrho/.local/bin/codegraph prompt-hook"
+          }
+        ]
+      }
+    ],
+    "SessionStart": [
+      {
+        "matcher": "",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "bash \"$HOME\"'/.tmux/plugins/tmux-assistant-resurrect/hooks/claude-session-track.sh'"
+          }
+        ]
+      }
+    ],
+    "SessionEnd": [
+      {
+        "matcher": "",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "bash \"$HOME\"'/.tmux/plugins/tmux-assistant-resurrect/hooks/claude-session-cleanup.sh'"
+          }
+        ]
+      }
+    ]
+  },
+  "enabledPlugins": {
+    "frontend-design@claude-plugins-official": true,
+    "impeccable@impeccable": true,
+    "superpowers@claude-plugins-official": true,
+    "atlassian@claude-plugins-official": true,
+    "gopls-lsp@claude-plugins-official": true,
+    "linear@claude-plugins-official": true
+  },
+  "extraKnownMarketplaces": {},
+  "effortLevel": "medium",
+  "tui": "default",
+  "autoMemoryEnabled": false,
+  "skipDangerousModePermissionPrompt": true,
+  "theme": "dark"
+}
