@@ -29,3 +29,11 @@ tracing = "0.1"
 tracing-subscriber = { version = "0.3", features = ["env-filter"] }
 tempfile = "3"
 wiremock = "0.6"
+chm-core = { path = "crates/core" }
+chm-database = { path = "crates/database" }
+chm-secrets = { path = "crates/secrets" }
+chm-reconciliation = { path = "crates/reconciliation" }
+chm-providers = { path = "crates/providers" }
+chm-models-dev = { path = "crates/models-dev" }
+chm-filesystem = { path = "crates/filesystem" }
+chm-harness-sdk = { path = "crates/harness-sdk" }
