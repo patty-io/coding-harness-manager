@@ -18,7 +18,8 @@ export default function ProfilesScreen() {
 
   return (
     <div>
-      <h1 className="text-2xl font-bold">Profiles</h1>
+      <h1 className="text-2xl font-bold">Presets</h1>
+      <p className="mt-1 text-sm text-slate-400">Launch bundles: a model choice plus environment for one harness. Launch them from a harness page or from here.</p>
       {isLoading && <p className="mt-4">Loading…</p>}
       <button
         onClick={() => qc.invalidateQueries({ queryKey: ["profiles"] })}

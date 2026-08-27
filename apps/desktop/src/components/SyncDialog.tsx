@@ -64,6 +64,9 @@ export function useSyncApply() {
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ["installations"] });
       qc.invalidateQueries({ queryKey: ["routes"] });
+      qc.invalidateQueries({ queryKey: ["drift"] });
+      qc.invalidateQueries({ queryKey: ["harness-state"] });
+      qc.invalidateQueries({ queryKey: ["dashboard"] });
     },
   });
 }

@@ -82,6 +82,22 @@ export async function readHarnessRawConfig(installationId: string): Promise<stri
   return invoke<string>("read_harness_raw_config", { installationId });
 }
 
+export interface HarnessDrift {
+  installationId: string;
+  config_path: string | null;
+  everSynced: boolean;
+  drifted: boolean;
+  currentContent: string | null;
+  lastWrittenContent: string | null;
+}
+
+export async function harnessDrift(installationId: string): Promise<HarnessDrift> {
+  return invoke<HarnessDrift>("harness_drift_cmd", { installationId });
+}
+export async function recordManualSnapshot(installationId: string): Promise<void> {
+  return invoke<void>("record_manual_snapshot_cmd", { installationId });
+}
+
 export async function importHarnessState(
   installationId: string,
   options: ImportOptions,

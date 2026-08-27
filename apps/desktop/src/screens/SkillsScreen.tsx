@@ -1,4 +1,5 @@
 import { useState } from "react";
+import { SyncToHarnessButton } from "../components/SyncToHarnessButton";
 import { useAdoptCanonical, useImportSkills, useSkills } from "../hooks/useSkills";
 
 export default function SkillsScreen() {
@@ -60,6 +61,7 @@ export default function SkillsScreen() {
             <th className="p-2">Canonical path</th>
             <th className="p-2">Hash</th>
             <th className="p-2">Source</th>
+            <th className="p-2">Actions</th>
           </tr>
         </thead>
         <tbody>
@@ -73,6 +75,9 @@ export default function SkillsScreen() {
                 {s.contentHash?.slice(0, 8) ?? "—"}
               </td>
               <td className="p-2 text-xs">{s.sourceType}</td>
+              <td className="p-2">
+                <SyncToHarnessButton />
+              </td>
             </tr>
           ))}
         </tbody>

@@ -12,6 +12,7 @@ pub enum TransactionType {
     Import,
     Rollback,
     Restore,
+    Manual,
 }
 
 impl TransactionType {
@@ -21,6 +22,7 @@ impl TransactionType {
             Self::Import => "import",
             Self::Rollback => "rollback",
             Self::Restore => "restore",
+            Self::Manual => "manual",
         }
     }
 
@@ -29,6 +31,7 @@ impl TransactionType {
             "import" => Self::Import,
             "rollback" => Self::Rollback,
             "restore" => Self::Restore,
+            "manual" => Self::Manual,
             _ => Self::Sync,
         }
     }

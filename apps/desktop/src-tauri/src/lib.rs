@@ -77,6 +77,8 @@ pub fn run() {
             commands::scan::list_installations_cmd,
             commands::import::read_harness_state,
             commands::import::read_harness_raw_config,
+            commands::drift::harness_drift_cmd,
+            commands::drift::record_manual_snapshot_cmd,
             commands::import::import_harness_state,
             commands::dashboard::dashboard_stats,
             commands::providers::create_provider_cmd,

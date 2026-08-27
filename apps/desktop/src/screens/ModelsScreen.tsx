@@ -1,6 +1,7 @@
 // Phase 6 My Models screen: tabs (My Models / Discovered), filters, enrichment.
 
 import { useMemo, useState } from "react";
+import { SyncToHarnessButton } from "../components/SyncToHarnessButton";
 import {
   useCatalogAll,
   useCreateRoute,
@@ -134,6 +135,7 @@ export default function ModelsScreen() {
                     </button>
                   </td>
                   <td className="p-2">
+                    <SyncToHarnessButton />
                     <button
                       onClick={() =>
                         enrich.mutate(r.id, {
@@ -141,7 +143,7 @@ export default function ModelsScreen() {
                         })
                       }
                       disabled={enrich.isPending}
-                      className="rounded border border-slate-600 px-2 py-0.5 text-xs disabled:opacity-50"
+                      className="ml-1 rounded border border-slate-600 px-2 py-0.5 text-xs disabled:opacity-50"
                     >
                       Enrich
                     </button>

@@ -2,6 +2,7 @@
 
 import { useState } from "react";
 import { useCreateMcp, useDeleteMcp, useMcpServers, useRunDiagnostics } from "../hooks/useMcp";
+import { SyncToHarnessButton } from "../components/SyncToHarnessButton";
 
 export default function McpScreen() {
   const { data: servers, isLoading } = useMcpServers();
@@ -151,16 +152,19 @@ export default function McpScreen() {
                 )}
               </td>
               <td className="p-2">
-                <button
-                  onClick={() => {
-                    if (window.confirm(`Delete MCP server "${s.name}"?`)) {
-                      del.mutate(s.id);
-                    }
-                  }}
-                  className="rounded border border-red-200 px-2 py-0.5 text-xs text-red-600"
-                >
-                  Delete
-                </button>
+                <div className="flex items-center gap-2">
+                  <SyncToHarnessButton />
+                  <button
+                    onClick={() => {
+                      if (window.confirm(`Delete MCP server "${s.name}"?`)) {
+                        del.mutate(s.id);
+                      }
+                    }}
+                    className="rounded border border-red-200 px-2 py-0.5 text-xs text-red-600"
+                  >
+                    Delete
+                  </button>
+                </div>
               </td>
             </tr>
           ))}
