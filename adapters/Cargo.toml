@@ -1,0 +1,13 @@
+[package]
+name = "adapters"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+
+[dependencies]
+chm-harness-sdk.workspace = true
+claude-code-adapter = { path = "claude-code" }
+codex-adapter = { path = "codex" }
+opencode-adapter = { path = "opencode" }
+pi-adapter = { path = "pi" }
+reasonix-adapter = { path = "reasonix" }
