@@ -10,6 +10,8 @@
 
 ## Global Constraints
 
+- **ImportSession extraction (from team-protocol batch-1 review):** extract `protocol_from_native`, per-provider endpoint seeding, placeholder fallback, and dedup policy from `commands/import.rs` into a `services/import.rs` module behind `ImportSession { canonicalize(ParsedState) -> ImportPlan; apply(plan, tx) -> ImportReport }`. Task 5.1 is the second caller (provider CRUD needs the same mechanics); do the extraction in Task 5.1 and rewire the import command to the service.
+
 - Secrets flow: UI → command → `SecretStore::set` → returns `credential_ref_id`; the raw value NEVER touches SQLite and NEVER crosses the command boundary back to the UI after save.
 - Env-var credentials are validated against the process env at save time (warning if unset, still saved).
 - Provider deletion cascades to endpoints, catalog models, and routes (DB FK `ON DELETE CASCADE`); confirm dialog required in UI.
