@@ -1,6 +1,7 @@
 import { Route, Routes } from "react-router-dom";
 import Sidebar from "./components/Sidebar";
 import InventoryScreen from "./screens/InventoryScreen";
+import HarnessesScreen from "./screens/HarnessesScreen";
 import ImportWizard from "./screens/ImportWizard";
 import ProvidersScreen from "./screens/ProvidersScreen";
 import ProviderDetailScreen from "./screens/ProviderDetailScreen";
@@ -26,7 +27,7 @@ export default function App() {
       <main className="flex-1 overflow-auto bg-gray-50 p-6">
         <Routes>
           <Route path="/" element={<DashboardScreen />} />
-          <Route path="/scan" element={<InventoryScreen />} />
+          <Route path="/scan" element={<HarnessesScreen />} />
           <Route path="/import" element={<ImportWizard />} />
           <Route path="/providers" element={<ProvidersScreen />} />
           <Route path="/providers/:id" element={<ProviderDetailScreen />} />

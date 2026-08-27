@@ -1,0 +1,226 @@
+import { useState } from "react";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { invoke } from "@tauri-apps/api/core";
+
+export interface ActionView {
+  kind: string;
+  identity: string;
+  action: string;
+}
+
+export interface FilePreview {
+  path: string;
+  before: string | null;
+  after: string | null;
+}
+
+export interface PreviewReport {
+  summary: string;
+  actions: ActionView[];
+  files: FilePreview[];
+}
+
+export interface ApplyReport {
+  summary: string;
+  files_written: string[];
+  links_created: string[];
+  transaction_id: string;
+  validation: { ok: boolean; errors: string[] };
+}
+
+export function syncPreview(installationId: string, mode: string): Promise<PreviewReport> {
+  return invoke<PreviewReport>("sync_preview", { installationId, mode });
+}
+
+export function syncApply(
+  installationId: string,
+  mode: string,
+  force: boolean,
+): Promise<ApplyReport> {
+  return invoke<ApplyReport>("sync_apply", { installationId, mode, force });
+}
+
+export function useSyncPreview(installationId: string, mode: string | null) {
+  return useQuery({
+    queryKey: ["sync-preview", installationId, mode],
+    queryFn: () => syncPreview(installationId, mode!),
+    enabled: !!mode && mode !== "none",
+  });
+}
+
+export function useSyncApply() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: ({
+      installationId,
+      mode,
+      force,
+    }: {
+      installationId: string;
+      mode: string;
+      force: boolean;
+    }) => syncApply(installationId, mode, force),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["installations"] });
+      qc.invalidateQueries({ queryKey: ["routes"] });
+    },
+  });
+}
+
+export function SyncDialog({
+  installationId,
+  harnessType,
+  onClose,
+}: {
+  installationId: string;
+  harnessType: string;
+  onClose: () => void;
+}) {
+  const [mode, setMode] = useState<string>("append");
+  const [force, setForce] = useState(false);
+  const [expandedFile, setExpandedFile] = useState<string | null>(null);
+  const preview = useSyncPreview(installationId, mode);
+  const apply = useSyncApply();
+
+  const ACTION_COLORS: Record<string, string> = {
+    add: "bg-green-100 text-green-700",
+    update: "bg-amber-100 text-amber-700",
+    remove: "bg-red-100 text-red-700",
+    conflict: "bg-orange-100 text-orange-700",
+    unsupported: "bg-gray-100 text-gray-600",
+    unchanged: "bg-gray-50 text-gray-400",
+    noop: "bg-gray-50 text-gray-400",
+  };
+
+  const hasBlockers = (preview.data?.actions ?? []).some(
+    (a) => a.action === "conflict" || a.action === "unsupported",
+  );
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/30">
+      <div className="flex max-h-[85vh] w-full max-w-3xl flex-col rounded bg-white shadow-xl">
+        <div className="flex items-center justify-between border-b p-4">
+          <h2 className="font-medium">Sync {harnessType}</h2>
+          <button onClick={onClose} className="text-gray-500">
+            ✕
+          </button>
+        </div>
+        <div className="flex-1 overflow-auto p-4">
+          <div className="flex gap-4 text-sm">
+            <label className="flex items-center gap-1">
+              <input
+                type="radio"
+                checked={mode === "append"}
+                onChange={() => setMode("append")}
+              />
+              Append/update
+            </label>
+            <label className="flex items-center gap-1">
+              <input
+                type="radio"
+                checked={mode === "replaceManaged"}
+                onChange={() => setMode("replaceManaged")}
+              />
+              Replace managed
+            </label>
+          </div>
+          {preview.isLoading && <p className="mt-3 text-sm">Computing diff…</p>}
+          {preview.isError && (
+            <p className="mt-3 text-sm text-red-600">{preview.error.message}</p>
+          )}
+          {preview.data && (
+            <>
+              <p className="mt-3 text-sm font-medium">{preview.data.summary}</p>
+              <table className="mt-2 w-full text-sm">
+                <tbody>
+                  {preview.data.actions.map((a, i) => (
+                    <tr key={i} className="border-b">
+                      <td className="p-1 text-xs text-gray-500">{a.kind}</td>
+                      <td className="p-1 font-mono text-xs">{a.identity}</td>
+                      <td className="p-1">
+                        <span
+                          className={`rounded px-1.5 py-0.5 text-xs ${ACTION_COLORS[a.action] ?? "bg-gray-100"}`}
+                        >
+                          {a.action}
+                        </span>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+              {preview.data.files.length > 0 && (
+                <div className="mt-3">
+                  <h3 className="text-sm font-medium">Files</h3>
+                  {preview.data.files.map((f) => (
+                    <div key={f.path} className="mt-1">
+                      <button
+                        onClick={() =>
+                          setExpandedFile(expandedFile === f.path ? null : f.path)
+                        }
+                        className="font-mono text-xs text-blue-700 hover:underline"
+                      >
+                        {f.path}
+                      </button>
+                      {expandedFile === f.path && (
+                        <div className="mt-1 grid grid-cols-2 gap-2">
+                          <pre className="overflow-auto rounded bg-gray-50 p-2 text-xs">
+                            {f.before ?? "(new file)"}
+                          </pre>
+                          <pre className="overflow-auto rounded bg-green-50 p-2 text-xs">
+                            {f.after}
+                          </pre>
+                        </div>
+                      )}
+                    </div>
+                  ))}
+                </div>
+              )}
+              {hasBlockers && (
+                <label className="mt-3 flex items-center gap-2 text-xs">
+                  <input
+                    type="checkbox"
+                    checked={force}
+                    onChange={(e) => setForce(e.target.checked)}
+                  />
+                  Apply despite conflicts/unsupported (advanced)
+                </label>
+              )}
+            </>
+          )}
+          {apply.isError && (
+            <p className="mt-2 text-sm text-red-600">{apply.error.message}</p>
+          )}
+          {apply.data && (
+            <p className="mt-2 text-sm text-green-700">
+              {apply.data.summary} — validation{" "}
+              {apply.data.validation.ok ? "passed" : "FAILED"}
+              {apply.data.validation.errors.length > 0 && (
+                <span className="text-red-600">
+                  {" "}
+                  {apply.data.validation.errors.join("; ")}
+                </span>
+              )}
+            </p>
+          )}
+        </div>
+        <div className="flex justify-end gap-2 border-t p-4">
+          <button
+            onClick={onClose}
+            className="rounded border border-gray-300 px-3 py-1 text-sm"
+          >
+            Close
+          </button>
+          <button
+            onClick={() =>
+              apply.mutate({ installationId, mode, force: force || hasBlockers })
+            }
+            disabled={apply.isPending || hasBlockers && !force}
+            className="rounded bg-blue-600 px-3 py-1 text-sm text-white disabled:opacity-50"
+          >
+            {apply.isPending ? "Applying…" : "Apply"}
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
