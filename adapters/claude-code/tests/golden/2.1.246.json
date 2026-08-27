@@ -1,0 +1,87 @@
+{
+  "mcp": [
+    {
+      "args": [
+        "/Users/patrickrho/.local/bin/codegraph",
+        "serve",
+        "--mcp"
+      ],
+      "command": "/Users/patrickrho/.nvm/versions/node/v24.7.0/bin/node",
+      "env": {},
+      "native_name": "codegraph",
+      "transport": "stdio",
+      "url": null
+    },
+    {
+      "args": [
+        "/Users/patrickrho/.local/mcp/google-docs-mcp/node_modules/@a-bonus/google-docs-mcp/dist/index.js"
+      ],
+      "command": "node",
+      "env": {
+        "GOOGLE_IMPERSONATE_USER": "patrick@patty.io",
+        "MCP_TOOL_GROUPS": "docs,drive,sheets,utils",
+        "SERVICE_ACCOUNT_PATH": "/Users/patrickrho/projects/spreadsheet-mcp/credentials/service-key.json"
+      },
+      "native_name": "google-docs",
+      "transport": "stdio",
+      "url": null
+    },
+    {
+      "args": [
+        "--directory",
+        "/Users/patrickrho/projects/spreadsheet-mcp",
+        "run",
+        "spreadsheet-mcp"
+      ],
+      "command": "uv",
+      "env": {
+        "GOOGLE_SERVICE_ACCOUNT_FILE": "/Users/patrickrho/projects/spreadsheet-mcp/credentials/service-key.json"
+      },
+      "native_name": "google-sheets",
+      "transport": "stdio",
+      "url": null
+    },
+    {
+      "args": [],
+      "command": null,
+      "env": {},
+      "native_name": "lightpanda",
+      "transport": "http",
+      "url": "http://127.0.0.1:9333/mcp"
+    },
+    {
+      "args": [],
+      "command": null,
+      "env": {},
+      "native_name": "mem0-mcp",
+      "transport": "http",
+      "url": "https://mcp.mem0.ai/mcp"
+    },
+    {
+      "args": [
+        "--from",
+        "semble[mcp]",
+        "semble"
+      ],
+      "command": "uvx",
+      "env": {},
+      "native_name": "semble",
+      "transport": "stdio",
+      "url": null
+    }
+  ],
+  "models": [],
+  "providers": [
+    {
+      "env_override": "CLAUDE_CODE_DISABLE_MOUSE",
+      "source": "settings.json",
+      "value": "1"
+    },
+    {
+      "env_override": "DISABLE_AUTOUPDATER",
+      "source": "settings.json",
+      "value": "1"
+    }
+  ],
+  "skills": []
+}

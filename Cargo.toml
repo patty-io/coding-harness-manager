@@ -12,6 +12,7 @@ members = [
   "adapters/opencode",
   "adapters/pi",
   "adapters/codex",
+  "adapters/claude-code",
 ]
 
 [workspace.package]
