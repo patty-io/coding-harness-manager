@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { Link } from "react-router-dom";
+import { Link, useNavigate } from "react-router-dom";
 import {
   useCreateProvider,
   useDeleteProvider,
@@ -7,6 +7,7 @@ import {
 } from "../hooks/useProviders";
 
 export default function ProvidersScreen() {
+  const navigate = useNavigate();
   const { data: providers, isLoading } = useProviders();
   const create = useCreateProvider();
   const del = useDeleteProvider();
