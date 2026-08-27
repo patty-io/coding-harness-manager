@@ -1,0 +1,124 @@
+{
+  "mcp": [
+    {
+      "args": [],
+      "command": null,
+      "native_name": "atlassian"
+    },
+    {
+      "args": [
+        "/Users/patrickrho/.local/bin/codegraph",
+        "serve",
+        "--mcp"
+      ],
+      "command": "/Users/patrickrho/.nvm/versions/node/v24.7.0/bin/node",
+      "native_name": "codegraph"
+    },
+    {
+      "args": [
+        "/Users/patrickrho/.local/mcp/google-docs-mcp/node_modules/@a-bonus/google-docs-mcp/dist/index.js"
+      ],
+      "command": "node",
+      "native_name": "google-docs"
+    },
+    {
+      "args": [],
+      "command": null,
+      "native_name": "lightpanda"
+    },
+    {
+      "args": [],
+      "command": null,
+      "native_name": "linear"
+    },
+    {
+      "args": [],
+      "command": null,
+      "native_name": "openaiDeveloperDocs"
+    },
+    {
+      "args": [
+        "--from",
+        "semble[mcp]",
+        "semble"
+      ],
+      "command": "uvx",
+      "native_name": "semble"
+    },
+    {
+      "args": [
+        "@playwright/mcp@latest"
+      ],
+      "command": "npx",
+      "native_name": "playwright"
+    },
+    {
+      "args": [
+        "@playwright/mcp@latest"
+      ],
+      "command": "npx",
+      "native_name": "playwright"
+    }
+  ],
+  "models": [
+    {
+      "capabilities": {
+        "auto_compact_token_limit": 850000,
+        "model": "zai/glm-5.2",
+        "reasoning_effort": "max",
+        "supports_reasoning_summaries": true
+      },
+      "context_window": 1000000,
+      "display_name": "zai/glm-5.2",
+      "native_id": "zai/glm-5.2",
+      "overrides": {
+        "native_provider_id": "glm",
+        "provider_file": "glm.config.toml",
+        "wire_api": "responses"
+      },
+      "remote_model_id": "glm-5.2"
+    },
+    {
+      "capabilities": {
+        "auto_compact_token_limit": null,
+        "model": "MiniMax-M3",
+        "reasoning_effort": "high",
+        "supports_reasoning_summaries": null
+      },
+      "context_window": null,
+      "display_name": "MiniMax-M3",
+      "native_id": "MiniMax-M3",
+      "overrides": {
+        "native_provider_id": "minimax",
+        "provider_file": "minimax.config.toml",
+        "wire_api": "responses"
+      },
+      "remote_model_id": "MiniMax-M3"
+    }
+  ],
+  "profiles": [
+    {
+      "default_model": "gpt-5.6-sol",
+      "model_reasoning_effort": "low"
+    }
+  ],
+  "providers": [
+    {
+      "base_url": "https://omni.agents.patty.io/v1",
+      "env_key": "AGENTS_PATTY_API_KEY",
+      "file": "glm.config.toml",
+      "layout": "modern-provider-file",
+      "native_provider_id": "glm",
+      "wire_api": "responses"
+    },
+    {
+      "base_url": "https://api.minimax.io/v1",
+      "env_key": "MINIMAX_API_KEY",
+      "file": "minimax.config.toml",
+      "layout": "modern-provider-file",
+      "native_provider_id": "minimax",
+      "wire_api": "responses"
+    }
+  ],
+  "skills": []
+}

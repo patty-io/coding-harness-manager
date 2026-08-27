@@ -11,6 +11,7 @@ members = [
   "crates/harness-sdk",
   "adapters/opencode",
   "adapters/pi",
+  "adapters/codex",
 ]
 
 [workspace.package]
