@@ -1,0 +1,203 @@
+{
+  "models": [
+    {
+      "context_window": 1000000,
+      "display_name": "custom-api-cline-bot/cline-pass/deepseek-v4-flash",
+      "max_output": 65536,
+      "native_id": "cline-pass/deepseek-v4-flash",
+      "overrides": {
+        "api_key_env": "CUSTOM_API_CLINE_BOT_API_KEY",
+        "native_provider_id": "custom-api-cline-bot"
+      },
+      "remote_model_id": "cline-pass/deepseek-v4-flash"
+    },
+    {
+      "context_window": 1000000,
+      "display_name": "custom-api-cline-bot/cline-pass/deepseek-v4-pro",
+      "max_output": 65536,
+      "native_id": "cline-pass/deepseek-v4-pro",
+      "overrides": {
+        "api_key_env": "CUSTOM_API_CLINE_BOT_API_KEY",
+        "native_provider_id": "custom-api-cline-bot"
+      },
+      "remote_model_id": "cline-pass/deepseek-v4-pro"
+    },
+    {
+      "context_window": 1000000,
+      "display_name": "custom-opencode-ai/deepseek-v4-flash",
+      "max_output": 65536,
+      "native_id": "deepseek-v4-flash",
+      "overrides": {
+        "api_key_env": "CUSTOM_OPENCODE_AI_API_KEY",
+        "native_provider_id": "custom-opencode-ai"
+      },
+      "remote_model_id": "deepseek-v4-flash"
+    },
+    {
+      "context_window": 1000000,
+      "display_name": "custom-opencode-ai/deepseek-v4-pro",
+      "max_output": 65536,
+      "native_id": "deepseek-v4-pro",
+      "overrides": {
+        "api_key_env": "CUSTOM_OPENCODE_AI_API_KEY",
+        "native_provider_id": "custom-opencode-ai"
+      },
+      "remote_model_id": "deepseek-v4-pro"
+    },
+    {
+      "context_window": 1000000,
+      "display_name": "anthropic-api-kimi-com/k3",
+      "max_output": 32768,
+      "native_id": "k3",
+      "overrides": {
+        "api_key_env": "KIMI_API_KEY",
+        "native_provider_id": "anthropic-api-kimi-com"
+      },
+      "remote_model_id": "k3"
+    },
+    {
+      "context_window": 1000000,
+      "display_name": "anthropic-api-kimi-com/k3-256k",
+      "max_output": 32768,
+      "native_id": "k3-256k",
+      "overrides": {
+        "api_key_env": "KIMI_API_KEY",
+        "native_provider_id": "anthropic-api-kimi-com"
+      },
+      "remote_model_id": "k3-256k"
+    },
+    {
+      "context_window": 1000000,
+      "display_name": "anthropic-api-kimi-com/kimi-for-coding",
+      "max_output": 32768,
+      "native_id": "kimi-for-coding",
+      "overrides": {
+        "api_key_env": "KIMI_API_KEY",
+        "native_provider_id": "anthropic-api-kimi-com"
+      },
+      "remote_model_id": "kimi-for-coding"
+    },
+    {
+      "context_window": 200000,
+      "display_name": "zai-glm-direct/glm-5.2",
+      "max_output": 65536,
+      "native_id": "glm-5.2",
+      "overrides": {
+        "api_key_env": "ZAI_API_KEY",
+        "native_provider_id": "zai-glm-direct"
+      },
+      "remote_model_id": "glm-5.2"
+    },
+    {
+      "context_window": 1048576,
+      "display_name": "minimax-global-anthropic/MiniMax-M3",
+      "max_output": null,
+      "native_id": "MiniMax-M3",
+      "overrides": {
+        "api_key_env": "MINIMAX_API_KEY",
+        "native_provider_id": "minimax-global-anthropic"
+      },
+      "remote_model_id": "MiniMax-M3"
+    },
+    {
+      "context_window": 1048576,
+      "display_name": "minimax-global-anthropic/MiniMax-M2.7",
+      "max_output": null,
+      "native_id": "MiniMax-M2.7",
+      "overrides": {
+        "api_key_env": "MINIMAX_API_KEY",
+        "native_provider_id": "minimax-global-anthropic"
+      },
+      "remote_model_id": "MiniMax-M2.7"
+    },
+    {
+      "context_window": 1048576,
+      "display_name": "minimax-global-anthropic/MiniMax-M2.7-highspeed",
+      "max_output": null,
+      "native_id": "MiniMax-M2.7-highspeed",
+      "overrides": {
+        "api_key_env": "MINIMAX_API_KEY",
+        "native_provider_id": "minimax-global-anthropic"
+      },
+      "remote_model_id": "MiniMax-M2.7-highspeed"
+    },
+    {
+      "context_window": 131072,
+      "display_name": "yolo-auto/deepseek-flash-v4",
+      "max_output": null,
+      "native_id": "deepseek-flash-v4",
+      "overrides": {
+        "api_key_env": "YOLO_AUTO_API_KEY",
+        "native_provider_id": "yolo-auto"
+      },
+      "remote_model_id": "deepseek-flash-v4"
+    }
+  ],
+  "profiles": [
+    {
+      "credentials_store": "auto",
+      "default_model": "anthropic-api-kimi-com/k3-256k"
+    }
+  ],
+  "providers": [
+    {
+      "config_version": 7,
+      "native_provider_id": "__schema__"
+    },
+    {
+      "api_key_env": "CUSTOM_API_CLINE_BOT_API_KEY",
+      "base_url": "https://api.cline.bot/api/v1",
+      "context_window": 1000000,
+      "default": "cline-pass/deepseek-v4-flash",
+      "kind": "openai",
+      "max_output_tokens": 65536,
+      "native_provider_id": "custom-api-cline-bot"
+    },
+    {
+      "api_key_env": "CUSTOM_OPENCODE_AI_API_KEY",
+      "base_url": "https://opencode.ai/zen/go/v1",
+      "context_window": 1000000,
+      "default": "deepseek-v4-flash",
+      "kind": "openai",
+      "max_output_tokens": 65536,
+      "native_provider_id": "custom-opencode-ai"
+    },
+    {
+      "api_key_env": "KIMI_API_KEY",
+      "base_url": "https://api.kimi.com/coding",
+      "context_window": 1000000,
+      "default": "k3",
+      "kind": "anthropic",
+      "max_output_tokens": 32768,
+      "native_provider_id": "anthropic-api-kimi-com"
+    },
+    {
+      "api_key_env": "ZAI_API_KEY",
+      "base_url": "https://api.z.ai/api/paas/v4",
+      "context_window": 200000,
+      "default": "glm-5.2",
+      "kind": "openai",
+      "max_output_tokens": 65536,
+      "native_provider_id": "zai-glm-direct"
+    },
+    {
+      "api_key_env": "MINIMAX_API_KEY",
+      "base_url": "https://api.minimax.io/anthropic/v1",
+      "context_window": 1048576,
+      "default": "MiniMax-M3",
+      "kind": "anthropic",
+      "max_output_tokens": null,
+      "native_provider_id": "minimax-global-anthropic"
+    },
+    {
+      "api_key_env": "YOLO_AUTO_API_KEY",
+      "base_url": "https://yolo-auto.com/v1",
+      "context_window": 131072,
+      "default": "deepseek-flash-v4",
+      "kind": "openai",
+      "max_output_tokens": null,
+      "native_provider_id": "yolo-auto"
+    }
+  ],
+  "skills": []
+}

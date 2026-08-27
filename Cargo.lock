@@ -1400,6 +1400,18 @@ dependencies = [
 ]
 
 [[package]]
+name = "reasonix-adapter"
+version = "0.1.0"
+dependencies = [
+ "chm-core",
+ "chm-harness-sdk",
+ "chrono",
+ "serde_json",
+ "toml",
+ "uuid",
+]
+
+[[package]]
 name = "redox_syscall"
 version = "0.5.18"
 source = "registry+https://github.com/rust-lang/crates.io-index"
