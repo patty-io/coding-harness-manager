@@ -55,13 +55,18 @@ fn append_never_plans_removes() {
 #[test]
 fn replace_managed_removes_only_managed_items() {
     let desired: Vec<ModelRoute> = vec![];
-    let actual = vec![actual_model("managed-one"), actual_model("native-two")];
-    let plan = reconcile_models(
-        &desired,
-        &actual,
-        Mode::ReplaceManaged,
-        &managed(&["route:x:managed-one"]),
-    );
+    let endpoint = Uuid::new_v4();
+    let managed_one = HarnessModel {
+        native_id: "managed-one".into(),
+        route: route(endpoint, "managed-one", None),
+    };
+    let native_two = HarnessModel {
+        native_id: "native-two".into(),
+        route: route(endpoint, "native-two", None),
+    };
+    let actual = vec![managed_one, native_two];
+    let key = format!("route:{endpoint}:managed-one");
+    let plan = reconcile_models(&desired, &actual, Mode::ReplaceManaged, &managed(&[&key]));
     let removes: Vec<_> = plan
         .iter()
         .filter_map(|a| match a {
@@ -194,6 +199,7 @@ fn skills_add_unchanged_conflict_unsupported() {
     let desired = vec![
         skill("brainstorming", "/shared/skills/brainstorming"),
         skill("existing", "/shared/skills/existing"),
+        skill("new-skill", "/shared/skills/new-skill"),
     ];
     let actual = vec![
         HarnessSkill {
@@ -212,6 +218,7 @@ fn skills_add_unchanged_conflict_unsupported() {
     let plan = reconcile_skills(&desired, &actual, Mode::Append, &managed(&[]));
     // brainstorming: name conflict (different content) -> Conflict
     // existing: symlinked already -> Unchanged
+    // new-skill: not present -> Add (then rejected when links unsupported)
     let conflicts = plan
         .iter()
         .filter(|a| matches!(a, PlanAction::Conflict(_)))
