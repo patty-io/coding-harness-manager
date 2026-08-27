@@ -1,0 +1,28 @@
+{
+  "lastChangelogVersion": "0.84.3",
+  "defaultProvider": "pattycode",
+  "defaultModel": "openrouter/stealth/ox-alpha",
+  "defaultThinkingLevel": "max",
+  "steeringMode": "all",
+  "followUpMode": "all",
+  "hideThinkingBlock": false,
+  "packages": [
+    "npm:pi-mcp-adapter",
+    "npm:@narumitw/pi-goal",
+    "npm:@sean_pedersen/pi-codegraph",
+    "git:github.com/coctostan/pi-superpowers",
+    "npm:@tifan/pi-preferred-thinking",
+    "https://github.com/sting8k/pi-vcc"
+  ],
+  "enabledModels": [],
+  "theme": "dark",
+  "defaultProjectTrust": "always",
+  "doubleEscapeAction": "tree",
+  "enableInstallTelemetry": false,
+  "terminal": {
+    "showTerminalProgress": true
+  },
+  "skills": [
+    "~/.claude/skills"
+  ]
+}

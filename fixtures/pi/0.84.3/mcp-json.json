@@ -1,0 +1,52 @@
+{
+  "imports": [
+    "claude-code"
+  ],
+  "mcpServers": {
+    "linear": {
+      "type": "http",
+      "url": "https://mcp.linear.app/mcp",
+      "headers": {
+        "Authorization": "Bearer lin_api_SYNTHETIC_FIXTURE"
+      },
+      "directTools": true
+    },
+    "semble": {
+      "command": "uvx",
+      "args": [
+        "--from",
+        "semble[mcp]",
+        "semble"
+      ]
+    },
+    "web-reader": {
+      "type": "http",
+      "url": "https://api.z.ai/api/mcp/web_reader/mcp",
+      "headers": {
+        "Authorization": "REDACTED"
+      },
+      "directTools": true
+    },
+    "web-search-prime": {
+      "type": "http",
+      "url": "https://api.z.ai/api/mcp/web_search_prime/mcp",
+      "headers": {
+        "Authorization": "REDACTED"
+      },
+      "directTools": true
+    },
+    "web-zread": {
+      "type": "http",
+      "url": "https://api.z.ai/api/mcp/zread/mcp",
+      "headers": {
+        "Authorization": "REDACTED"
+      },
+      "directTools": true
+    },
+    "lightpanda": {
+      "type": "http",
+      "url": "http://127.0.0.1:9336/mcp",
+      "directTools": true
+    }
+  }
+}

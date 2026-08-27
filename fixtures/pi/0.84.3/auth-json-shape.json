@@ -1,0 +1,29 @@
+{
+  "linear": {
+    "key": "REDACTED",
+    "hash": "aec18e43ca96317c"
+  },
+  "minimax": {
+    "type": "api_key",
+    "key": "REDACTED"
+  },
+  "deepseek": {
+    "type": "api_key",
+    "key": "REDACTED"
+  },
+  "openai-codex": {
+    "type": "oauth",
+    "access": "REDACTED",
+    "refresh": "REDACTED",
+    "expires": 1787907162437,
+    "accountId": "20740767-bdab-4469-a598-efd9e58e3395"
+  },
+  "zai": {
+    "type": "api_key",
+    "key": "REDACTED"
+  },
+  "zyloo": {
+    "type": "api_key",
+    "key": "REDACTED"
+  }
+}

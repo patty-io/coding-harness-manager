@@ -1,0 +1,40 @@
+{
+  "mcpServers": {
+    "MiniMax": {
+      "command": "uvx",
+      "args": [
+        "minimax-coding-plan-mcp",
+        "-y"
+      ],
+      "env": {
+        "MINIMAX_API_KEY": "REDACTED",
+        "MINIMAX_API_HOST": "https://api.minimax.io"
+      },
+      "directTools": true
+    },
+    "web-search-prime": {
+      "type": "http",
+      "url": "https://api.z.ai/api/mcp/web_search_prime/mcp",
+      "headers": {
+        "Authorization": "REDACTED"
+      },
+      "directTools": true
+    },
+    "web-reader": {
+      "type": "http",
+      "url": "https://api.z.ai/api/mcp/web_reader/mcp",
+      "headers": {
+        "Authorization": "REDACTED"
+      },
+      "directTools": true
+    },
+    "web-zread": {
+      "type": "http",
+      "url": "https://api.z.ai/api/mcp/zread/mcp",
+      "headers": {
+        "Authorization": "REDACTED"
+      },
+      "directTools": true
+    }
+  }
+}

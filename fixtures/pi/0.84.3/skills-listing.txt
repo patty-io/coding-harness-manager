@@ -1,0 +1,6 @@
+total 0
+drwxr-xr-x@  5 patrickrho  staff  160 Aug 21 06:20 .
+drwxr-xr-x@ 31 patrickrho  staff  992 Aug 27 09:28 ..
+drwxr-xr-x@  3 patrickrho  staff   96 Jul  3 23:57 plan-on-linear
+drwxr-xr-x   3 patrickrho  staff   96 Jun 21 23:03 semble-search
+drwxr-xr-x@  3 patrickrho  staff   96 Jul  1 22:17 zoom-out
