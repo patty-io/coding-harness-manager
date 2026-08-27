@@ -4,23 +4,27 @@ use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
 use uuid::Uuid;
 
-#[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq, Hash)]
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq, Hash)]
 pub enum HarnessType {
     ClaudeCode,
     Codex,
     OpenCode,
     Pi,
     Reasonix,
+    /// Detection-only harnesses (e.g. "gemini-cli"). Only ever constructed
+    /// from the definition registry; never the parse fallback.
+    Custom(String),
 }
 
 impl HarnessType {
-    pub fn as_str(&self) -> &'static str {
+    pub fn as_str(&self) -> &str {
         match self {
             Self::ClaudeCode => "claude-code",
             Self::Codex => "codex",
             Self::OpenCode => "opencode",
             Self::Pi => "pi",
             Self::Reasonix => "reasonix",
+            Self::Custom(id) => id.as_str(),
         }
     }
 
@@ -44,7 +48,7 @@ pub enum InstallationStatus {
 }
 
 impl InstallationStatus {
-    pub fn as_str(&self) -> &'static str {
+    pub fn as_str(&self) -> &str {
         match self {
             Self::Detected => "detected",
             Self::Installed => "installed",
@@ -76,7 +80,7 @@ pub struct HarnessInstallation {
 }
 
 impl HarnessInstallation {
-    pub fn status_v(&self) -> &'static str {
+    pub fn status_v(&self) -> &str {
         self.status.as_str()
     }
 }
@@ -103,7 +107,7 @@ pub enum BindingType {
 }
 
 impl BindingType {
-    pub fn as_str(&self) -> &'static str {
+    pub fn as_str(&self) -> &str {
         match self {
             Self::Symlink => "symlink",
             Self::Junction => "junction",
