@@ -2,6 +2,7 @@
 
 pub mod commands;
 pub mod services;
+pub mod skill_lib;
 
 use chm_database::connect;
 use chm_secrets::SecretStore;
@@ -76,6 +77,12 @@ pub fn run() {
             commands::mcp::mcp_detail_cmd,
             commands::mcp::bind_mcp_cmd,
             commands::mcp::run_mcp_diagnostics,
+            commands::skills::list_skills_cmd,
+            commands::skills::scan_skills_dir_cmd,
+            commands::skills::import_skills_cmd,
+            commands::skills::adopt_canonical_dir,
+            commands::skills::bind_skill_cmd,
+            commands::skills::unbind_skill_cmd,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

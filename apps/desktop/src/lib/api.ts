@@ -335,3 +335,48 @@ export async function runMcpDiagnostics(mcpId: string): Promise<CheckResult[]> {
 export async function bindMcp(installationId: string, mcpId: string): Promise<void> {
   return invoke<void>("bind_mcp_cmd", { installationId, mcpId });
 }
+
+// --- Skills ---
+
+export interface ScannedSkillView {
+  name: string;
+  path: string;
+  contentHash: string;
+}
+
+export interface ImportSkillReport {
+  imported: number;
+  duplicates: string[];
+  conflicts: string[];
+}
+
+export interface BindOutcome {
+  bindingType: string;
+  targetPath: string;
+}
+
+export async function scanSkillsDir(dir: string): Promise<ScannedSkillView[]> {
+  return invoke<ScannedSkillView[]>("scan_skills_dir_cmd", { dir });
+}
+export async function importSkills(paths: string[]): Promise<ImportSkillReport> {
+  return invoke<ImportSkillReport>("import_skills_cmd", { paths });
+}
+export async function adoptCanonicalDir(): Promise<number> {
+  return invoke<number>("adopt_canonical_dir");
+}
+export async function bindSkill(installationId: string, skillId: string): Promise<BindOutcome> {
+  return invoke<BindOutcome>("bind_skill_cmd", { installationId, skillId });
+}
+
+export interface SkillView {
+  id: string;
+  name: string;
+  canonicalPath: string;
+  contentHash: string | null;
+  sourceType: string;
+  enabled: boolean;
+}
+
+export async function listSkills(): Promise<SkillView[]> {
+  return invoke<SkillView[]>("list_skills_cmd");
+}

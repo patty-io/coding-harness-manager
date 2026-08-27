@@ -6,11 +6,11 @@ import ProvidersScreen from "./screens/ProvidersScreen";
 import ProviderDetailScreen from "./screens/ProviderDetailScreen";
 import ModelsScreen from "./screens/ModelsScreen";
 import McpScreen from "./screens/McpScreen";
+import SkillsScreen from "./screens/SkillsScreen";
 import { DashboardScreen } from "./screens/DashboardScreen";
 import { PlaceholderScreen } from "./screens/PlaceholderScreen";
 
 const PLACEHOLDERS = [
-  "skills",
   "profiles",
   "sets",
   "changes",
@@ -32,6 +32,7 @@ export default function App() {
           <Route path="/providers/:id" element={<ProviderDetailScreen />} />
           <Route path="/models" element={<ModelsScreen />} />
           <Route path="/mcp" element={<McpScreen />} />
+          <Route path="/skills" element={<SkillsScreen />} />
           {PLACEHOLDERS.map((p) => (
             <Route
               key={p}
