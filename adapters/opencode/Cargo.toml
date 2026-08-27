@@ -1,0 +1,16 @@
+[package]
+name = "opencode-adapter"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+
+[dependencies]
+chm-core.workspace = true
+chm-harness-sdk.workspace = true
+chrono.workspace = true
+json_comments = "0.2"
+serde_json.workspace = true
+uuid.workspace = true
+
+[dev-dependencies]
+serde_json.workspace = true

@@ -9,6 +9,7 @@ members = [
   "crates/models-dev",
   "crates/filesystem",
   "crates/harness-sdk",
+  "adapters/opencode",
 ]
 
 [workspace.package]
