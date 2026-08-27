@@ -1,0 +1,4 @@
+total 0
+drwx------@  3 patrickrho  staff   96 Aug 27 03:45 .
+drwxr-xr-x@ 22 patrickrho  staff  704 Aug 26 04:13 ..
+lrwxr-xr-x@  1 patrickrho  staff   45 Aug 27 03:45 ego-browser -> /Users/patrickrho/.local/share/ego/ego-skills

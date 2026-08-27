@@ -1,0 +1,6 @@
+# Reasonix local config (~/.reasonix/reasonix.toml).
+# Previously this file contained accidentally pasted shell commands as
+# permission rules; cleaned up on 2026-08-18. Backup: reasonix.toml.bak.20260818-181911
+
+[permissions]
+allow = ["Edit"]
