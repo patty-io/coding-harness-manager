@@ -101,7 +101,13 @@ export function SyncDialog({
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/30">
       <div className="flex max-h-[85vh] w-full max-w-3xl flex-col rounded bg-slate-800 shadow-xl">
         <div className="flex items-center justify-between border-b p-4">
-          <h2 className="font-medium">Sync {harnessType}</h2>
+          <div>
+            <h2 className="font-medium">Sync {harnessType}</h2>
+            <p className="text-xs text-slate-400">
+              Preview of what would change in this harness's config files.
+              Nothing is written until you press Apply.
+            </p>
+          </div>
           <button onClick={onClose} className="text-slate-400">
             ✕
           </button>

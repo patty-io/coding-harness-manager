@@ -14,7 +14,6 @@ import { PlaceholderScreen } from "./screens/PlaceholderScreen";
 
 const PLACEHOLDERS = [
   "sets",
-  "changes",
   "doctor",
   "settings",
 ];

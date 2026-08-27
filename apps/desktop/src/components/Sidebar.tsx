@@ -1,43 +1,90 @@
 import { NavLink } from "react-router-dom";
 
-const NAV_ITEMS = [
-  { to: "/", label: "Dashboard" },
-  { to: "/providers", label: "Providers" },
-  { to: "/models", label: "Models" },
-  { to: "/scan", label: "Harnesses" },
-  { to: "/mcp", label: "MCP Servers" },
-  { to: "/skills", label: "Skills" },
-  { to: "/profiles", label: "Profiles" },
-  { to: "/sets", label: "Sets" },
-  { to: "/changes", label: "Changes" },
-  { to: "/history", label: "History" },
-  { to: "/doctor", label: "Doctor" },
-  { to: "/settings", label: "Settings" },
-  { to: "/import", label: "Import Wizard" },
+type Item = { to: string; label: string };
+type Section = { heading: string; items: Item[] };
+
+const SECTIONS: Section[] = [
+  {
+    heading: "Overview",
+    items: [{ to: "/", label: "Dashboard" }],
+  },
+  {
+    heading: "Configure",
+    items: [
+      { to: "/providers", label: "Providers" },
+      { to: "/models", label: "Models" },
+      { to: "/mcp", label: "MCP Servers" },
+      { to: "/skills", label: "Skills" },
+    ],
+  },
+  {
+    heading: "Deploy",
+    items: [
+      { to: "/scan", label: "Harnesses" },
+      { to: "/profiles", label: "Profiles" },
+      { to: "/sets", label: "Sets" },
+    ],
+  },
+  {
+    heading: "Maintain",
+    items: [
+      { to: "/history", label: "History" },
+      { to: "/doctor", label: "Diagnostics" },
+      { to: "/settings", label: "Settings" },
+    ],
+  },
 ];
 
 export default function Sidebar() {
   return (
-    <nav className="flex w-48 shrink-0 flex-col border-r border-slate-700 bg-slate-800 p-3">
-      <div className="mb-4 px-2 text-sm font-bold text-slate-100">
-        Coding Harness Manager
+    <nav className="flex w-52 shrink-0 flex-col border-r border-slate-700 bg-slate-900 p-3">
+      <div className="mb-1 px-2">
+        <div className="text-sm font-bold text-slate-100">
+          Coding Harness Manager
+        </div>
+        <div className="text-[10px] uppercase tracking-wide text-slate-500">
+          configure · preview · sync
+        </div>
       </div>
-      {NAV_ITEMS.map((item) => (
+      <div className="flex-1 overflow-auto">
+        {SECTIONS.map((section) => (
+          <div key={section.heading} className="mt-4">
+            <div className="px-2 pb-1 text-[10px] font-semibold uppercase tracking-wider text-slate-500">
+              {section.heading}
+            </div>
+            {section.items.map((item) => (
+              <NavLink
+                key={item.to}
+                to={item.to}
+                end={item.to === "/"}
+                className={({ isActive }) =>
+                  `mb-0.5 block rounded px-2 py-1.5 text-sm ${
+                    isActive
+                      ? "bg-blue-600/20 font-medium text-blue-300"
+                      : "text-slate-300 hover:bg-slate-800 hover:text-slate-100"
+                  }`
+                }
+              >
+                {item.label}
+              </NavLink>
+            ))}
+          </div>
+        ))}
+      </div>
+      <div className="border-t border-slate-700 pt-3">
         <NavLink
-          key={item.to}
-          to={item.to}
-          end={item.to === "/"}
+          to="/import"
           className={({ isActive }) =>
-            `rounded px-2 py-1.5 text-sm ${
+            `block rounded px-2 py-1.5 text-sm ${
               isActive
-                ? "bg-blue-950 font-medium text-blue-700"
-                : "text-slate-200 hover:bg-slate-700"
+                ? "bg-blue-600/20 font-medium text-blue-300"
+                : "text-slate-300 hover:bg-slate-800"
             }`
           }
         >
-          {item.label}
+          + Import existing setup
         </NavLink>
-      ))}
+      </div>
     </nav>
   );
 }
