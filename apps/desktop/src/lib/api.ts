@@ -173,8 +173,14 @@ export async function deleteProvider(id: string): Promise<void> {
 export async function listEndpoints(providerId: string): Promise<ProviderEndpoint[]> {
   return invoke<ProviderEndpoint[]>("list_endpoints_cmd", { providerId });
 }
-export async function createEndpoint(input: EndpointInput): Promise<ProviderEndpoint> {
-  return invoke<ProviderEndpoint>("create_endpoint_cmd", { input });
+export async function createEndpoint(
+  input: EndpointInput,
+  envVarName?: string,
+): Promise<ProviderEndpoint> {
+  return invoke<ProviderEndpoint>("create_endpoint_cmd", {
+    input,
+    envVarName: envVarName ?? null,
+  });
 }
 export async function saveApiKey(keyName: string, value: string): Promise<string> {
   return invoke<string>("save_api_key", { keyName, value });
@@ -324,4 +330,8 @@ export async function deleteMcp(id: string): Promise<void> {
 }
 export async function runMcpDiagnostics(mcpId: string): Promise<CheckResult[]> {
   return invoke<CheckResult[]>("run_mcp_diagnostics", { mcpId });
+}
+
+export async function bindMcp(installationId: string, mcpId: string): Promise<void> {
+  return invoke<void>("bind_mcp_cmd", { installationId, mcpId });
 }

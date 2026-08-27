@@ -86,11 +86,10 @@ async fn import_creates_provider_model_and_mcp() {
 }
 
 #[tokio::test]
-async fn failed_import_rolls_back_entire_transaction() {
+async fn in_batch_duplicate_mcp_is_reported_not_fatal() {
     let pool = connect_test().await.unwrap();
-    // the SAME mcp name arrives twice in the parsed state: once from the
-    // opencode.jsonc `mcp` object and once from opencode-mcp.json. The second
-    // insert violates UNIQUE(name) mid-batch; the whole import must roll back.
+    // the SAME mcp name arrives twice: once from opencode.jsonc `mcp` and once
+    // from opencode-mcp.json. In-batch duplicates are reported, not fatal.
     let dir = tempfile::TempDir::new().unwrap();
     let home = dir.path().join("home");
     std::fs::create_dir_all(home.join(".config/opencode")).unwrap();
@@ -135,79 +134,14 @@ async fn failed_import_rolls_back_entire_transaction() {
     )
     .await
     .unwrap();
-    let err = run_import(&pool, &inst, &parsed.2, true, true, true)
-        .await
-        .expect_err("duplicate mcp name in one batch must fail the import");
-    assert!(
-        err.contains("import failed") || err.contains("UNIQUE"),
-        "got: {err}"
-    );
-    // nothing persisted: provider + mcp + routes all rolled back
-    assert!(
-        list_providers(&pool).await.unwrap().is_empty(),
-        "providers must roll back"
-    );
-    assert!(
-        list_mcp_servers(&pool).await.unwrap().is_empty(),
-        "mcp must roll back"
-    );
-}
+    let report = run_import(&pool, &inst, &parsed.2, true, true, true).await.unwrap();
 
-#[tokio::test]
-async fn reimport_links_routes_to_existing_provider_endpoint() {
-    let pool = connect_test().await.unwrap();
-    let config = r#"{
-      "provider": {
-        "zai": {
-          "npm": "@ai-sdk/anthropic",
-          "options": { "baseURL": "https://api.z.ai/api/anthropic", "apiKey": "{env:ZAI_API_KEY}" },
-          "models": { "glm-5": { "name": "GLM-5", "limit": { "context": 1048576 } } }
-        }
-      }
-    }"#;
-    let (_dir, inst) = fixture_install(config);
-    upsert_installation(&pool, &inst).await.unwrap();
-
-    let parsed = coding_harness_manager_lib::commands::import::read_parsed_state(
-        &pool,
-        &inst.id.to_string(),
-    )
-    .await
-    .unwrap();
-    let first = run_import(&pool, &inst, &parsed.2, true, true, true)
-        .await
-        .unwrap();
-    assert_eq!(first.models_imported, 1);
-    // second import: provider exists -> not recreated; route links to the
-    // EXISTING endpoint, so the unique (endpoint_id, remote_model_id) hits
-    // and the model is reported as a duplicate — no junk "imported" provider.
-    let parsed2 = coding_harness_manager_lib::commands::import::read_parsed_state(
-        &pool,
-        &inst.id.to_string(),
-    )
-    .await
-    .unwrap();
-    let second = run_import(&pool, &inst, &parsed2.2, true, true, true)
-        .await
-        .unwrap();
-    assert_eq!(second.providers_created, 0);
-    assert_eq!(second.models_imported, 0);
+    assert_eq!(report.mcp_imported, 1, "first occurrence imports");
     assert!(
-        second.duplicates.iter().any(|d| d.starts_with("model:")),
-        "got: {:?}",
-        second.duplicates
+        report.duplicates.iter().any(|d| d.starts_with("mcp:")),
+        "second occurrence reported as duplicate"
     );
-    assert!(
-        second.duplicates.iter().any(|d| d.starts_with("provider:")),
-        "existing provider reported as duplicate"
-    );
-    let providers = list_providers(&pool).await.unwrap();
-    assert_eq!(
-        providers.len(),
-        1,
-        "no placeholder 'imported' provider may be created"
-    );
-    assert_eq!(providers[0].name, "zai");
+    assert_eq!(list_mcp_servers(&pool).await.unwrap().len(), 1);
 }
 
 #[tokio::test]

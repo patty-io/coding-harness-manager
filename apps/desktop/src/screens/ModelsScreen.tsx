@@ -19,7 +19,7 @@ export default function ModelsScreen() {
   const [tab, setTab] = useState<Tab>("mine");
   const [providerFilter, setProviderFilter] = useState("");
   const { data: routes } = useRoutes();
-  const { data: catalog } = useCatalogAll();
+  const { data: catalog } = useCatalogAll(tab === "discovered");
   const importBatch = useImportBatch();
   const del = useDeleteRoute();
   const update = useUpdateRoute();

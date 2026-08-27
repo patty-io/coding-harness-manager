@@ -62,17 +62,46 @@ fn parse_catalog(raw: &serde_json::Value) -> ModelsDevCatalog {
     ModelsDevCatalog { models }
 }
 
-/// Parses the bundled fixture catalog (committed with the crate), cached so
-/// the 4.3MB JSON is parsed exactly once per process.
-pub fn bundled_catalog() -> ModelsDevCatalog {
-    static CACHE: std::sync::OnceLock<ModelsDevCatalog> = std::sync::OnceLock::new();
-    CACHE
-        .get_or_init(|| {
-            let raw = include_str!("../fixtures/catalog.json");
-            let parsed: serde_json::Value = serde_json::from_str(raw).unwrap_or_default();
-            parse_catalog(&parsed)
-        })
-        .clone()
+/// Cached catalog + lookup indexes built once per process.
+struct CatalogIndex {
+    catalog: ModelsDevCatalog,
+    by_exact: std::collections::HashMap<String, usize>,
+    by_normalized: std::collections::HashMap<String, usize>,
+}
+
+fn normalize_id(s: &str) -> String {
+    s.to_lowercase()
+        .chars()
+        .filter(|c| c.is_ascii_alphanumeric())
+        .collect()
+}
+
+static INDEX: std::sync::OnceLock<CatalogIndex> = std::sync::OnceLock::new();
+
+pub fn bundled_catalog() -> &'static ModelsDevCatalog {
+    &index().catalog
+}
+
+fn index() -> &'static CatalogIndex {
+    INDEX.get_or_init(|| {
+        let raw = include_str!("../fixtures/catalog.json");
+        let parsed: serde_json::Value = serde_json::from_str(raw).unwrap_or_default();
+        let mut catalog = parse_catalog(&parsed);
+        let mut by_exact = std::collections::HashMap::new();
+        let mut by_normalized = std::collections::HashMap::new();
+        for (i, m) in catalog.models.iter().enumerate() {
+            by_exact.insert(m.id.clone(), i);
+            by_normalized.entry(normalize_id(&m.id)).or_insert(i);
+        }
+        // stable order for same-normalized models: keep the first occurrence,
+        // matching previous linear-scan semantics
+        catalog.models.shrink_to_fit();
+        CatalogIndex {
+            catalog,
+            by_exact,
+            by_normalized,
+        }
+    })
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -124,6 +153,49 @@ pub fn match_model(remote_id: &str, catalog: &ModelsDevCatalog) -> MatchResult {
     {
         for m in &catalog.models {
             if norm(&m.id).contains(family) {
+                return MatchResult {
+                    confidence: 60,
+                    model: Some(m.clone()),
+                };
+            }
+        }
+    }
+    MatchResult {
+        confidence: 0,
+        model: None,
+    }
+}
+
+/// Match against the BUNDLED catalog using precomputed indexes
+/// (O(1) exact/alias/normalized; single linear pass for candidates).
+pub fn match_bundled(remote_id: &str) -> MatchResult {
+    let stored = index();
+    if let Some(&i) = stored.by_exact.get(remote_id) {
+        return MatchResult {
+            confidence: 100,
+            model: Some(stored.catalog.models[i].clone()),
+        };
+    }
+    let stripped = remote_id.rsplit('/').next().unwrap_or(remote_id);
+    if let Some(&i) = stored.by_exact.get(stripped) {
+        return MatchResult {
+            confidence: 95,
+            model: Some(stored.catalog.models[i].clone()),
+        };
+    }
+    let target = normalize_id(stripped);
+    if let Some(&i) = stored.by_normalized.get(&target) {
+        return MatchResult {
+            confidence: 85,
+            model: Some(stored.catalog.models[i].clone()),
+        };
+    }
+    if let Some(family) = target.rsplit(|c: char| c.is_ascii_digit()).next()
+        && !family.is_empty()
+        && family.len() >= 4
+    {
+        for m in &stored.catalog.models {
+            if normalize_id(&m.id).contains(family) {
                 return MatchResult {
                     confidence: 60,
                     model: Some(m.clone()),

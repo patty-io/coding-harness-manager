@@ -63,9 +63,14 @@ fn link_directory_creates_symlink_or_reports_outcome() {
 }
 
 #[test]
-fn restore_backup_missing_backup_errors() {
+fn restore_backup_missing_backup_deletes_created_file() {
+    // no backup for a file = the file did not exist before apply — rollback
+    // must REMOVE it (sync flow's "Add" case), not error.
     let dir = TempDir::new().unwrap();
-    let f = dir.path().join("config.toml");
-    let res = restore_backup(&dir.path().join("nope.bak"), &f);
-    assert!(res.is_err());
+    let f = dir.path().join("created-by-sync.json");
+    std::fs::write(&f, "{}").unwrap();
+    restore_backup(&dir.path().join("nope.bak"), &f).unwrap();
+    assert!(!f.exists(), "created file must be removed on rollback");
+    // also fine when the target is already gone
+    restore_backup(&dir.path().join("nope.bak"), &f).unwrap();
 }

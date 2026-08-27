@@ -38,7 +38,10 @@ pub struct ProviderModel {
 }
 
 pub fn resolve_credential(ref_: &CredentialRef, store: &dyn SecretStore) -> Option<String> {
-    store.get(&ref_.reference).ok().flatten()
+    match ref_.kind {
+        chm_core::domain::credentials::CredentialKind::Env => std::env::var(&ref_.reference).ok(),
+        _ => store.get(&ref_.reference).ok().flatten(),
+    }
 }
 
 fn discovery_url(endpoint: &ProviderEndpoint) -> String {
@@ -134,4 +137,18 @@ pub async fn discover_models(
         }
     }
     Ok(out)
+}
+
+impl HealthStatus {
+    pub fn as_str(&self) -> &'static str {
+        match self {
+            Self::Healthy => "Healthy",
+            Self::AuthFailed => "AuthFailed",
+            Self::Unreachable => "Unreachable",
+            Self::DiscoveryUnsupported => "DiscoveryUnsupported",
+            Self::RateLimited => "RateLimited",
+            Self::MalformedResponse => "MalformedResponse",
+            Self::Unknown => "Unknown",
+        }
+    }
 }

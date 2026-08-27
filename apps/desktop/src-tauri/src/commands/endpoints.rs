@@ -4,7 +4,6 @@ use chm_core::domain::credentials::CredentialKind;
 use chm_core::domain::provider::{AuthType, Protocol, ProviderEndpoint};
 use chm_database::repos::providers::{create_credential_ref, create_endpoint, list_endpoints};
 use serde::Deserialize;
-use sqlx::{Pool, Sqlite};
 use tauri::State;
 use uuid::Uuid;
 
@@ -35,10 +34,19 @@ pub async fn list_endpoints_cmd(
         .map_err(|e| e.to_string())
 }
 
+#[derive(Debug, Clone, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct CreateEndpointWire {
+    pub input: EndpointInput,
+    /// optional env var name — persisted as an Env credential reference
+    pub env_var_name: Option<String>,
+}
+
 #[tauri::command]
 pub async fn create_endpoint_cmd(
     state: State<'_, AppState>,
     input: EndpointInput,
+    env_var_name: Option<String>,
 ) -> Result<ProviderEndpoint, String> {
     let provider_id = Uuid::parse_str(&input.provider_id).map_err(|e| e.to_string())?;
     let credential_ref = match &input.credential_ref_id {
@@ -50,7 +58,14 @@ pub async fn create_endpoint_cmd(
             .await
             .map_err(|e| e.to_string())?,
         ),
-        None => None,
+        None => match &env_var_name {
+            Some(name) if !name.trim().is_empty() => Some(
+                create_credential_ref(&state.pool, CredentialKind::Env, name.trim())
+                    .await
+                    .map_err(|e| e.to_string())?,
+            ),
+            _ => None,
+        },
     };
     let endpoint = ProviderEndpoint {
         id: Uuid::new_v4(),
@@ -108,6 +123,3 @@ pub fn resolve_endpoint_credential(
         .as_ref()
         .and_then(|c| chm_providers::resolve_credential(c, secrets))
 }
-
-#[allow(dead_code)]
-fn _pool_marker(_: &Pool<Sqlite>) {}

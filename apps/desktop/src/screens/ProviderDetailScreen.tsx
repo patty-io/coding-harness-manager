@@ -38,6 +38,7 @@ export default function ProviderDetailScreen() {
     setSavedNote(null);
     setEnvWarning(null);
     let credentialRefId: string | null = null;
+    let pendingEnvVar: string | undefined = undefined;
     if (credentialSource === "keychain") {
       if (!apiKey) {
         setSavedNote("Enter an API key for keychain storage");
@@ -59,19 +60,22 @@ export default function ProviderDetailScreen() {
         setSavedNote("Enter an env var name for env references");
         return;
       }
-      credentialRefId = null; // env refs are resolved by name at health-check time
+      pendingEnvVar = envVarName.trim();
     }
     create.mutate(
       {
-        providerId: id!,
-        name: name.trim(),
-        baseUrl: baseUrl.trim(),
-        protocol,
-        discoveryPath: "/v1/models",
-        authType: credentialSource === "none" ? "none" : "bearer-token",
-        credentialRefId,
-        headers: {},
-        enabled: true,
+        input: {
+          providerId: id!,
+          name: name.trim(),
+          baseUrl: baseUrl.trim(),
+          protocol,
+          discoveryPath: "/v1/models",
+          authType: credentialSource === "none" ? "none" : "bearer-token",
+          credentialRefId,
+          headers: {},
+          enabled: true,
+        },
+        envVarName: pendingEnvVar,
       },
       {
         onSuccess: () => {

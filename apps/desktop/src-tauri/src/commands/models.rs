@@ -14,7 +14,6 @@ use uuid::Uuid;
 use crate::AppState;
 
 #[derive(Debug, Clone, Serialize)]
-#[serde(rename_all = "camelCase")]
 pub struct ModelRouteView {
     pub id: String,
     pub endpoint_id: String,
@@ -29,6 +28,25 @@ pub struct ModelRouteView {
     pub enabled: bool,
     pub identity_name: Option<String>,
     pub provenance: serde_json::Value,
+}
+
+async fn get_route(pool: &Pool<Sqlite>, id: Uuid) -> Result<ModelRoute, String> {
+    list_routes(pool)
+        .await
+        .map_err(|e| e.to_string())?
+        .into_iter()
+        .find(|r| r.id == id)
+        .ok_or_else(|| format!("route {id} not found"))
+}
+
+/// Applies a provenance envelope's value into the matching route field.
+fn apply_override_to_field(route: &mut ModelRoute, field: &str, value: &serde_json::Value) {
+    match field {
+        "context_window" => route.context_window = value.as_i64(),
+        "max_input" => route.max_input = value.as_i64(),
+        "max_output" => route.max_output = value.as_i64(),
+        _ => {}
+    }
 }
 
 pub async fn list_route_views(pool: &Pool<Sqlite>) -> Result<Vec<ModelRouteView>, String> {
@@ -97,12 +115,8 @@ pub async fn update_route_cmd(
     id: String,
     input: RouteUpdateInput,
 ) -> Result<(), String> {
-    let id = Uuid::parse_str(&id).map_err(|e| e.to_string())?;
-    let mut routes = list_routes(&state.pool).await.map_err(|e| e.to_string())?;
-    let route = routes
-        .iter_mut()
-        .find(|r| r.id == id)
-        .ok_or("route not found")?;
+    let route_id = Uuid::parse_str(&id).map_err(|e| e.to_string())?;
+    let mut route = get_route(&state.pool, route_id).await?;
     if let Some(v) = input.display_name {
         route.display_name = v;
     }
@@ -124,7 +138,7 @@ pub async fn update_route_cmd(
     if let Some(v) = input.overrides {
         route.overrides = v;
     }
-    update_route(&state.pool, route)
+    update_route(&state.pool, &route)
         .await
         .map_err(|e| e.to_string())?;
     Ok(())
@@ -185,7 +199,6 @@ pub async fn create_route_cmd(
 // --- Discovery import (6.2) ---
 
 #[derive(Debug, Clone, Serialize)]
-#[serde(rename_all = "camelCase")]
 pub struct CatalogView {
     pub id: String,
     pub endpoint_id: String,
@@ -283,12 +296,45 @@ pub async fn add_catalog_batch(
     state: State<'_, AppState>,
     catalog_ids: Vec<String>,
 ) -> Result<usize, String> {
+    let pool = &state.pool;
+    let mut tx = pool.begin().await.map_err(|e| e.to_string())?;
+    let existing = list_routes(pool).await.map_err(|e| e.to_string())?;
+    let mut seen: std::collections::HashSet<(Uuid, String)> = existing
+        .iter()
+        .map(|r| (r.endpoint_id, r.remote_model_id.clone()))
+        .collect();
     let mut added = 0;
     for cid in &catalog_ids {
-        if add_catalog_to_my_models(&state.pool, cid).await.is_ok() {
+        let id = match Uuid::parse_str(cid) {
+            Ok(id) => id,
+            Err(_) => continue,
+        };
+        let cat = match chm_database::repos::models::get_catalog_model(pool, id).await {
+            Ok(Some(m)) => m,
+            _ => continue,
+        };
+        if seen.contains(&(cat.endpoint_id, cat.remote_model_id.clone())) {
+            continue;
+        }
+        seen.insert((cat.endpoint_id, cat.remote_model_id.clone()));
+        let route = ModelRoute::new(
+            cat.remote_model_id.clone(),
+            cat.remote_model_id.clone(),
+            cat.raw_metadata.get("context").and_then(|v| v.as_i64()),
+            cat.raw_metadata.clone(),
+            serde_json::json!({
+                "provenance": {"source": "provider_discovery", "catalog_id": cid},
+            }),
+        );
+        let route = ModelRoute {
+            endpoint_id: cat.endpoint_id,
+            ..route
+        };
+        if create_route(&mut *tx, &route).await.is_ok() {
             added += 1;
         }
     }
+    tx.commit().await.map_err(|e| e.to_string())?;
     Ok(added)
 }
 
@@ -321,11 +367,7 @@ pub enum EnrichOutcome {
 
 pub async fn enrich_route(pool: &Pool<Sqlite>, route_id: &str) -> Result<EnrichOutcome, String> {
     let id = Uuid::parse_str(route_id).map_err(|e| e.to_string())?;
-    let routes = list_routes(pool).await.map_err(|e| e.to_string())?;
-    let route = routes
-        .iter()
-        .find(|r| r.id == id)
-        .ok_or("route not found")?;
+    let route = get_route(pool, id).await?;
     // user override on any field wins — enrichment never overwrites it
     if route
         .overrides
@@ -337,7 +379,7 @@ pub async fn enrich_route(pool: &Pool<Sqlite>, route_id: &str) -> Result<EnrichO
         return Ok(EnrichOutcome::Unknown);
     }
     let catalog = bundled_catalog();
-    let hit = match_model(&route.remote_model_id, &catalog);
+    let hit = match_bundled(&route.remote_model_id);
     match hit.confidence {
         0 => Ok(EnrichOutcome::Unknown),
         c if c >= 85 => {
@@ -488,11 +530,4 @@ pub async fn set_user_override_cmd(
         .await
         .map_err(|e| e.to_string())?;
     Ok(())
-}
-
-// --- status mapping helper for catalog rows (Phase 6.5) ---
-
-#[allow(dead_code)]
-fn _status_parse(s: &str) -> CatalogStatus {
-    CatalogStatus::parse_str(s)
 }

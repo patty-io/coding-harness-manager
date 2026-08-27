@@ -37,7 +37,9 @@ pub fn reconcile_mcp(
                         kind: "mcp".into(),
                         identity: d.name.clone(),
                     }));
-                } else if changed == ["command", "transport"] {
+                } else if changed.contains(&"command".to_string())
+                    && changed.contains(&"transport".to_string())
+                {
                     actions.push(PlanAction::Conflict(ConflictAction {
                         kind: "mcp".into(),
                         identity: d.name.clone(),

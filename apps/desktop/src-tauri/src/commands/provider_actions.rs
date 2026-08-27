@@ -20,7 +20,7 @@ pub async fn check_endpoint_health(
     let endpoint = find_endpoint(&state.pool, id).await?;
     let cred = resolve_endpoint_credential(&endpoint, state.secrets.as_ref());
     let status = health_check(&endpoint, cred.as_deref(), &state.http).await;
-    Ok(format!("{status:?}"))
+    Ok(status.as_str().to_string())
 }
 
 #[derive(Serialize)]
@@ -109,29 +109,22 @@ pub async fn provider_summary(
     state: State<'_, AppState>,
     provider_id: String,
 ) -> Result<ProviderSummary, String> {
-    let id = Uuid::parse_str(&provider_id).map_err(|e| e.to_string())?;
-    let endpoints = chm_database::repos::providers::list_endpoints(&state.pool, id)
-        .await
-        .map_err(|e| e.to_string())?;
-    let mut discovered = 0;
-    for e in &endpoints {
-        discovered += list_catalog_models(&state.pool, e.id)
-            .await
-            .map_err(|e| e.to_string())?
-            .len();
-    }
-    let endpoint_ids: std::collections::HashSet<Uuid> = endpoints.iter().map(|e| e.id).collect();
-    let routes = chm_database::repos::models::list_routes(&state.pool)
-        .await
-        .map_err(|e| e.to_string())?;
-    let my_models = routes
-        .iter()
-        .filter(|r| endpoint_ids.contains(&r.endpoint_id))
-        .count();
+    let _ = Uuid::parse_str(&provider_id).map_err(|e| e.to_string())?;
+    let pool = &state.pool;
+    let row = sqlx::query_as::<_, (i64, i64, i64)>(
+        "SELECT
+           (SELECT COUNT(*) FROM provider_endpoints WHERE provider_id = ?1),
+           (SELECT COUNT(*) FROM provider_catalog_models c JOIN provider_endpoints e ON e.id = c.endpoint_id WHERE e.provider_id = ?1),
+           (SELECT COUNT(*) FROM model_routes r JOIN provider_endpoints e ON e.id = r.endpoint_id WHERE e.provider_id = ?1)",
+    )
+    .bind(provider_id.clone())
+    .fetch_one(pool)
+    .await
+    .map_err(|e| e.to_string())?;
     Ok(ProviderSummary {
-        endpoints: endpoints.len(),
-        discovered_models: discovered,
-        my_models,
-        health: "unknown".into(),
+        endpoints: row.0 as usize,
+        discovered_models: row.1 as usize,
+        my_models: row.2 as usize,
+        health: "unknown".into(), // persisted health lands with Phase 13 doctor
     })
 }

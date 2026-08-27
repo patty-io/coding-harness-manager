@@ -69,7 +69,8 @@ export function useEndpoints(providerId: string | undefined) {
 export function useCreateEndpoint() {
   const qc = useQueryClient();
   return useMutation({
-    mutationFn: (input: EndpointInput) => createEndpoint(input),
+    mutationFn: ({ input, envVarName }: { input: EndpointInput; envVarName?: string }) =>
+      createEndpoint(input, envVarName),
     onSuccess: () => qc.invalidateQueries({ queryKey: ["endpoints"] }),
   });
 }

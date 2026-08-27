@@ -1,13 +1,13 @@
 use chm_core::domain::harness::{HarnessInstallation, HarnessType, InstallationStatus};
+use chm_core::domain::history::TransactionStatus;
 use chm_database::connect_test;
-use chm_database::repos::history::{list_snapshots, list_transactions};
 use chm_database::repos::harness::upsert_installation;
+use chm_database::repos::history::{list_snapshots, list_transactions};
 use chm_database::repos::models::create_route;
 use chm_database::repos::providers::{create_endpoint, create_provider};
-use chm_core::domain::history::TransactionStatus;
+use chm_harness_sdk::adapter::plan::Mode;
 use chrono::Utc;
 use coding_harness_manager_lib::commands::sync::execute_sync;
-use chm_harness_sdk::adapter::plan::Mode;
 use uuid::Uuid;
 
 #[tokio::test]
@@ -72,7 +72,13 @@ async fn execute_sync_applies_and_records_snapshots() {
     let snaps = list_snapshots(&pool, txs[0].id).await.unwrap();
     assert_eq!(snaps.len(), 1);
     assert_eq!(snaps[0].before_content.as_deref(), Some("{}"));
-    assert!(snaps[0].after_content.as_deref().unwrap_or("").contains("glm-5"));
+    assert!(
+        snaps[0]
+            .after_content
+            .as_deref()
+            .unwrap_or("")
+            .contains("glm-5")
+    );
 }
 
 #[tokio::test]
@@ -124,14 +130,13 @@ async fn sync_preview_is_idempotent_after_apply() {
         .await
         .unwrap();
     // second run must plan zero changes
-    let (_, _, plan, native_plan) =
-        coding_harness_manager_lib::commands::sync::build_native_plan(
-            &pool,
-            &inst.id.to_string(),
-            &Mode::Append,
-        )
-        .await
-        .unwrap();
+    let (_, _, plan, native_plan) = coding_harness_manager_lib::commands::sync::build_native_plan(
+        &pool,
+        &inst.id.to_string(),
+        &Mode::Append,
+    )
+    .await
+    .unwrap();
     let mutating = plan
         .actions
         .iter()
@@ -144,6 +149,13 @@ async fn sync_preview_is_idempotent_after_apply() {
             )
         })
         .count();
-    assert_eq!(mutating, 0, "second sync must be a no-op: {:?}", plan.actions);
-    assert!(native_plan.changes.is_empty(), "second sync must be a no-op");
+    assert_eq!(
+        mutating, 0,
+        "second sync must be a no-op: {:?}",
+        plan.actions
+    );
+    assert!(
+        native_plan.changes.is_empty(),
+        "second sync must be a no-op"
+    );
 }

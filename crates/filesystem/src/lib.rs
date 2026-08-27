@@ -58,8 +58,18 @@ pub fn backup_file(path: &Path) -> Result<PathBuf, FsError> {
 }
 
 pub fn restore_backup(backup: &Path, target: &Path) -> Result<(), FsError> {
-    let content = std::fs::read_to_string(backup)?;
-    atomic_write(target, &content)
+    match std::fs::read_to_string(backup) {
+        Ok(content) => atomic_write(target, &content),
+        Err(e) if e.kind() == std::io::ErrorKind::NotFound => {
+            // no backup for this file = it did not exist before apply — remove it
+            match std::fs::remove_file(target) {
+                Ok(()) => Ok(()),
+                Err(e2) if e2.kind() == std::io::ErrorKind::NotFound => Ok(()),
+                Err(e2) => Err(FsError::Io(e2)),
+            }
+        }
+        Err(e) => Err(FsError::Io(e)),
+    }
 }
 
 #[derive(Debug, Clone, PartialEq)]

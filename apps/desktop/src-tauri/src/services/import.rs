@@ -93,6 +93,9 @@ pub async fn run_import(
         }
     }
     let mut created_in_batch: std::collections::HashSet<String> = Default::default();
+    // track names/paths seen within THIS batch: duplicates are reported, not fatal
+    let mut batch_mcp: std::collections::HashSet<String> = Default::default();
+    let mut batch_skills: std::collections::HashSet<String> = Default::default();
 
     // The whole import is one transaction: any failure rolls back everything.
     let mut tx = pool.begin().await.map_err(|e| e.to_string())?;
@@ -176,7 +179,7 @@ pub async fn run_import(
                 None => match placeholder_endpoint {
                     Some(id) => id,
                     None => {
-                        let id = imported_endpoint_id(&mut tx, inst).await?;
+                        let id = imported_endpoint_id(&mut *tx, inst).await?;
                         placeholder_endpoint = Some(id);
                         id
                     }
@@ -233,7 +236,9 @@ pub async fn run_import(
 
     if import_mcp {
         for m in &parsed.mcp {
-            if existing_mcp.iter().any(|s| s.name == m.server.name) {
+            if existing_mcp.iter().any(|s| s.name == m.server.name)
+                || !batch_mcp.insert(m.server.name.clone())
+            {
                 report.duplicates.push(format!("mcp:{}", m.server.name));
                 continue;
             }
@@ -264,7 +269,9 @@ pub async fn run_import(
                 report.skills_symlinked += 1;
                 continue;
             }
-            if existing_skills.iter().any(|sk| sk.canonical_path == s.path) {
+            if existing_skills.iter().any(|sk| sk.canonical_path == s.path)
+                || !batch_skills.insert(s.path.clone())
+            {
                 report.duplicates.push(format!("skill:{}", s.name));
                 continue;
             }
@@ -297,9 +304,18 @@ async fn imported_endpoint_id(
     tx: &mut sqlx::SqliteConnection,
     inst: &HarnessInstallation,
 ) -> Result<Uuid, String> {
+    // NOTE: reached at most once per import (caller caches the placeholder).
+    // Safe against UNIQUE because this path only runs when no "imported"
+    // provider existed in the hoisted pre-seed.
     let provider = create_provider(&mut *tx, "imported", "Imported (needs setup)")
         .await
         .map_err(|e| e.to_string())?;
+    let endpoints = list_endpoints(&mut *tx, provider.id)
+        .await
+        .map_err(|e| e.to_string())?;
+    if let Some(e) = endpoints.first() {
+        return Ok(e.id);
+    }
     let endpoint = ProviderEndpoint {
         id: Uuid::new_v4(),
         provider_id: provider.id,

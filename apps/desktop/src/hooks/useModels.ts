@@ -33,8 +33,12 @@ export function useDeleteRoute() {
   });
 }
 
-export function useCatalogAll() {
-  return useQuery({ queryKey: ["catalog-all"], queryFn: listCatalogAll });
+export function useCatalogAll(enabled: boolean) {
+  return useQuery({
+    queryKey: ["catalog-all"],
+    queryFn: listCatalogAll,
+    enabled,
+  });
 }
 
 export function useImportBatch() {
@@ -43,7 +47,7 @@ export function useImportBatch() {
     mutationFn: addCatalogBatch,
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ["routes"] });
-      qc.invalidateQueries({ queryKey: ["catalog-all"] });
+      qc.invalidateQueries({ queryKey: ["dashboard"] });
     },
   });
 }

@@ -8,6 +8,91 @@ use uuid::Uuid;
 
 use crate::DbError;
 
+pub async fn get_catalog_model<'e>(
+    pool: impl sqlx::Executor<'e, Database = Sqlite>,
+    id: Uuid,
+) -> Result<Option<ProviderCatalogModel>, DbError> {
+    let row = sqlx::query_as::<
+        _,
+        (
+            String,
+            String,
+            String,
+            String,
+            Option<String>,
+            Option<i64>,
+            String,
+            String,
+            Option<String>,
+            String,
+        ),
+    >(
+        "SELECT id, endpoint_id, remote_model_id, raw_metadata_json, canonical_model_id,
+                match_confidence, first_seen_at, last_seen_at, missing_since, status
+         FROM provider_catalog_models WHERE id = ?",
+    )
+    .bind(id.to_string())
+    .fetch_optional(pool)
+    .await?;
+    row.map(
+        |(id, eid, rid, raw, canon, conf, first, last, missing, status)| {
+            Ok(ProviderCatalogModel {
+                id: Uuid::parse_str(&id).map_err(|_| DbError::InvalidData(id))?,
+                endpoint_id: Uuid::parse_str(&eid).map_err(|_| DbError::InvalidData(eid))?,
+                remote_model_id: rid,
+                raw_metadata: serde_json::from_str(&raw).unwrap_or_default(),
+                canonical_model_id: canon
+                    .map(|c| Uuid::parse_str(&c).map_err(|_| DbError::InvalidData(c)))
+                    .transpose()?,
+                match_confidence: conf.map(|c| c.min(u8::MAX as i64) as u8),
+                first_seen_at: parse_ts(&first)?,
+                last_seen_at: parse_ts(&last)?,
+                missing_since: missing.and_then(|t| parse_ts(&t).ok()),
+                status: CatalogStatus::parse_str(&status),
+            })
+        },
+    )
+    .transpose()
+}
+
+/// Find-or-create support: identity lookup by models.dev id.
+pub async fn get_identity_by_models_dev_id(
+    pool: &Pool<Sqlite>,
+    models_dev_id: &str,
+) -> Result<Option<ModelIdentity>, DbError> {
+    let row = sqlx::query_as::<
+        _,
+        (
+            String,
+            String,
+            String,
+            Option<String>,
+            Option<String>,
+            String,
+            String,
+        ),
+    >(
+        "SELECT id, canonical_id, display_name, family, models_dev_id, metadata_json, created_at
+         FROM model_identities WHERE models_dev_id = ?",
+    )
+    .bind(models_dev_id)
+    .fetch_optional(pool)
+    .await?;
+    row.map(|(id, canonical, name, family, mdid, metadata, created)| {
+        Ok(ModelIdentity {
+            id: Uuid::parse_str(&id).map_err(|_| DbError::InvalidData(id))?,
+            canonical_id: canonical,
+            display_name: name,
+            family,
+            models_dev_id: mdid,
+            metadata: serde_json::from_str(&metadata).unwrap_or_default(),
+            created_at: parse_ts(&created)?,
+            updated_at: chrono::Utc::now(),
+        })
+    })
+    .transpose()
+}
+
 pub async fn create_identity<'e>(
     pool: impl sqlx::Executor<'e, Database = Sqlite> + 'e,
     i: &ModelIdentity,

@@ -71,10 +71,10 @@ impl AuthType {
 
     pub fn parse_str(s: &str) -> Self {
         match s {
+            "none" => Self::None,
             "api-key-header" => Self::ApiKeyHeader,
             "bearer-token" => Self::BearerToken,
             "custom-header" => Self::CustomHeader,
-            "unknown" => Self::Unknown,
             _ => Self::Unknown,
         }
     }

@@ -46,3 +46,22 @@ pub fn validate_config(file_path: &str) -> ValidationReport {
         },
     }
 }
+
+/// Validates every changed file in a native plan (the files apply will touch).
+pub fn validate_changed_files(
+    plan: &chm_harness_sdk::adapter::types::NativePlan,
+) -> ValidationReport {
+    let mut errors = Vec::new();
+    for change in &plan.changes {
+        let path = &change.file_path;
+        if let Some(after) = &change.after
+            && after.parse::<DocumentMut>().is_err()
+        {
+            errors.push(format!("{path}: serialized TOML invalid"));
+        }
+    }
+    ValidationReport {
+        ok: errors.is_empty(),
+        errors,
+    }
+}

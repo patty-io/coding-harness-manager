@@ -25,7 +25,10 @@ pub struct McpInput {
 }
 
 #[tauri::command]
-pub async fn create_mcp_cmd(state: State<'_, AppState>, input: McpInput) -> Result<McpServer, String> {
+pub async fn create_mcp_cmd(
+    state: State<'_, AppState>,
+    input: McpInput,
+) -> Result<McpServer, String> {
     if input.name.trim().is_empty() {
         return Err("name is required".into());
     }
@@ -42,12 +45,16 @@ pub async fn create_mcp_cmd(state: State<'_, AppState>, input: McpInput) -> Resu
         provenance: serde_json::json!({"source": "manual"}),
         enabled: true,
     };
-    create_mcp_server(&state.pool, &server).await.map_err(|e| e.to_string())
+    create_mcp_server(&state.pool, &server)
+        .await
+        .map_err(|e| e.to_string())
 }
 
 #[tauri::command]
 pub async fn list_mcp_cmd(state: State<'_, AppState>) -> Result<Vec<McpServer>, String> {
-    list_mcp_servers(&state.pool).await.map_err(|e| e.to_string())
+    list_mcp_servers(&state.pool)
+        .await
+        .map_err(|e| e.to_string())
 }
 
 #[tauri::command]
@@ -75,7 +82,10 @@ pub struct McpDetail {
 }
 
 #[tauri::command]
-pub async fn mcp_detail_cmd(state: State<'_, AppState>, mcp_id: String) -> Result<McpDetail, String> {
+pub async fn mcp_detail_cmd(
+    state: State<'_, AppState>,
+    mcp_id: String,
+) -> Result<McpDetail, String> {
     let id = Uuid::parse_str(&mcp_id).map_err(|e| e.to_string())?;
     let server = list_mcp_servers(&state.pool)
         .await
@@ -83,10 +93,15 @@ pub async fn mcp_detail_cmd(state: State<'_, AppState>, mcp_id: String) -> Resul
         .into_iter()
         .find(|s| s.id == id)
         .ok_or("mcp server not found")?;
-    let installs = list_installations(&state.pool).await.map_err(|e| e.to_string())?;
+    let installs = list_installations(&state.pool)
+        .await
+        .map_err(|e| e.to_string())?;
     let mut bindings = Vec::new();
     for inst in &installs {
-        for b in list_mcp_bindings(&state.pool, inst.id).await.map_err(|e| e.to_string())? {
+        for b in list_mcp_bindings(&state.pool, inst.id)
+            .await
+            .map_err(|e| e.to_string())?
+        {
             if b.mcp_server_id == id {
                 bindings.push(BindingView {
                     installation_id: inst.id.to_string(),
@@ -190,16 +205,13 @@ pub async fn run_mcp_diagnostics_core(
     };
 
     // 2. env available
-    let env_ok = server
-        .env
-        .iter()
-        .all(|(k, v)| match v.as_str() {
-            Some(val) if val.starts_with("$LP_") => {
-                let name = val.trim_start_matches("$LP_");
-                std::env::var_os(name).is_some()
-            }
-            _ => k != "headers" && k != "_direct_tools",
-        });
+    let env_ok = server.env.iter().all(|(k, v)| match v.as_str() {
+        Some(val) if val.starts_with("$LP_") => {
+            let name = val.trim_start_matches("$LP_");
+            std::env::var_os(name).is_some()
+        }
+        _ => k != "headers" && k != "_direct_tools",
+    });
     checks.push(CheckResult {
         check: "env available".into(),
         passed: env_ok,
@@ -210,47 +222,38 @@ pub async fn run_mcp_diagnostics_core(
         },
     });
 
-    // 3. executable launches (stdio only) — bounded probe
-    let launches_ok = if command_exists && matches!(server.transport, McpTransport::Stdio) {
-        let cmd = server.command.as_deref().unwrap_or("");
-        let launched = tokio::time::timeout(
-            std::time::Duration::from_secs(5),
-            async {
-                let mut child = tokio::process::Command::new(cmd)
-                    .args(&server.args[..1])
-                    .stdout(std::process::Stdio::null())
-                    .stderr(std::process::Stdio::null())
-                    .spawn()
-                ;
-                match child {
-                    Ok(mut c) => {
-                        let _ = c.kill().await;
-                        true
-                    }
-                    Err(_) => false,
+    // 3. executable launches (stdio only) — bounded spawn probe
+    if command_exists && matches!(server.transport, McpTransport::Stdio) {
+        let cmd = server.command.clone().unwrap_or_default();
+        let mut spawn_cmd = tokio::process::Command::new(&cmd);
+        if !server.args.is_empty() {
+            spawn_cmd.arg(&server.args[0]);
+        }
+        spawn_cmd
+            .stdout(std::process::Stdio::null())
+            .stderr(std::process::Stdio::null());
+        let spawned = tokio::time::timeout(std::time::Duration::from_secs(5), async {
+            match spawn_cmd.spawn() {
+                Ok(mut child) => {
+                    let _ = child.start_kill();
+                    let _ = child.wait().await; // reap — no zombie
+                    true
                 }
-            },
-        )
+                Err(_) => false,
+            }
+        })
         .await
         .unwrap_or(false);
         checks.push(CheckResult {
             check: "executable launches".into(),
-            passed: launched,
-            detail: if launched {
-                "spawns successfully".into()
+            passed: spawned,
+            detail: if spawned {
+                format!("{cmd} spawns successfully")
             } else {
                 format!("failed to spawn {cmd} (or timed out)")
             },
         });
-        launched
-    } else {
-        checks.push(CheckResult {
-            check: "executable launches".into(),
-            passed: true,
-            detail: "not applicable".into(),
-        });
-        true
-    };
+    }
 
     // 4. http reachable (http/sse)
     if let Some(url) = &server.url {
@@ -276,7 +279,6 @@ pub async fn run_mcp_diagnostics_core(
         });
     }
 
-    let _ = launches_ok;
     Ok(checks)
 }
 

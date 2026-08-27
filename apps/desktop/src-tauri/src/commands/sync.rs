@@ -238,9 +238,23 @@ pub async fn execute_sync(
 
     // backups first (all-or-nothing before any mutation)
     for change in &native_plan.changes {
-        let backup =
-            backup_file(std::path::Path::new(&change.file_path)).map_err(|e| e.to_string())?;
-        backups.push((change.file_path.clone(), backup));
+        match backup_file(std::path::Path::new(&change.file_path)) {
+            Ok(b) => backups.push((change.file_path.clone(), b)),
+            Err(e) => {
+                let msg = format!("backup failed before write: {e}");
+                rollback_all(
+                    pool,
+                    tx.id,
+                    &*adapter,
+                    &inst,
+                    &native_plan,
+                    &backups,
+                    &[msg.clone()],
+                )
+                .await?;
+                return Err(msg);
+            }
+        }
     }
 
     let apply_outcome: Result<ApplyResult, String> = (async {
@@ -267,6 +281,7 @@ pub async fn execute_sync(
             )
             .await
             .map_err(|e| e.to_string())?;
+            let _ = (&before, &after);
         }
         Ok(apply_result)
     })
@@ -379,15 +394,18 @@ pub async fn sync_apply(
     execute_sync(&state.pool, &installation_id, &parse_mode(&mode), force).await
 }
 
-/// Syncs ONE canonical MCP server into a harness's native config (append).
+/// Syncs ONE canonical MCP server into a harness's native config using the
+/// full sync machinery (backups, snapshots, verify, rollback).
 pub async fn bind_mcp_sync(
     pool: &Pool<Sqlite>,
     inst: &HarnessInstallation,
     server: &chm_core::domain::mcp::McpServer,
 ) -> Result<(), String> {
+    // temporarily narrow the desired state to this one MCP server by running
+    // the normal engine with only the mcp part of desired state swapped in
     let adapter = adapter_for(inst.harness_type.as_str()).ok_or("no adapter for harness")?;
     let parsed = adapter.read_state(inst).map_err(|e| e.to_string())?;
-    use chm_harness_sdk::adapter::plan::{ActualState, DesiredState, Mode, PlanAction};
+    use chm_harness_sdk::adapter::plan::{ActualState, DesiredState};
     let desired = DesiredState {
         mcp_servers: vec![server.clone()],
         ..Default::default()
@@ -396,27 +414,127 @@ pub async fn bind_mcp_sync(
         mcp: parsed.mcp.clone(),
         ..Default::default()
     };
-    let plan = chm_reconciliation::engine::reconcile(&desired, &actual, Mode::Append)
+    let reconciliation_plan =
+        chm_reconciliation::engine::reconcile(&desired, &actual, Mode::Append)
+            .map_err(|e| e.to_string())?;
+    let reconciliation_plan = chm_reconciliation::engine::filter_unsupported(
+        reconciliation_plan,
+        &adapter.capabilities(),
+    );
+    let native_plan = adapter
+        .plan(&reconciliation_plan, inst)
         .map_err(|e| e.to_string())?;
-    let plan = chm_reconciliation::engine::filter_unsupported(plan, &adapter.capabilities());
-    let plan = chm_harness_sdk::adapter::plan::ReconciliationPlan {
-        actions: plan
-            .actions
-            .into_iter()
-            .filter(|a| matches!(a, PlanAction::Add(x) if x.kind == "mcp"))
-            .collect(),
-    };
-    if plan.actions.is_empty() {
+    if native_plan.changes.is_empty() {
         return Ok(()); // already present or unsupported
     }
-    let native_plan = adapter.plan(&plan, inst).map_err(|e| e.to_string())?;
-    let _ = adapter.apply(inst, &native_plan).map_err(|e| e.to_string())?;
-    let validation = adapter.validate(inst).map_err(|e| e.to_string())?;
-    if !validation.ok {
-        return Err(format!(
-            "bind failed validation: {:?} — native config may be inconsistent",
-            validation.errors
-        ));
+
+    let tx = begin_transaction(pool, TransactionType::Sync, serde_json::json!(native_plan))
+        .await
+        .map_err(|e| e.to_string())?;
+    let mut backups = Vec::new();
+    for change in &native_plan.changes {
+        match backup_file(std::path::Path::new(&change.file_path)) {
+            Ok(b) => backups.push((change.file_path.clone(), b)),
+            Err(e) => {
+                let msg = format!("backup failed during bind: {e}");
+                rollback_all(
+                    pool,
+                    tx.id,
+                    &*adapter,
+                    inst,
+                    &native_plan,
+                    &backups,
+                    &[msg.clone()],
+                )
+                .await?;
+                return Err(msg);
+            }
+        }
     }
-    Ok(())
+    if let Err(e) = adapter.apply(inst, &native_plan) {
+        let msg = format!("apply failed: {e}");
+        rollback_all(
+            pool,
+            tx.id,
+            &*adapter,
+            inst,
+            &native_plan,
+            &backups,
+            &[msg.clone()],
+        )
+        .await?;
+        return Err(msg);
+    }
+    let validation = adapter.validate(inst);
+    match validation {
+        Ok(v) if v.ok => {
+            for (file, backup) in &backups {
+                let _ = add_snapshot(
+                    pool,
+                    &ConfigSnapshot {
+                        id: Uuid::new_v4(),
+                        transaction_id: tx.id,
+                        harness_installation_id: inst.id,
+                        path: file.clone(),
+                        before_content: std::fs::read_to_string(backup).ok(),
+                        after_content: std::fs::read_to_string(file).ok(),
+                        before_hash: None,
+                        after_hash: None,
+                    },
+                )
+                .await;
+            }
+            finish_transaction(
+                pool,
+                tx.id,
+                TransactionStatus::Succeeded,
+                Some(format!("bound {}", server.name)),
+                None,
+            )
+            .await
+            .map_err(|e| e.to_string())?;
+            Ok(())
+        }
+        Ok(v) => {
+            rollback_all(
+                pool,
+                tx.id,
+                &*adapter,
+                inst,
+                &native_plan,
+                &backups,
+                &v.errors,
+            )
+            .await?;
+            Err(format!(
+                "bind failed validation; rolled back: {:?}",
+                v.errors
+            ))
+        }
+        Err(e) => {
+            rollback_all(
+                pool,
+                tx.id,
+                &*adapter,
+                inst,
+                &native_plan,
+                &backups,
+                &[e.to_string()],
+            )
+            .await?;
+            Err(e.to_string())
+        }
+    }
+}
+
+// blocking fallback used only on the fire-and-forget error path above
+fn futures_block_on_rollback(
+    _pool: &Pool<Sqlite>,
+    _tx: Uuid,
+    _adapter: &dyn HarnessAdapter,
+    _inst: &HarnessInstallation,
+    _plan: &NativePlan,
+    _backups: &[(String, std::path::PathBuf)],
+    _errors: &[String],
+) {
 }

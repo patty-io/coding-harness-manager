@@ -41,6 +41,7 @@ impl HarnessType {
 }
 
 #[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "kebab-case")]
 pub enum InstallationStatus {
     Detected,
     Installed,

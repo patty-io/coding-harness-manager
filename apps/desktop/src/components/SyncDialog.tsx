@@ -45,6 +45,7 @@ export function useSyncPreview(installationId: string, mode: string | null) {
     queryKey: ["sync-preview", installationId, mode],
     queryFn: () => syncPreview(installationId, mode!),
     enabled: !!mode && mode !== "none",
+    staleTime: 30_000,
   });
 }
 
@@ -214,7 +215,11 @@ export function SyncDialog({
             onClick={() =>
               apply.mutate({ installationId, mode, force: force || hasBlockers })
             }
-            disabled={apply.isPending || hasBlockers && !force}
+            disabled={
+              apply.isPending ||
+              preview.isFetching ||
+              (hasBlockers && !force)
+            }
             className="rounded bg-blue-600 px-3 py-1 text-sm text-white disabled:opacity-50"
           >
             {apply.isPending ? "Applying…" : "Apply"}

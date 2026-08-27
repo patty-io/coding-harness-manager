@@ -37,7 +37,14 @@ pub fn parse_config(raw: &str, config_dir: &std::path::Path) -> Result<ParsedSta
                         .and_then(|v| v.as_str())
                         .unwrap_or(model_id)
                         .to_string();
-                    let capabilities = meta.clone();
+                    // mirror the writer's subtraction: name/limit live in their own
+                    // route fields, everything else is capability metadata
+                    let mut caps = meta.clone();
+                    if let Some(caps_obj) = caps.as_object_mut() {
+                        caps_obj.remove("name");
+                        caps_obj.remove("limit");
+                    }
+                    let capabilities = caps;
                     let mut route = ModelRoute::new(
                         model_id.clone(),
                         display_name,
