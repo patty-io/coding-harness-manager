@@ -108,7 +108,7 @@ pub fn match_model(remote_id: &str, catalog: &ModelsDevCatalog) -> MatchResult {
         }
     }
     // known alias: openrouter-style "provider/model"
-    let stripped = remote_id.split('/').last().unwrap_or(remote_id);
+    let stripped = remote_id.split('/').next_back().unwrap_or(remote_id);
     for m in &catalog.models {
         if m.id == stripped {
             return MatchResult {
@@ -134,15 +134,16 @@ pub fn match_model(remote_id: &str, catalog: &ModelsDevCatalog) -> MatchResult {
         }
     }
     // candidate: exact family name appears in a known model id
-    if let Some(family) = target.rsplit(|c: char| c.is_ascii_digit()).next() {
-        if !family.is_empty() && family.len() >= 4 {
-            for m in &catalog.models {
-                if norm(&m.id).contains(&family) {
-                    return MatchResult {
-                        confidence: 60,
-                        model: Some(m.clone()),
-                    };
-                }
+    if let Some(family) = target.rsplit(|c: char| c.is_ascii_digit()).next()
+        && !family.is_empty()
+        && family.len() >= 4
+    {
+        for m in &catalog.models {
+            if norm(&m.id).contains(family) {
+                return MatchResult {
+                    confidence: 60,
+                    model: Some(m.clone()),
+                };
             }
         }
     }
