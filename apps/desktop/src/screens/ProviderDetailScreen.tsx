@@ -193,11 +193,11 @@ export default function ProviderDetailScreen() {
           <div className="flex items-center justify-between">
             <div>
               Probed{" "}
-              <strong>{discoverResult.endpoints_succeeded}</strong> of{" "}
-              {discoverResult.endpoints_succeeded +
-                discoverResult.endpoints_skipped.length}{" "}
+              <strong>{discoverResult.endpointsSucceeded}</strong> of{" "}
+              {discoverResult.endpointsSucceeded +
+                discoverResult.endpointsSkipped.length}{" "}
               endpoints ·{" "}
-              <strong>{discoverResult.distinct_models}</strong> distinct
+              <strong>{discoverResult.distinctModels}</strong> distinct
               models (
               <strong>{discoverResult.added}</strong> new,{" "}
               <strong>{discoverResult.updated}</strong> updated)
@@ -213,16 +213,16 @@ export default function ProviderDetailScreen() {
             </button>
           </div>
 
-          {discoverResult.endpoints_skipped.length > 0 && (
+          {discoverResult.endpointsSkipped.length > 0 && (
             <details className="mt-2">
               <summary className="cursor-pointer text-xs text-slate-400">
-                {discoverResult.endpoints_skipped.length} endpoint(s)
+                {discoverResult.endpointsSkipped.length} endpoint(s)
                 skipped
               </summary>
               <ul className="mt-1 space-y-1 pl-4 text-xs">
-                {discoverResult.endpoints_skipped.map((s) => (
-                  <li key={s.endpoint_id} className="text-slate-500">
-                    <span className="font-mono">{s.endpoint_name}</span>:{" "}
+                {discoverResult.endpointsSkipped.map((s) => (
+                  <li key={s.endpointId} className="text-slate-500">
+                    <span className="font-mono">{s.endpointName}</span>:{" "}
                     {s.reason}
                   </li>
                 ))}
@@ -230,31 +230,31 @@ export default function ProviderDetailScreen() {
             </details>
           )}
 
-          {discoverResult.new_models.length > 0 && (
+          {discoverResult.newModels.length > 0 && (
             <div className="mt-3">
               <div className="flex items-center justify-between">
                 <h3 className="text-sm font-medium text-slate-200">
-                  New models ({discoverResult.new_models.length})
+                  New models ({discoverResult.newModels.length})
                 </h3>
                 <button
                   onClick={() => {
-                    const ids = discoverResult.new_models
-                      .filter((m) => !addedCatalogIds.has(m.catalog_id))
-                      .map((m) => m.catalog_id);
+                    const ids = discoverResult.newModels
+                      .filter((m) => !addedCatalogIds.has(m.catalogId))
+                      .map((m) => m.catalogId);
                     addToMyModels.mutate(ids, {
                       onSuccess: (report) => {
                         setAddedCatalogIds(
                           (prev) =>
                             new Set([
                               ...prev,
-                              ...discoverResult.new_models
+                              ...discoverResult.newModels
                                 .filter(
                                   (m) =>
                                     !report.failures.some((f) =>
-                                      f.startsWith(m.remote_model_id),
+                                      f.startsWith(m.remoteModelId),
                                     ),
                                 )
-                                .map((m) => m.catalog_id),
+                                .map((m) => m.catalogId),
                             ]),
                         );
                       },
@@ -262,8 +262,8 @@ export default function ProviderDetailScreen() {
                   }}
                   disabled={
                     addToMyModels.isPending ||
-                    discoverResult.new_models.every((m) =>
-                      addedCatalogIds.has(m.catalog_id),
+                    discoverResult.newModels.every((m) =>
+                      addedCatalogIds.has(m.catalogId),
                     )
                   }
                   className="rounded bg-blue-600 px-3 py-1 text-xs text-white hover:bg-blue-500 disabled:opacity-50"
@@ -274,24 +274,24 @@ export default function ProviderDetailScreen() {
                 </button>
               </div>
               <ul className="mt-2 space-y-1 text-xs">
-                {discoverResult.new_models.map((m) => {
-                  const added = addedCatalogIds.has(m.catalog_id);
+                {discoverResult.newModels.map((m) => {
+                  const added = addedCatalogIds.has(m.catalogId);
                   return (
                     <li
-                      key={m.catalog_id}
+                      key={m.catalogId}
                       className="flex items-center gap-3 rounded border border-slate-700 bg-slate-900 px-2 py-1.5"
                     >
                       <div className="flex-1">
                         <div className="font-mono text-slate-100">
-                          {m.remote_model_id}
+                          {m.remoteModelId}
                         </div>
                         <div className="text-slate-500">
-                          {m.display_name && m.display_name !== m.remote_model_id
-                            ? `${m.display_name} · `
+                          {m.displayName && m.displayName !== m.remoteModelId
+                            ? `${m.displayName} · `
                             : ""}
-                          via {m.endpoint_name}
-                          {m.context_length
-                            ? ` · ${m.context_length.toLocaleString()} tokens`
+                          via {m.endpointName}
+                          {m.contextLength
+                            ? ` · ${m.contextLength.toLocaleString()} tokens`
                             : ""}
                         </div>
                       </div>
@@ -302,11 +302,11 @@ export default function ProviderDetailScreen() {
                       ) : (
                         <button
                           onClick={() => {
-                            addToMyModels.mutate([m.catalog_id], {
+                            addToMyModels.mutate([m.catalogId], {
                               onSuccess: () =>
                                 setAddedCatalogIds(
                                   (prev) =>
-                                    new Set([...prev, m.catalog_id]),
+                                    new Set([...prev, m.catalogId]),
                                 ),
                             });
                           }}
@@ -328,16 +328,16 @@ export default function ProviderDetailScreen() {
             </div>
           )}
 
-          {discoverResult.new_models.length === 0 &&
-            discoverResult.updated_models.length > 0 && (
+          {discoverResult.newModels.length === 0 &&
+            discoverResult.updatedModels.length > 0 && (
               <p className="mt-3 text-xs text-slate-500">
-                No new models found — {discoverResult.updated_models.length}{" "}
+                No new models found — {discoverResult.updatedModels.length}{" "}
                 previously seen models are still available.
               </p>
             )}
 
-          {discoverResult.new_models.length === 0 &&
-            discoverResult.updated_models.length === 0 && (
+          {discoverResult.newModels.length === 0 &&
+            discoverResult.updatedModels.length === 0 && (
               <p className="mt-3 text-xs text-slate-500">
                 No models returned by this provider.
               </p>
@@ -439,28 +439,27 @@ export default function ProviderDetailScreen() {
       {providerCatalog && providerCatalog.length > 0 && (
         <ul className="mt-3 space-y-1.5">
           {providerCatalog.map((m) => {
-            const justAdded = addedCatalogIds.has(m.catalog_id);
-            const inMy = m.in_my_models || justAdded;
+            const justAdded = addedCatalogIds.has(m.catalogId);
+            const inMy = m.inMyModels || justAdded;
             return (
               <li
-                key={m.remote_model_id}
+                key={m.remoteModelId}
                 className="flex items-center gap-3 rounded border border-slate-700 bg-slate-800 px-3 py-2"
               >
                 <div className="flex-1">
                   <div className="text-sm text-slate-100">
-                    {m.display_name ?? m.remote_model_id}
-                    {m.display_name && (
+                    {m.displayName ?? m.remoteModelId}
+                    {m.displayName && m.displayName !== m.remoteModelId && (
                       <span className="ml-2 font-mono text-xs text-slate-500">
-                        {m.remote_model_id}
+                        {m.remoteModelId}
                       </span>
                     )}
                   </div>
                   <div className="text-xs text-slate-500">
-                    {m.context_length
-                      ? `${m.context_length.toLocaleString()} tokens · `
+                    {m.contextLength
+                      ? `${m.contextLength.toLocaleString()} tokens · `
                       : ""}
-                    via {m.endpoint_name}
-                    {m.status === "new" ? " · newly discovered" : ""}
+                    via {m.endpointName}
                   </div>
                 </div>
                 {inMy ? (
@@ -470,10 +469,10 @@ export default function ProviderDetailScreen() {
                 ) : (
                   <button
                     onClick={() =>
-                      addToMyModels.mutate([m.catalog_id], {
+                      addToMyModels.mutate([m.catalogId], {
                         onSuccess: () =>
                           setAddedCatalogIds(
-                            (prev) => new Set([...prev, m.catalog_id]),
+                            (prev) => new Set([...prev, m.catalogId]),
                           ),
                       })
                     }

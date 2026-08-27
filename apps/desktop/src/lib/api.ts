@@ -142,60 +142,60 @@ export interface DiscoverReport {
 }
 
 export interface EndpointDiscoverOutcome {
-  endpoint_id: string;
-  endpoint_name: string;
+  endpointId: string;
+  endpointName: string;
   report: DiscoverReport | null;
   error: string | null;
 }
 
 export interface DiscoveredModel {
-  catalog_id: string;
-  endpoint_id: string;
-  endpoint_name: string;
-  provider_name: string;
-  remote_model_id: string;
-  display_name: string | null;
-  context_length: number | null;
+  catalogId: string;
+  endpointId: string;
+  endpointName: string;
+  providerName: string;
+  remoteModelId: string;
+  displayName: string | null;
+  contextLength: number | null;
   status: string;
 }
 
 export interface SkippedEndpoint {
-  endpoint_id: string;
-  endpoint_name: string;
+  endpointId: string;
+  endpointName: string;
   reason: string;
 }
 
 export interface ProviderDiscoverReport {
-  endpoints_attempted: number;
-  endpoints_succeeded: number;
-  endpoints_skipped: SkippedEndpoint[];
+  endpointsAttempted: number;
+  endpointsSucceeded: number;
+  endpointsSkipped: SkippedEndpoint[];
   total: number;
   added: number;
   updated: number;
-  distinct_models: number;
-  new_models: DiscoveredModel[];
-  updated_models: DiscoveredModel[];
+  distinctModels: number;
+  newModels: DiscoveredModel[];
+  updatedModels: DiscoveredModel[];
   outcomes: EndpointDiscoverOutcome[];
 }
 
 export interface AddToMyModelsReport {
   requested: number;
   created: number;
-  already_routed: number;
+  alreadyRouted: number;
   failures: string[];
 }
 
 export interface ProviderCatalogEntry {
-  catalog_id: string;
-  endpoint_id: string;
-  endpoint_name: string;
-  remote_model_id: string;
-  display_name: string | null;
-  context_length: number | null;
+  catalogId: string;
+  endpointId: string;
+  endpointName: string;
+  remoteModelId: string;
+  displayName: string | null;
+  contextLength: number | null;
   status: string;
-  last_seen_at: string;
-  in_my_models: boolean;
-  route_id: string | null;
+  lastSeenAt: string;
+  inMyModels: boolean;
+  routeId: string | null;
 }
 
 export interface EndpointInput {
