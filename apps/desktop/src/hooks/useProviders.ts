@@ -14,6 +14,7 @@ import {
   envVarSet,
   listCatalogModels,
   listEndpoints,
+  listProviderCatalog,
   listProviders,
   providerSummary,
   saveApiKey,
@@ -93,6 +94,14 @@ export function useCatalog(endpointId: string | undefined) {
   });
 }
 
+export function useProviderCatalog(providerId: string | undefined) {
+  return useQuery({
+    queryKey: ["provider-catalog", providerId],
+    queryFn: () => listProviderCatalog(providerId!),
+    enabled: !!providerId,
+  });
+}
+
 export function useCheckHealth(endpointId: string) {
   return useMutation({
     mutationFn: () => checkEndpointHealth(endpointId),
@@ -115,6 +124,7 @@ export function useDiscoverProvider(providerId: string | undefined) {
       qc.invalidateQueries({ queryKey: ["provider-summary", providerId] });
       qc.invalidateQueries({ queryKey: ["endpoints", providerId] });
       qc.invalidateQueries({ queryKey: ["catalog"] });
+      qc.invalidateQueries({ queryKey: ["provider-catalog"] });
       qc.invalidateQueries({ queryKey: ["routes"] });
     },
   });
@@ -127,6 +137,7 @@ export function useAddDiscoveredToMyModels() {
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ["routes"] });
       qc.invalidateQueries({ queryKey: ["provider-summary"] });
+      qc.invalidateQueries({ queryKey: ["provider-catalog"] });
     },
   });
 }

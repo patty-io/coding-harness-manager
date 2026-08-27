@@ -328,6 +328,100 @@ pub async fn list_catalog_models_cmd(
         .map_err(|e| e.to_string())
 }
 
+/// One deduplicated model entry on a provider. Models belong to the provider;
+/// endpoints are just access paths, so catalog rows from duplicate-protocol
+/// endpoints are collapsed and the representative row comes from the highest
+/// priority endpoint family (openai-chat first).
+#[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ProviderCatalogEntry {
+    pub catalog_id: String,
+    pub endpoint_id: String,
+    pub endpoint_name: String,
+    pub remote_model_id: String,
+    pub display_name: Option<String>,
+    pub context_length: Option<i64>,
+    pub status: String,
+    pub last_seen_at: String,
+    pub in_my_models: bool,
+    pub route_id: Option<String>,
+}
+
+#[tauri::command]
+pub async fn list_provider_catalog_cmd(
+    state: State<'_, AppState>,
+    provider_id: String,
+) -> Result<Vec<ProviderCatalogEntry>, String> {
+    let _ = Uuid::parse_str(&provider_id).map_err(|e| e.to_string())?;
+    let pool = &state.pool;
+    let rows = sqlx::query_as::<_, (String, String, String, String, String, String, String, String, Option<String>)>(
+        "SELECT c.id, c.endpoint_id, e.name, e.protocol, c.remote_model_id,
+                c.raw_metadata_json, c.status, c.last_seen_at, r.id
+         FROM provider_catalog_models c
+         JOIN provider_endpoints e ON e.id = c.endpoint_id
+         LEFT JOIN model_routes r
+                ON LOWER(r.endpoint_id) = LOWER(c.endpoint_id)
+               AND LOWER(r.remote_model_id) = LOWER(c.remote_model_id)
+         WHERE LOWER(e.provider_id) = LOWER(?1)",
+    )
+    .bind(provider_id.clone())
+    .fetch_all(pool)
+    .await
+    .map_err(|e| e.to_string())?;
+
+    const PRIORITY: &[&str] = &[
+        "openai-chat",
+        "openai-responses",
+        "openrouter-openai",
+        "anthropic-messages",
+        "custom",
+    ];
+    let proto_rank = |p: &str| PRIORITY.iter().position(|x| *x == p).unwrap_or(99);
+
+    // Dedupe by remote_model_id, keeping the row from the best-ranked endpoint;
+    // a model is "in My Models" if ANY endpoint of this provider routes it.
+    use std::collections::HashMap;
+    let mut best: HashMap<String, (i32, ProviderCatalogEntry)> = HashMap::new();
+    let mut routed: HashMap<String, String> = HashMap::new();
+    for (catalog_id, endpoint_id, endpoint_name, protocol, remote_model_id, raw_json, status, last_seen, route_id) in rows {
+        if let Some(rid) = &route_id {
+            routed
+                .entry(remote_model_id.clone())
+                .or_insert_with(|| rid.clone());
+        }
+        let raw: serde_json::Value = serde_json::from_str(&raw_json).unwrap_or(serde_json::Value::Null);
+        let entry = ProviderCatalogEntry {
+            catalog_id,
+            endpoint_id,
+            endpoint_name,
+            remote_model_id: remote_model_id.clone(),
+            display_name: extract_display_name(&raw, &remote_model_id),
+            context_length: extract_context_length(&raw),
+            status,
+            last_seen_at: last_seen,
+            in_my_models: false,
+            route_id: None,
+        };
+        let rank = proto_rank(&protocol) as i32;
+        match best.get(&remote_model_id) {
+            Some((existing_rank, _)) if *existing_rank <= rank => {}
+            _ => {
+                best.insert(remote_model_id, (rank, entry));
+            }
+        }
+    }
+    let mut out: Vec<ProviderCatalogEntry> = best
+        .into_iter()
+        .map(|(mid, (_, mut e))| {
+            e.in_my_models = routed.contains_key(&mid);
+            e.route_id = routed.get(&mid).cloned();
+            e
+        })
+        .collect();
+    out.sort_by(|a, b| a.remote_model_id.cmp(&b.remote_model_id));
+    Ok(out)
+}
+
 #[derive(Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct AddToMyModelsReport {

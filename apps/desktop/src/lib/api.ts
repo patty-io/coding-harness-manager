@@ -185,6 +185,19 @@ export interface AddToMyModelsReport {
   failures: string[];
 }
 
+export interface ProviderCatalogEntry {
+  catalog_id: string;
+  endpoint_id: string;
+  endpoint_name: string;
+  remote_model_id: string;
+  display_name: string | null;
+  context_length: number | null;
+  status: string;
+  last_seen_at: string;
+  in_my_models: boolean;
+  route_id: string | null;
+}
+
 export interface EndpointInput {
   providerId: string;
   name: string;
@@ -243,6 +256,9 @@ export async function discoverProviderModels(providerId: string): Promise<Provid
 }
 export async function addDiscoveredToMyModels(catalogIds: string[]): Promise<AddToMyModelsReport> {
   return invoke<AddToMyModelsReport>("add_discovered_to_my_models_cmd", { catalogIds });
+}
+export async function listProviderCatalog(providerId: string): Promise<ProviderCatalogEntry[]> {
+  return invoke<ProviderCatalogEntry[]>("list_provider_catalog_cmd", { providerId });
 }
 export async function listCatalogModels(endpointId: string): Promise<ProviderCatalogModel[]> {
   return invoke<ProviderCatalogModel[]>("list_catalog_models_cmd", { endpointId });

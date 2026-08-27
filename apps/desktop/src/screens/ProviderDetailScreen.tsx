@@ -4,6 +4,7 @@ import {
   useAddDiscoveredToMyModels,
   useCreateEndpoint,
   useEndpoints,
+  useProviderCatalog,
   useProviderSummary,
   useProviders,
   useDiscoverProvider,
@@ -38,6 +39,7 @@ export default function ProviderDetailScreen() {
 
   const discoverAll = useDiscoverProvider(id);
   const addToMyModels = useAddDiscoveredToMyModels();
+  const { data: providerCatalog } = useProviderCatalog(id);
   const [discoverResult, setDiscoverResult] = useState<ProviderDiscoverReport | null>(null);
   const [addedCatalogIds, setAddedCatalogIds] = useState<Set<string>>(new Set());
 
@@ -161,7 +163,7 @@ export default function ProviderDetailScreen() {
       )}
 
       <div className="mt-6 flex items-center justify-between">
-        <h2 className="font-medium text-slate-200">Endpoints</h2>
+        <h2 className="font-medium text-slate-200">Models</h2>
         <div className="flex items-center gap-2">
           <button
             onClick={() =>
@@ -170,16 +172,15 @@ export default function ProviderDetailScreen() {
             disabled={discoverAll.isPending || (endpoints ?? []).length === 0}
             className="rounded border border-blue-500 px-3 py-1 text-sm text-blue-300 hover:bg-blue-500/10 disabled:opacity-50"
           >
-            {discoverAll.isPending ? "Discovering all…" : "Discover all models"}
-          </button>
-          <button
-            onClick={() => setShowForm((v) => !v)}
-            className="rounded bg-blue-600 px-3 py-1 text-sm text-white hover:bg-blue-500"
-          >
-            {showForm ? "Cancel" : "+ Add Endpoint"}
+            {discoverAll.isPending ? "Discovering…" : "Discover models"}
           </button>
         </div>
       </div>
+
+      <p className="mt-1 text-xs text-slate-500">
+        Models this provider offers, de-duplicated across its endpoints. Import
+        a model to make it usable in profiles and sets.
+      </p>
 
       {discoverAll.isError && (
         <p className="mt-2 text-sm text-red-400">
@@ -434,6 +435,76 @@ export default function ProviderDetailScreen() {
           )}
         </div>
       )}
+
+      {providerCatalog && providerCatalog.length > 0 && (
+        <ul className="mt-3 space-y-1.5">
+          {providerCatalog.map((m) => {
+            const justAdded = addedCatalogIds.has(m.catalog_id);
+            const inMy = m.in_my_models || justAdded;
+            return (
+              <li
+                key={m.remote_model_id}
+                className="flex items-center gap-3 rounded border border-slate-700 bg-slate-800 px-3 py-2"
+              >
+                <div className="flex-1">
+                  <div className="text-sm text-slate-100">
+                    {m.display_name ?? m.remote_model_id}
+                    {m.display_name && (
+                      <span className="ml-2 font-mono text-xs text-slate-500">
+                        {m.remote_model_id}
+                      </span>
+                    )}
+                  </div>
+                  <div className="text-xs text-slate-500">
+                    {m.context_length
+                      ? `${m.context_length.toLocaleString()} tokens · `
+                      : ""}
+                    via {m.endpoint_name}
+                    {m.status === "new" ? " · newly discovered" : ""}
+                  </div>
+                </div>
+                {inMy ? (
+                  <span className="rounded bg-green-500/15 px-2 py-0.5 text-xs text-green-400">
+                    In My Models
+                  </span>
+                ) : (
+                  <button
+                    onClick={() =>
+                      addToMyModels.mutate([m.catalog_id], {
+                        onSuccess: () =>
+                          setAddedCatalogIds(
+                            (prev) => new Set([...prev, m.catalog_id]),
+                          ),
+                      })
+                    }
+                    disabled={addToMyModels.isPending}
+                    className="rounded border border-blue-500 px-2 py-0.5 text-xs text-blue-300 hover:bg-blue-500/10 disabled:opacity-50"
+                  >
+                    {addToMyModels.isPending ? "Importing…" : "+ Import"}
+                  </button>
+                )}
+              </li>
+            );
+          })}
+        </ul>
+      )}
+
+      {providerCatalog && providerCatalog.length === 0 && (
+        <p className="mt-3 text-sm text-slate-500">
+          No models known yet — run Discover models to fetch this provider's
+          catalog.
+        </p>
+      )}
+
+      <div className="mt-8 flex items-center justify-between">
+        <h2 className="font-medium text-slate-200">Endpoints</h2>
+        <button
+          onClick={() => setShowForm((v) => !v)}
+          className="rounded bg-blue-600 px-3 py-1 text-sm text-white hover:bg-blue-500"
+        >
+          {showForm ? "Cancel" : "+ Add Endpoint"}
+        </button>
+      </div>
 
       {endpointsLoading && <p className="mt-3 text-sm">Loading endpoints…</p>}
 
