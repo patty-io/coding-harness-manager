@@ -27,7 +27,7 @@ pub fn atomic_write(path: &Path, content: &str) -> Result<(), FsError> {
     }
     match std::fs::rename(&tmp, path) {
         Ok(()) => Ok(()),
-        Err(e) if cfg!(windows) && std::fs::metadata(path).is_ok() => {
+        Err(_e) if cfg!(windows) && std::fs::metadata(path).is_ok() => {
             // Windows rename-over-existing: replace via remove+rename (caller backed up first)
             std::fs::remove_file(path)?;
             std::fs::rename(&tmp, path)?;
