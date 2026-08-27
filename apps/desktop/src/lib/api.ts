@@ -28,3 +28,15 @@ export async function scanHarnesses(): Promise<HarnessInstallation[]> {
 export async function listInstallations(): Promise<HarnessInstallation[]> {
   return invoke<HarnessInstallation[]>("list_installations_cmd");
 }
+export interface DashboardStats {
+  harnesses: number;
+  providers: number;
+  models: number;
+  mcp: number;
+  skills: number;
+  drifted: number;
+}
+
+export async function dashboardStats(): Promise<DashboardStats> {
+  return invoke<DashboardStats>("dashboard_stats");
+}
