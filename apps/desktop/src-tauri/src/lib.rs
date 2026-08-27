@@ -1,6 +1,7 @@
 //! Tauri backend: commands + app state.
 
 pub mod commands;
+pub mod services;
 
 use chm_database::connect;
 use chm_secrets::SecretStore;

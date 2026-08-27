@@ -6,7 +6,7 @@ use chm_database::repos::mcp::list_mcp_servers;
 use chm_database::repos::providers::{create_provider, list_providers};
 use chm_database::repos::skills::list_skills;
 use chrono::Utc;
-use coding_harness_manager_lib::commands::import::{ImportOptions, run_import};
+use coding_harness_manager_lib::services::import::run_import;
 use uuid::Uuid;
 
 /// Builds a temp "machine" with an opencode.jsonc config; returns install + config path.
@@ -32,14 +32,6 @@ fn fixture_install(config_json: &str) -> (tempfile::TempDir, HarnessInstallation
     (dir, inst)
 }
 
-fn full_options() -> ImportOptions {
-    ImportOptions {
-        import_models: true,
-        import_mcp: true,
-        import_skills: true,
-    }
-}
-
 #[tokio::test]
 async fn import_creates_provider_model_and_mcp() {
     let pool = connect_test().await.unwrap();
@@ -59,7 +51,13 @@ async fn import_creates_provider_model_and_mcp() {
     );
     upsert_installation(&pool, &inst).await.unwrap();
 
-    let report = run_import(&pool, &inst.id.to_string(), &full_options())
+    let parsed = coding_harness_manager_lib::commands::import::read_parsed_state(
+        &pool,
+        &inst.id.to_string(),
+    )
+    .await
+    .unwrap();
+    let report = run_import(&pool, &inst, &parsed.2, true, true, true)
         .await
         .unwrap();
 
@@ -131,7 +129,13 @@ async fn failed_import_rolls_back_entire_transaction() {
     };
     upsert_installation(&pool, &inst).await.unwrap();
 
-    let err = run_import(&pool, &inst.id.to_string(), &full_options())
+    let parsed = coding_harness_manager_lib::commands::import::read_parsed_state(
+        &pool,
+        &inst.id.to_string(),
+    )
+    .await
+    .unwrap();
+    let err = run_import(&pool, &inst, &parsed.2, true, true, true)
         .await
         .expect_err("duplicate mcp name in one batch must fail the import");
     assert!(
@@ -164,14 +168,26 @@ async fn reimport_links_routes_to_existing_provider_endpoint() {
     let (_dir, inst) = fixture_install(config);
     upsert_installation(&pool, &inst).await.unwrap();
 
-    let first = run_import(&pool, &inst.id.to_string(), &full_options())
+    let parsed = coding_harness_manager_lib::commands::import::read_parsed_state(
+        &pool,
+        &inst.id.to_string(),
+    )
+    .await
+    .unwrap();
+    let first = run_import(&pool, &inst, &parsed.2, true, true, true)
         .await
         .unwrap();
     assert_eq!(first.models_imported, 1);
     // second import: provider exists -> not recreated; route links to the
     // EXISTING endpoint, so the unique (endpoint_id, remote_model_id) hits
     // and the model is reported as a duplicate — no junk "imported" provider.
-    let second = run_import(&pool, &inst.id.to_string(), &full_options())
+    let parsed2 = coding_harness_manager_lib::commands::import::read_parsed_state(
+        &pool,
+        &inst.id.to_string(),
+    )
+    .await
+    .unwrap();
+    let second = run_import(&pool, &inst, &parsed2.2, true, true, true)
         .await
         .unwrap();
     assert_eq!(second.providers_created, 0);
@@ -227,7 +243,13 @@ async fn import_reports_duplicates_without_overwriting() {
         .await
         .unwrap();
 
-    let report = run_import(&pool, &inst.id.to_string(), &full_options())
+    let parsed = coding_harness_manager_lib::commands::import::read_parsed_state(
+        &pool,
+        &inst.id.to_string(),
+    )
+    .await
+    .unwrap();
+    let report = run_import(&pool, &inst, &parsed.2, true, true, true)
         .await
         .unwrap();
 
