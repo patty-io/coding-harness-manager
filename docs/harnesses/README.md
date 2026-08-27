@@ -15,3 +15,13 @@ Status legend: DRAFT / COMPLETE / PARTIAL (not all verifiable locally)
 Rule: a doc is COMPLETE only if every section of the template has
 evidence (a path, command output, config excerpt, or explicit
 "not verifiable locally" with a source link).
+
+## Detection verification (Phase 2 smoke test, 2026-08-27)
+
+`cargo run -p chm-harness-sdk --example scan` on this machine:
+- claude-code | installed | 2.1.246 | ~/.claude/settings.json
+- codex | installed | 0.150.0 | ~/.codex/config.toml
+- opencode | installed | 1.18.23 | ~/.config/opencode/opencode.jsonc
+- pi | installed | 0.84.3 | ~/.pi/agent/models.json
+- reasonix | installed | 1.31.4 | ~/.reasonix/config.toml
+- detection-only: gemini-cli, kimi-cli, aider detected (executable present)
