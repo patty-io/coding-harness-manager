@@ -4,6 +4,7 @@ import {
   useQueryClient,
 } from "@tanstack/react-query";
 import {
+  addDiscoveredToMyModels,
   checkEndpointHealth,
   createEndpoint,
   createProvider,
@@ -114,6 +115,18 @@ export function useDiscoverProvider(providerId: string | undefined) {
       qc.invalidateQueries({ queryKey: ["provider-summary", providerId] });
       qc.invalidateQueries({ queryKey: ["endpoints", providerId] });
       qc.invalidateQueries({ queryKey: ["catalog"] });
+      qc.invalidateQueries({ queryKey: ["routes"] });
+    },
+  });
+}
+
+export function useAddDiscoveredToMyModels() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (catalogIds: string[]) => addDiscoveredToMyModels(catalogIds),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["routes"] });
+      qc.invalidateQueries({ queryKey: ["provider-summary"] });
     },
   });
 }

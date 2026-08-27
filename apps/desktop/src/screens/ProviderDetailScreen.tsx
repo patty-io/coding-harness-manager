@@ -1,6 +1,7 @@
 import { useState } from "react";
 import { Link, useParams } from "react-router-dom";
 import {
+  useAddDiscoveredToMyModels,
   useCreateEndpoint,
   useEndpoints,
   useProviderSummary,
@@ -36,7 +37,9 @@ export default function ProviderDetailScreen() {
   const provider = (providers ?? []).find((p) => p.id === id);
 
   const discoverAll = useDiscoverProvider(id);
+  const addToMyModels = useAddDiscoveredToMyModels();
   const [discoverResult, setDiscoverResult] = useState<ProviderDiscoverReport | null>(null);
+  const [addedCatalogIds, setAddedCatalogIds] = useState<Set<string>>(new Set());
 
   const [showForm, setShowForm] = useState(false);
   const [name, setName] = useState("");
@@ -188,52 +191,156 @@ export default function ProviderDetailScreen() {
         <div className="mt-3 rounded border border-slate-700 bg-slate-800 p-3 text-sm text-slate-200">
           <div className="flex items-center justify-between">
             <div>
-              <strong>{discoverResult.endpoints_succeeded}</strong> /{" "}
-              {discoverResult.endpoints_attempted} endpoints reached ·
-              {" "}
-              <strong>{discoverResult.added}</strong> new,
-              {" "}
-              <strong>{discoverResult.updated}</strong> updated
-              {" "}
-              (<strong>{discoverResult.total}</strong> models seen)
+              Probed{" "}
+              <strong>{discoverResult.endpoints_succeeded}</strong> of{" "}
+              {discoverResult.endpoints_succeeded +
+                discoverResult.endpoints_skipped.length}{" "}
+              endpoints ·{" "}
+              <strong>{discoverResult.distinct_models}</strong> distinct
+              models (
+              <strong>{discoverResult.added}</strong> new,{" "}
+              <strong>{discoverResult.updated}</strong> updated)
             </div>
             <button
-              onClick={() => setDiscoverResult(null)}
+              onClick={() => {
+                setDiscoverResult(null);
+                setAddedCatalogIds(new Set());
+              }}
               className="text-xs text-slate-400 hover:text-slate-200"
             >
               dismiss
             </button>
           </div>
-          <ul className="mt-2 space-y-1 text-xs">
-            {discoverResult.outcomes.map((o) => (
-              <li key={o.endpoint_id} className="flex items-center gap-2">
-                <span
-                  className={
-                    o.error
-                      ? "text-red-400"
-                      : o.report && o.report.added > 0
-                        ? "text-green-400"
-                        : "text-slate-400"
+
+          {discoverResult.endpoints_skipped.length > 0 && (
+            <details className="mt-2">
+              <summary className="cursor-pointer text-xs text-slate-400">
+                {discoverResult.endpoints_skipped.length} endpoint(s)
+                skipped
+              </summary>
+              <ul className="mt-1 space-y-1 pl-4 text-xs">
+                {discoverResult.endpoints_skipped.map((s) => (
+                  <li key={s.endpoint_id} className="text-slate-500">
+                    <span className="font-mono">{s.endpoint_name}</span>:{" "}
+                    {s.reason}
+                  </li>
+                ))}
+              </ul>
+            </details>
+          )}
+
+          {discoverResult.new_models.length > 0 && (
+            <div className="mt-3">
+              <div className="flex items-center justify-between">
+                <h3 className="text-sm font-medium text-slate-200">
+                  New models ({discoverResult.new_models.length})
+                </h3>
+                <button
+                  onClick={() => {
+                    const ids = discoverResult.new_models
+                      .filter((m) => !addedCatalogIds.has(m.catalog_id))
+                      .map((m) => m.catalog_id);
+                    addToMyModels.mutate(ids, {
+                      onSuccess: (report) => {
+                        setAddedCatalogIds(
+                          (prev) =>
+                            new Set([
+                              ...prev,
+                              ...discoverResult.new_models
+                                .filter(
+                                  (m) =>
+                                    !report.failures.some((f) =>
+                                      f.startsWith(m.remote_model_id),
+                                    ),
+                                )
+                                .map((m) => m.catalog_id),
+                            ]),
+                        );
+                      },
+                    });
+                  }}
+                  disabled={
+                    addToMyModels.isPending ||
+                    discoverResult.new_models.every((m) =>
+                      addedCatalogIds.has(m.catalog_id),
+                    )
                   }
+                  className="rounded bg-blue-600 px-3 py-1 text-xs text-white hover:bg-blue-500 disabled:opacity-50"
                 >
-                  {o.error
-                    ? "✗"
-                    : o.report && o.report.added > 0
-                      ? "✓"
-                      : "•"}
-                </span>
-                <span className="font-mono">{o.endpoint_name}</span>
-                {o.error ? (
-                  <span className="text-red-400">{o.error}</span>
-                ) : (
-                  <span className="text-slate-500">
-                    {o.report?.total} seen, {o.report?.added} new,{" "}
-                    {o.report?.updated} updated
-                  </span>
-                )}
-              </li>
-            ))}
-          </ul>
+                  {addToMyModels.isPending
+                    ? "Adding…"
+                    : "Add all to My Models"}
+                </button>
+              </div>
+              <ul className="mt-2 space-y-1 text-xs">
+                {discoverResult.new_models.map((m) => {
+                  const added = addedCatalogIds.has(m.catalog_id);
+                  return (
+                    <li
+                      key={m.catalog_id}
+                      className="flex items-center gap-3 rounded border border-slate-700 bg-slate-900 px-2 py-1.5"
+                    >
+                      <div className="flex-1">
+                        <div className="font-mono text-slate-100">
+                          {m.remote_model_id}
+                        </div>
+                        <div className="text-slate-500">
+                          {m.display_name && m.display_name !== m.remote_model_id
+                            ? `${m.display_name} · `
+                            : ""}
+                          via {m.endpoint_name}
+                          {m.context_length
+                            ? ` · ${m.context_length.toLocaleString()} tokens`
+                            : ""}
+                        </div>
+                      </div>
+                      {added ? (
+                        <span className="rounded bg-green-500/15 px-2 py-0.5 text-green-400">
+                          Added to My Models
+                        </span>
+                      ) : (
+                        <button
+                          onClick={() => {
+                            addToMyModels.mutate([m.catalog_id], {
+                              onSuccess: () =>
+                                setAddedCatalogIds(
+                                  (prev) =>
+                                    new Set([...prev, m.catalog_id]),
+                                ),
+                            });
+                          }}
+                          disabled={addToMyModels.isPending}
+                          className="rounded border border-blue-500 px-2 py-0.5 text-blue-300 hover:bg-blue-500/10 disabled:opacity-50"
+                        >
+                          + Add to My Models
+                        </button>
+                      )}
+                    </li>
+                  );
+                })}
+              </ul>
+              {addToMyModels.isError && (
+                <p className="mt-2 text-xs text-red-400">
+                  Add failed: {addToMyModels.error.message}
+                </p>
+              )}
+            </div>
+          )}
+
+          {discoverResult.new_models.length === 0 &&
+            discoverResult.updated_models.length > 0 && (
+              <p className="mt-3 text-xs text-slate-500">
+                No new models found — {discoverResult.updated_models.length}{" "}
+                previously seen models are still available.
+              </p>
+            )}
+
+          {discoverResult.new_models.length === 0 &&
+            discoverResult.updated_models.length === 0 && (
+              <p className="mt-3 text-xs text-slate-500">
+                No models returned by this provider.
+              </p>
+            )}
         </div>
       )}
 

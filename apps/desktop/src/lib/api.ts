@@ -148,13 +148,41 @@ export interface EndpointDiscoverOutcome {
   error: string | null;
 }
 
+export interface DiscoveredModel {
+  catalog_id: string;
+  endpoint_id: string;
+  endpoint_name: string;
+  provider_name: string;
+  remote_model_id: string;
+  display_name: string | null;
+  context_length: number | null;
+  status: string;
+}
+
+export interface SkippedEndpoint {
+  endpoint_id: string;
+  endpoint_name: string;
+  reason: string;
+}
+
 export interface ProviderDiscoverReport {
   endpoints_attempted: number;
   endpoints_succeeded: number;
+  endpoints_skipped: SkippedEndpoint[];
   total: number;
   added: number;
   updated: number;
+  distinct_models: number;
+  new_models: DiscoveredModel[];
+  updated_models: DiscoveredModel[];
   outcomes: EndpointDiscoverOutcome[];
+}
+
+export interface AddToMyModelsReport {
+  requested: number;
+  created: number;
+  already_routed: number;
+  failures: string[];
 }
 
 export interface EndpointInput {
@@ -212,6 +240,9 @@ export async function discoverEndpointModels(endpointId: string): Promise<Discov
 }
 export async function discoverProviderModels(providerId: string): Promise<ProviderDiscoverReport> {
   return invoke<ProviderDiscoverReport>("discover_provider_models", { providerId });
+}
+export async function addDiscoveredToMyModels(catalogIds: string[]): Promise<AddToMyModelsReport> {
+  return invoke<AddToMyModelsReport>("add_discovered_to_my_models_cmd", { catalogIds });
 }
 export async function listCatalogModels(endpointId: string): Promise<ProviderCatalogModel[]> {
   return invoke<ProviderCatalogModel[]>("list_catalog_models_cmd", { endpointId });
