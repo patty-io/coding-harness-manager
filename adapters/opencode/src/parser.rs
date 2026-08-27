@@ -4,7 +4,6 @@
 use chm_core::domain::mcp::{McpServer, McpTransport, ScopeType};
 use chm_core::domain::models::ModelRoute;
 use chm_harness_sdk::adapter::types::{AdapterError, HarnessMcp, HarnessModel, ParsedState};
-use chrono::Utc;
 use uuid::Uuid;
 
 pub fn parse_config(raw: &str, config_dir: &std::path::Path) -> Result<ParsedState, AdapterError> {
@@ -39,30 +38,22 @@ pub fn parse_config(raw: &str, config_dir: &std::path::Path) -> Result<ParsedSta
                         .unwrap_or(model_id)
                         .to_string();
                     let capabilities = meta.clone();
-                    let route = ModelRoute {
-                        id: Uuid::new_v4(),
-                        endpoint_id: Uuid::new_v4(), // real endpoint linking happens in Phase 5/6
-                        model_identity_id: None,
-                        remote_model_id: model_id.clone(),
+                    let mut route = ModelRoute::new(
+                        model_id.clone(),
                         display_name,
-                        context_window: meta
-                            .get("limit")
+                        meta.get("limit")
                             .and_then(|l| l.get("context"))
                             .and_then(|v| v.as_i64()),
-                        max_input: None,
-                        max_output: meta
-                            .get("limit")
-                            .and_then(|l| l.get("output"))
-                            .and_then(|v| v.as_i64()),
                         capabilities,
-                        overrides: serde_json::json!({
+                        serde_json::json!({
                             "native_provider_id": provider_id,
                             "native_config": pv.clone(),
                         }),
-                        enabled: true,
-                        created_at: Utc::now(),
-                        updated_at: Utc::now(),
-                    };
+                    );
+                    route.max_output = meta
+                        .get("limit")
+                        .and_then(|l| l.get("output"))
+                        .and_then(|v| v.as_i64());
                     state.models.push(HarnessModel {
                         native_id: model_id.clone(),
                         route,

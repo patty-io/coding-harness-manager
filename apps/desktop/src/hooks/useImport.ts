@@ -1,4 +1,4 @@
-import { useMutation, useQuery } from "@tanstack/react-query";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import {
   importHarnessState,
   readHarnessState,
@@ -13,9 +13,16 @@ export function useReadHarnessState(installationId: string | null) {
   });
 }
 
-export function useImportHarnessState(installationId: string) {
+export function useImportHarnessState() {
+  const qc = useQueryClient();
   return useMutation({
-    mutationFn: (options: ImportOptions) =>
-      importHarnessState(installationId, options),
+    mutationFn: ({
+      installationId,
+      options,
+    }: {
+      installationId: string;
+      options: ImportOptions;
+    }) => importHarnessState(installationId, options),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ["dashboard"] }),
   });
 }

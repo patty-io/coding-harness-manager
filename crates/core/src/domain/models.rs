@@ -78,6 +78,34 @@ pub struct ModelRoute {
     pub updated_at: DateTime<Utc>,
 }
 
+impl ModelRoute {
+    /// Builder with the common boilerplate filled in; callers set the
+    /// endpoint/identity links and variable fields.
+    pub fn new(
+        remote_model_id: String,
+        display_name: String,
+        context_window: Option<i64>,
+        capabilities: serde_json::Value,
+        overrides: serde_json::Value,
+    ) -> Self {
+        Self {
+            id: Uuid::new_v4(),
+            endpoint_id: Uuid::new_v4(), // real endpoint linking happens at import time
+            model_identity_id: None,
+            remote_model_id,
+            display_name,
+            context_window,
+            max_input: None,
+            max_output: None,
+            capabilities,
+            overrides,
+            enabled: true,
+            created_at: Utc::now(),
+            updated_at: Utc::now(),
+        }
+    }
+}
+
 /// Route identity — the dedup key for the whole system.
 pub fn route_identity(endpoint_id: Uuid, remote_model_id: &str) -> (Uuid, String) {
     (endpoint_id, remote_model_id.to_string())

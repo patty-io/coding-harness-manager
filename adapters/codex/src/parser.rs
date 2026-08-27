@@ -202,25 +202,17 @@ fn push_model(
         .and_then(|v| v.as_str())
         .unwrap_or(mid)
         .to_string();
-    let route = ModelRoute {
-        id: Uuid::new_v4(),
-        endpoint_id: Uuid::new_v4(),
-        model_identity_id: None,
+    let route = ModelRoute::new(
         remote_model_id,
-        display_name: mid.to_string(),
-        context_window: mv.get("context_window").and_then(|v| v.as_integer()),
-        max_input: None,
-        max_output: None,
-        capabilities: serde_json::to_value(mv).unwrap_or_default(),
-        overrides: serde_json::json!({
+        mid.to_string(),
+        mv.get("context_window").and_then(|v| v.as_integer()),
+        serde_json::to_value(mv).unwrap_or_default(),
+        serde_json::json!({
             "native_model_id": mid,
             "native_provider_id": provider_id,
             "wire_api": wire_api,
         }),
-        enabled: true,
-        created_at: Utc::now(),
-        updated_at: Utc::now(),
-    };
+    );
     state.models.push(HarnessModel {
         native_id: mid.to_string(),
         route,

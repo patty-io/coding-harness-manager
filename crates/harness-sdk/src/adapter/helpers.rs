@@ -1,0 +1,186 @@
+//! Shared adapter helpers: detection, skills scanning, MCP parsing.
+//! Consolidates logic that every harness adapter previously duplicated.
+
+use std::path::Path;
+
+use chm_core::domain::harness::{HarnessInstallation, InstallationStatus};
+use chm_core::domain::mcp::{McpServer, McpTransport, ScopeType};
+use chrono::Utc;
+use uuid::Uuid;
+
+use crate::adapter::types::HarnessSkill;
+use crate::definition::{HarnessDefinition, Platform};
+
+/// One harness through the standard detection pipeline (executable → config →
+/// version). Shared by `scan()` and every adapter's `detect()`.
+pub fn detect_one(
+    def: &HarnessDefinition,
+    home: &Path,
+    platform: Platform,
+    path_env: Option<&str>,
+) -> Option<HarnessInstallation> {
+    if def.detection_only {
+        let exe = def
+            .executable_names
+            .iter()
+            .find_map(|n| crate::detect::paths::find_executable(n, path_env))?;
+        return Some(HarnessInstallation {
+            id: Uuid::new_v4(),
+            harness_type: chm_core::domain::harness::HarnessType::Custom(def.id.to_string()),
+            executable_path: Some(exe),
+            version: None,
+            config_path: None,
+            detected_at: Utc::now(),
+            last_scanned_at: None,
+            status: InstallationStatus::Detected,
+        });
+    }
+    let exe = def
+        .executable_names
+        .iter()
+        .find_map(|n| crate::detect::paths::find_executable(n, path_env));
+    let config = crate::detect::paths::resolve_config_path(def, home, platform);
+    match (exe, config) {
+        (None, None) => None,
+        (Some(executable_path), config_path) => {
+            let version = crate::detect::version::detect_version(
+                &executable_path,
+                crate::detect::version::version_args_for(def),
+            );
+            Some(HarnessInstallation {
+                id: Uuid::new_v4(),
+                harness_type: chm_core::domain::harness::HarnessType::parse_str(def.id),
+                executable_path: Some(executable_path),
+                version,
+                config_path: config_path.map(|c| c.display().to_string()),
+                detected_at: Utc::now(),
+                last_scanned_at: Some(Utc::now()),
+                status: InstallationStatus::Installed,
+            })
+        }
+        (None, Some(config_path)) => Some(HarnessInstallation {
+            id: Uuid::new_v4(),
+            harness_type: chm_core::domain::harness::HarnessType::parse_str(def.id),
+            executable_path: None,
+            version: None,
+            config_path: Some(config_path.display().to_string()),
+            detected_at: Utc::now(),
+            last_scanned_at: Some(Utc::now()),
+            status: InstallationStatus::ConfigMissing,
+        }),
+    }
+}
+
+/// Scans a skills directory (subdirs with SKILL.md convention). Empty dir or
+/// missing dir yields an empty list.
+pub fn scan_skills_dir(dir: &Path) -> Vec<HarnessSkill> {
+    let mut out = Vec::new();
+    let Ok(entries) = std::fs::read_dir(dir) else {
+        return out;
+    };
+    for entry in entries.flatten() {
+        if entry.path().is_dir() {
+            out.push(HarnessSkill {
+                name: entry.file_name().to_string_lossy().into_owned(),
+                path: entry.path().display().to_string(),
+                content_hash: None,
+                symlinked: entry
+                    .path()
+                    .symlink_metadata()
+                    .map(|m| m.file_type().is_symlink())
+                    .unwrap_or(false),
+            });
+        }
+    }
+    out
+}
+
+/// Derives the home directory from a config path like `~/.<dot-dir>/...`
+/// (walks ancestors looking for the dot-dir component).
+pub fn install_home_from_config(config_path: &str, dot_dir: &str) -> std::path::PathBuf {
+    let path = Path::new(config_path);
+    for ancestor in path.ancestors() {
+        if ancestor.file_name().is_some_and(|f| f == dot_dir) {
+            return ancestor.parent().map(Path::to_path_buf).unwrap_or_default();
+        }
+    }
+    std::env::var_os("HOME")
+        .map(std::path::PathBuf::from)
+        .unwrap_or_default()
+}
+
+/// Reads a file if present; missing files yield `None`, other errors propagate.
+pub fn read_optional(path: &Path) -> std::io::Result<Option<String>> {
+    match std::fs::read_to_string(path) {
+        Ok(raw) => Ok(Some(raw)),
+        Err(e) if e.kind() == std::io::ErrorKind::NotFound => Ok(None),
+        Err(e) => Err(e),
+    }
+}
+
+/// Shared JSON MCP server mapping used by the JSON-config harnesses.
+/// Preserves headers and directTools losslessly inside `env` so native
+/// translation (Phase 8/9) can round-trip them.
+pub fn parse_mcp_json(
+    name: &str,
+    spec: &serde_json::Value,
+    provenance: serde_json::Value,
+) -> McpServer {
+    let transport = match spec.get("type").and_then(|t| t.as_str()) {
+        Some("remote") | Some("http") | Some("sse") => McpTransport::Http,
+        _ => McpTransport::Stdio,
+    };
+    let command_array: Vec<String> = spec
+        .get("command")
+        .and_then(|v| v.as_array())
+        .map(|a| {
+            a.iter()
+                .filter_map(|v| v.as_str().map(String::from))
+                .collect()
+        })
+        .unwrap_or_default();
+    let (command, args) = match command_array.split_first() {
+        Some((first, rest)) => (Some(first.clone()), rest.to_vec()),
+        None => (
+            spec.get("command")
+                .and_then(|v| v.as_str())
+                .map(String::from),
+            spec.get("args")
+                .and_then(|v| v.as_array())
+                .map(|a| {
+                    a.iter()
+                        .filter_map(|v| v.as_str().map(String::from))
+                        .collect()
+                })
+                .unwrap_or_default(),
+        ),
+    };
+    let mut env: serde_json::Map<String, serde_json::Value> = spec
+        .get("environment")
+        .or_else(|| spec.get("env"))
+        .and_then(|v| v.as_object())
+        .cloned()
+        .unwrap_or_default();
+    if let Some(headers) = spec.get("headers").and_then(|v| v.as_object()) {
+        env.insert("headers".into(), serde_json::Value::Object(headers.clone()));
+    }
+    if let Some(dt) = spec.get("directTools") {
+        env.insert("_direct_tools".into(), dt.clone());
+    }
+    McpServer {
+        id: Uuid::new_v4(),
+        name: name.to_string(),
+        transport,
+        command,
+        args,
+        url: spec.get("url").and_then(|v| v.as_str()).map(String::from),
+        env,
+        scope_type: ScopeType::Global,
+        scope_path: None,
+        provenance,
+        enabled: spec
+            .get("enabled")
+            .and_then(|v| v.as_bool())
+            .unwrap_or(true),
+    }
+}

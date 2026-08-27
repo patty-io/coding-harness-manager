@@ -55,6 +55,29 @@ pub enum AuthType {
     ApiKeyHeader,
     BearerToken,
     CustomHeader,
+    Unknown,
+}
+
+impl AuthType {
+    pub fn as_str(&self) -> &'static str {
+        match self {
+            Self::None => "none",
+            Self::ApiKeyHeader => "api-key-header",
+            Self::BearerToken => "bearer-token",
+            Self::CustomHeader => "custom-header",
+            Self::Unknown => "unknown",
+        }
+    }
+
+    pub fn parse_str(s: &str) -> Self {
+        match s {
+            "api-key-header" => Self::ApiKeyHeader,
+            "bearer-token" => Self::BearerToken,
+            "custom-header" => Self::CustomHeader,
+            "unknown" => Self::Unknown,
+            _ => Self::Unknown,
+        }
+    }
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]

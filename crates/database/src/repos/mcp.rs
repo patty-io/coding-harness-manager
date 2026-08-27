@@ -7,7 +7,10 @@ use uuid::Uuid;
 
 use crate::DbError;
 
-pub async fn create_mcp_server(pool: &Pool<Sqlite>, s: &McpServer) -> Result<McpServer, DbError> {
+pub async fn create_mcp_server<'e>(
+    pool: impl sqlx::Executor<'e, Database = Sqlite> + 'e,
+    s: &McpServer,
+) -> Result<McpServer, DbError> {
     sqlx::query(
         "INSERT INTO mcp_servers
            (id, name, transport, command, args_json, url, env_json, scope_type, scope_path,
@@ -21,7 +24,7 @@ pub async fn create_mcp_server(pool: &Pool<Sqlite>, s: &McpServer) -> Result<Mcp
     .bind(serde_json::to_string(&s.args)?)
     .bind(&s.url)
     .bind(serde_json::to_string(&s.env)?)
-    .bind(scope_type_as_str(s.scope_type))
+    .bind(s.scope_type.as_str())
     .bind(&s.scope_path)
     .bind(serde_json::to_string(&s.provenance)?)
     .bind(s.enabled as i64)
@@ -76,7 +79,7 @@ pub async fn list_mcp_servers(pool: &Pool<Sqlite>) -> Result<Vec<McpServer>, DbE
                     args: serde_json::from_str(&args).unwrap_or_default(),
                     url,
                     env: serde_json::from_str(&env).unwrap_or_default(),
-                    scope_type: scope_type_parse(&scope),
+                    scope_type: ScopeType::parse_str(&scope),
                     scope_path,
                     provenance: serde_json::from_str(&provenance).unwrap_or_default(),
                     enabled: enabled == 1,
@@ -86,7 +89,10 @@ pub async fn list_mcp_servers(pool: &Pool<Sqlite>) -> Result<Vec<McpServer>, DbE
         .collect()
 }
 
-pub async fn delete_mcp_server(pool: &Pool<Sqlite>, id: Uuid) -> Result<(), DbError> {
+pub async fn delete_mcp_server<'e>(
+    pool: impl sqlx::Executor<'e, Database = Sqlite> + 'e,
+    id: Uuid,
+) -> Result<(), DbError> {
     let res = sqlx::query("DELETE FROM mcp_servers WHERE id = ?")
         .bind(id.to_string())
         .execute(pool)
@@ -97,7 +103,10 @@ pub async fn delete_mcp_server(pool: &Pool<Sqlite>, id: Uuid) -> Result<(), DbEr
     Ok(())
 }
 
-pub async fn create_mcp_binding(pool: &Pool<Sqlite>, b: &HarnessMcpBinding) -> Result<(), DbError> {
+pub async fn create_mcp_binding<'e>(
+    pool: impl sqlx::Executor<'e, Database = Sqlite> + 'e,
+    b: &HarnessMcpBinding,
+) -> Result<(), DbError> {
     sqlx::query(
         "INSERT INTO harness_mcp_bindings
            (id, harness_installation_id, mcp_server_id, native_name, native_config_json, managed)
@@ -114,8 +123,8 @@ pub async fn create_mcp_binding(pool: &Pool<Sqlite>, b: &HarnessMcpBinding) -> R
     Ok(())
 }
 
-pub async fn list_mcp_bindings(
-    pool: &Pool<Sqlite>,
+pub async fn list_mcp_bindings<'e>(
+    pool: impl sqlx::Executor<'e, Database = Sqlite> + 'e,
     installation_id: Uuid,
 ) -> Result<Vec<HarnessMcpBinding>, DbError> {
     let rows = sqlx::query_as::<_, (String, String, String, String, String, i64)>(
@@ -138,18 +147,4 @@ pub async fn list_mcp_bindings(
             })
         })
         .collect()
-}
-
-fn scope_type_as_str(scope: ScopeType) -> &'static str {
-    match scope {
-        ScopeType::Global => "global",
-        ScopeType::Project => "project",
-    }
-}
-
-fn scope_type_parse(s: &str) -> ScopeType {
-    match s {
-        "project" => ScopeType::Project,
-        _ => ScopeType::Global,
-    }
 }

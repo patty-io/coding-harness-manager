@@ -17,6 +17,14 @@ pub enum DbError {
     Serialize(#[from] serde_json::Error),
     #[error("not found: {0}")]
     NotFound(String),
+    #[error("invalid data: {0}")]
+    InvalidData(String),
+}
+
+impl From<String> for DbError {
+    fn from(s: String) -> Self {
+        Self::InvalidData(s)
+    }
 }
 
 pub async fn connect(path: &str) -> Result<Pool<Sqlite>, DbError> {

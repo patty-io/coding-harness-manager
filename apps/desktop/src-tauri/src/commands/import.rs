@@ -5,13 +5,13 @@ use chm_core::domain::credentials::{CredentialKind, CredentialRef};
 use chm_core::domain::harness::HarnessInstallation;
 use chm_core::domain::mcp::{McpServer, ScopeType};
 use chm_core::domain::models::ModelRoute;
-use chm_core::domain::provider::ProviderEndpoint;
+use chm_core::domain::provider::{AuthType, Protocol, ProviderEndpoint};
 use chm_core::domain::skills::Skill;
 use chm_database::repos::harness::list_installations;
 use chm_database::repos::mcp::{create_mcp_server, list_mcp_servers};
 use chm_database::repos::models::{create_route, upsert_catalog_model};
 use chm_database::repos::providers::{
-    create_credential_ref, create_endpoint, create_provider, list_endpoints, list_providers,
+    create_credential_ref, create_endpoint, create_provider, list_providers,
 };
 use chm_database::repos::skills::{create_skill, list_skills};
 use chm_harness_sdk::adapter::types::ParsedState;
@@ -47,6 +47,7 @@ pub struct ImportReport {
     pub models_imported: usize,
     pub mcp_imported: usize,
     pub skills_imported: usize,
+    pub skills_symlinked: usize,
     pub duplicates: Vec<String>,
 }
 
@@ -110,6 +111,25 @@ pub async fn read_harness_state(
     })
 }
 
+/// Maps native protocol hints to the domain Protocol:
+/// opencode/payload: `protocol`; pi: `api` ("openai-completions"); reasonix:
+/// `kind` ("openai"/"anthropic"); codex: `wire_api` ("chat"/"responses").
+fn protocol_from_native(
+    protocol: Option<&str>,
+    api: Option<&str>,
+    kind: Option<&str>,
+    wire_api: Option<&str>,
+) -> Protocol {
+    let s = protocol.or(api).or(kind).or(wire_api).unwrap_or("");
+    match s {
+        "anthropic" | "anthropic-messages" => Protocol::AnthropicMessages,
+        "openai-chat" | "openai-completions" | "chat" => Protocol::OpenAiChatCompletions,
+        "openai-responses" | "responses" => Protocol::OpenAiResponses,
+        "openrouter-openai" | "openrouter" => Protocol::OpenRouterOpenAi,
+        _ => Protocol::Custom,
+    }
+}
+
 pub async fn run_import(
     pool: &Pool<Sqlite>,
     installation_id: &str,
@@ -122,21 +142,29 @@ pub async fn run_import(
         "imported_at": Utc::now().to_rfc3339(),
     });
 
+    // Hoist existence checks once — never re-query inside loops.
+    let existing_providers = list_providers(pool).await.map_err(|e| e.to_string())?;
+    let existing_mcp = list_mcp_servers(pool).await.map_err(|e| e.to_string())?;
+    let existing_skills = list_skills(pool).await.map_err(|e| e.to_string())?;
+    let mut endpoint_by_native_provider: std::collections::HashMap<String, Uuid> =
+        std::collections::HashMap::new();
+
+    // The whole import is one transaction: any failure rolls back everything.
+    let mut tx = pool.begin().await.map_err(|e| e.to_string())?;
+
     for pv in &parsed.providers {
         let name = pv
             .get("native_provider_id")
             .and_then(|v| v.as_str())
             .unwrap_or("imported");
         if name.starts_with('_') {
-            // internal marker entries (e.g. __schema__, __mcp_imports__) are not providers
-            continue;
+            continue; // internal marker entries (__schema__, __mcp_imports__)
         }
-        let providers = list_providers(pool).await.map_err(|e| e.to_string())?;
-        if providers.iter().any(|p| p.name == name) {
+        if existing_providers.iter().any(|p| p.name == name) {
             report.duplicates.push(format!("provider:{name}"));
             continue;
         }
-        let provider = create_provider(pool, name, name)
+        let provider = create_provider(&mut *tx, name, name)
             .await
             .map_err(|e| e.to_string())?;
         report.providers_created += 1;
@@ -145,17 +173,13 @@ pub async fn run_import(
             .get("base_url")
             .and_then(|v| v.as_str())
             .map(String::from);
-        let protocol = pv
-            .get("protocol")
-            .and_then(|v| v.as_str())
-            .unwrap_or("custom");
         let env_key = pv
             .get("env_key")
             .or_else(|| pv.get("env_reference"))
             .and_then(|v| v.as_str());
         let credential_ref: Option<CredentialRef> = match env_key {
             Some(key) => Some(
-                create_credential_ref(pool, CredentialKind::Env, key)
+                create_credential_ref(&mut *tx, CredentialKind::Env, key)
                     .await
                     .map_err(|e| e.to_string())?,
             ),
@@ -167,48 +191,78 @@ pub async fn run_import(
                 provider_id: provider.id,
                 name: format!("{name}-imported"),
                 base_url,
-                protocol: chm_core::domain::provider::Protocol::parse_str(protocol),
+                protocol: protocol_from_native(
+                    pv.get("protocol").and_then(|v| v.as_str()),
+                    pv.get("api").and_then(|v| v.as_str()),
+                    pv.get("kind").and_then(|v| v.as_str()),
+                    pv.get("wire_api").and_then(|v| v.as_str()),
+                ),
                 discovery_path: Some("/v1/models".into()),
-                auth_type: chm_core::domain::provider::AuthType::BearerToken,
+                auth_type: if credential_ref.is_some() {
+                    AuthType::BearerToken
+                } else {
+                    AuthType::None
+                },
                 credential_ref,
                 headers: Default::default(),
                 enabled: true,
                 created_at: Utc::now(),
                 updated_at: Utc::now(),
             };
-            create_endpoint(pool, &endpoint)
+            create_endpoint(&mut *tx, &endpoint)
                 .await
                 .map_err(|e| e.to_string())?;
+            endpoint_by_native_provider.insert(name.to_string(), endpoint.id);
         }
     }
 
     if options.import_models {
+        // Link routes to the endpoint of their native provider; fall back to a
+        // single shared placeholder endpoint created once, so routes from
+        // distinct providers never silently collapse into one identity space.
+        let mut placeholder_endpoint: Option<Uuid> = None;
         for m in &parsed.models {
-            let endpoint_id = imported_endpoint_id(pool, &inst).await?;
-            let route = ModelRoute {
-                id: Uuid::new_v4(),
-                endpoint_id,
-                model_identity_id: None,
-                remote_model_id: m.route.remote_model_id.clone(),
-                display_name: m.route.display_name.clone(),
-                context_window: m.route.context_window,
-                max_input: m.route.max_input,
-                max_output: m.route.max_output,
-                capabilities: m.route.capabilities.clone(),
-                overrides: serde_json::json!({
+            let native_provider = m
+                .route
+                .overrides
+                .get("native_provider_id")
+                .and_then(|v| v.as_str())
+                .unwrap_or("imported");
+            let endpoint_id = match endpoint_by_native_provider.get(native_provider) {
+                Some(id) => *id,
+                None => match placeholder_endpoint {
+                    Some(id) => id,
+                    None => {
+                        let id = imported_endpoint_id(&mut tx, &inst).await?;
+                        placeholder_endpoint = Some(id);
+                        id
+                    }
+                },
+            };
+            let route = ModelRoute::new(
+                m.route.remote_model_id.clone(),
+                m.route.display_name.clone(),
+                m.route.context_window,
+                m.route.capabilities.clone(),
+                serde_json::json!({
                     "provenance": provenance.clone(),
                     "native": m.route.overrides,
                 }),
-                enabled: true,
-                created_at: Utc::now(),
-                updated_at: Utc::now(),
+            );
+            // overwrite the placeholder endpoint_id set by the constructor
+            let route = ModelRoute {
+                endpoint_id,
+                id: route.id,
+                max_input: route.max_input,
+                max_output: route.max_output,
+                ..route
             };
-            match create_route(pool, &route).await {
+            match create_route(&mut *tx, &route).await {
                 Ok(_) => {
                     report.models_imported += 1;
                     let now = Utc::now();
                     upsert_catalog_model(
-                        pool,
+                        &mut *tx,
                         &chm_core::domain::models::ProviderCatalogModel {
                             id: Uuid::new_v4(),
                             endpoint_id,
@@ -225,17 +279,22 @@ pub async fn run_import(
                     .await
                     .map_err(|e| e.to_string())?;
                 }
-                Err(_) => report
+                Err(e) if is_unique_violation(&e) => report
                     .duplicates
                     .push(format!("model:{}", m.route.remote_model_id)),
+                Err(e) => {
+                    return Err(format!(
+                        "import failed on model {}: {e}",
+                        m.route.remote_model_id
+                    ));
+                }
             }
         }
     }
 
     if options.import_mcp {
         for m in &parsed.mcp {
-            let existing = list_mcp_servers(pool).await.map_err(|e| e.to_string())?;
-            if existing.iter().any(|s| s.name == m.server.name) {
+            if existing_mcp.iter().any(|s| s.name == m.server.name) {
                 report.duplicates.push(format!("mcp:{}", m.server.name));
                 continue;
             }
@@ -252,7 +311,7 @@ pub async fn run_import(
                 provenance: provenance.clone(),
                 enabled: true,
             };
-            create_mcp_server(pool, &server)
+            create_mcp_server(&mut *tx, &server)
                 .await
                 .map_err(|e| e.to_string())?;
             report.mcp_imported += 1;
@@ -262,12 +321,11 @@ pub async fn run_import(
     if options.import_skills {
         for s in &parsed.skills {
             if s.symlinked {
-                // symlinked skills are already canonical — binding created in Phase 10
-                report.skills_imported += 1;
+                // already canonical; binding is created in Phase 10 — reported separately
+                report.skills_symlinked += 1;
                 continue;
             }
-            let existing = list_skills(pool).await.map_err(|e| e.to_string())?;
-            if existing.iter().any(|sk| sk.canonical_path == s.path) {
+            if existing_skills.iter().any(|sk| sk.canonical_path == s.path) {
                 report.duplicates.push(format!("skill:{}", s.name));
                 continue;
             }
@@ -283,32 +341,32 @@ pub async fn run_import(
                 created_at: Utc::now(),
                 updated_at: Utc::now(),
             };
-            create_skill(pool, &skill)
+            create_skill(&mut *tx, &skill)
                 .await
                 .map_err(|e| e.to_string())?;
             report.skills_imported += 1;
         }
     }
 
+    tx.commit().await.map_err(|e| e.to_string())?;
     Ok(report)
 }
 
-/// Endpoint used for imported routes: first endpoint of the first imported
-/// provider, else a placeholder "imported" endpoint.
+fn is_unique_violation(e: &chm_database::DbError) -> bool {
+    matches!(
+        e,
+        chm_database::DbError::Sqlx(sqlx::Error::Database(db))
+            if db.is_unique_violation()
+    )
+}
+
+/// Creates the shared placeholder endpoint used only when an imported route's
+/// native provider carried no base_url. Disabled and protocol-agnostic.
 async fn imported_endpoint_id(
-    pool: &Pool<Sqlite>,
+    tx: &mut sqlx::SqliteConnection,
     inst: &HarnessInstallation,
 ) -> Result<Uuid, String> {
-    let providers = list_providers(pool).await.map_err(|e| e.to_string())?;
-    for p in providers {
-        let endpoints = list_endpoints(pool, p.id)
-            .await
-            .map_err(|e| e.to_string())?;
-        if let Some(e) = endpoints.first() {
-            return Ok(e.id);
-        }
-    }
-    let provider = create_provider(pool, "imported", "Imported (needs setup)")
+    let provider = create_provider(&mut *tx, "imported", "Imported (needs setup)")
         .await
         .map_err(|e| e.to_string())?;
     let endpoint = ProviderEndpoint {
@@ -316,16 +374,16 @@ async fn imported_endpoint_id(
         provider_id: provider.id,
         name: format!("{}-imported", inst.harness_type.as_str()),
         base_url: String::new(),
-        protocol: chm_core::domain::provider::Protocol::Custom,
+        protocol: Protocol::Custom,
         discovery_path: None,
-        auth_type: chm_core::domain::provider::AuthType::None,
+        auth_type: AuthType::None,
         credential_ref: None,
         headers: Default::default(),
         enabled: false,
         created_at: Utc::now(),
         updated_at: Utc::now(),
     };
-    create_endpoint(pool, &endpoint)
+    create_endpoint(&mut *tx, &endpoint)
         .await
         .map_err(|e| e.to_string())?;
     Ok(endpoint.id)

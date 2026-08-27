@@ -2,13 +2,16 @@
 
 use chm_core::domain::harness::{BindingType, HarnessSkillBinding};
 use chm_core::domain::skills::{Skill, SkillSourceType};
-use chrono::Utc;
+use chm_core::parse_ts;
 use sqlx::{Pool, Sqlite};
 use uuid::Uuid;
 
 use crate::DbError;
 
-pub async fn create_skill(pool: &Pool<Sqlite>, s: &Skill) -> Result<Skill, DbError> {
+pub async fn create_skill<'e>(
+    pool: impl sqlx::Executor<'e, Database = Sqlite> + 'e,
+    s: &Skill,
+) -> Result<Skill, DbError> {
     sqlx::query(
         "INSERT INTO skills
            (id, name, canonical_path, source_type, source_url, content_hash,
@@ -64,16 +67,16 @@ pub async fn list_skills(pool: &Pool<Sqlite>) -> Result<Vec<Skill>, DbError> {
                     content_hash: hash,
                     provenance: serde_json::from_str(&provenance).unwrap_or_default(),
                     enabled: enabled == 1,
-                    created_at: parse_ts(&created),
-                    updated_at: parse_ts(&updated),
+                    created_at: parse_ts(&created)?,
+                    updated_at: parse_ts(&updated)?,
                 })
             },
         )
         .collect()
 }
 
-pub async fn create_skill_binding(
-    pool: &Pool<Sqlite>,
+pub async fn create_skill_binding<'e>(
+    pool: impl sqlx::Executor<'e, Database = Sqlite> + 'e,
     b: &HarnessSkillBinding,
 ) -> Result<(), DbError> {
     sqlx::query(
@@ -93,8 +96,8 @@ pub async fn create_skill_binding(
     Ok(())
 }
 
-pub async fn list_skill_bindings(
-    pool: &Pool<Sqlite>,
+pub async fn list_skill_bindings<'e>(
+    pool: impl sqlx::Executor<'e, Database = Sqlite> + 'e,
     installation_id: Uuid,
 ) -> Result<Vec<HarnessSkillBinding>, DbError> {
     let rows = sqlx::query_as::<_, (String, String, String, String, String, i64, String)>(
@@ -118,10 +121,4 @@ pub async fn list_skill_bindings(
             })
         })
         .collect()
-}
-
-fn parse_ts(s: &str) -> chrono::DateTime<Utc> {
-    chrono::DateTime::parse_from_rfc3339(s)
-        .map(|d| d.with_timezone(&Utc))
-        .unwrap_or_else(|_| Utc::now())
 }

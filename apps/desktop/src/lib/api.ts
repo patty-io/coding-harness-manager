@@ -2,13 +2,15 @@
 
 import { invoke } from "@tauri-apps/api/core";
 
-export type HarnessType =
-  | "claude-code"
-  | "codex"
-  | "opencode"
-  | "pi"
-  | "reasonix"
-  | (string & {});
+export const TIER1_HARNESSES = [
+  "claude-code",
+  "codex",
+  "opencode",
+  "pi",
+  "reasonix",
+] as const;
+
+export type HarnessType = (typeof TIER1_HARNESSES)[number] | (string & {});
 
 export interface HarnessInstallation {
   id: string;

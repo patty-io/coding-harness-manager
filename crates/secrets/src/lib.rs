@@ -102,7 +102,7 @@ impl SecretStore for KeychainStore {
         Ok(Some(
             String::from_utf8(out.stdout)
                 .map_err(|e| SecretError::Crypto(e.to_string()))?
-                .trim_end()
+                .trim_end_matches('\n')
                 .to_string(),
         ))
     }

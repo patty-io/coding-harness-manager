@@ -69,7 +69,7 @@ fn request_builder(
                 req = req.header("authorization", c);
             }
         }
-        AuthType::None => {}
+        AuthType::None | AuthType::Unknown => {}
     }
     for (k, v) in &endpoint.headers {
         if let Some(s) = v.as_str() {

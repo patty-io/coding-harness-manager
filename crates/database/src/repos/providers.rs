@@ -2,14 +2,15 @@
 
 use chm_core::domain::credentials::{CredentialKind, CredentialRef};
 use chm_core::domain::provider::{AuthType, Protocol, Provider, ProviderEndpoint};
+use chm_core::parse_ts;
 use chrono::Utc;
 use sqlx::{Pool, Sqlite};
 use uuid::Uuid;
 
 use crate::DbError;
 
-pub async fn create_provider(
-    pool: &Pool<Sqlite>,
+pub async fn create_provider<'e>(
+    pool: impl sqlx::Executor<'e, Database = Sqlite> + 'e,
     name: &str,
     display_name: &str,
 ) -> Result<Provider, DbError> {
@@ -80,7 +81,10 @@ pub async fn update_provider(
     })
 }
 
-pub async fn delete_provider(pool: &Pool<Sqlite>, id: Uuid) -> Result<(), DbError> {
+pub async fn delete_provider<'e>(
+    pool: impl sqlx::Executor<'e, Database = Sqlite> + 'e,
+    id: Uuid,
+) -> Result<(), DbError> {
     let res = sqlx::query("DELETE FROM providers WHERE id = ?")
         .bind(id.to_string())
         .execute(pool)
@@ -91,8 +95,8 @@ pub async fn delete_provider(pool: &Pool<Sqlite>, id: Uuid) -> Result<(), DbErro
     Ok(())
 }
 
-pub async fn create_credential_ref(
-    pool: &Pool<Sqlite>,
+pub async fn create_credential_ref<'e>(
+    pool: impl sqlx::Executor<'e, Database = Sqlite> + 'e,
     kind: CredentialKind,
     reference: &str,
 ) -> Result<CredentialRef, DbError> {
@@ -118,7 +122,10 @@ pub async fn create_credential_ref(
     Ok(c)
 }
 
-pub async fn get_credential_ref(pool: &Pool<Sqlite>, id: Uuid) -> Result<CredentialRef, DbError> {
+pub async fn get_credential_ref<'e>(
+    pool: impl sqlx::Executor<'e, Database = Sqlite> + 'e,
+    id: Uuid,
+) -> Result<CredentialRef, DbError> {
     let (kind, reference, created, updated) =
         sqlx::query_as::<_, (String, String, String, String)>(
             "SELECT type, reference, created_at, updated_at FROM credential_refs WHERE id = ?",
@@ -130,13 +137,13 @@ pub async fn get_credential_ref(pool: &Pool<Sqlite>, id: Uuid) -> Result<Credent
         id,
         kind: CredentialKind::parse_str(&kind),
         reference,
-        created_at: parse_ts(&created),
-        updated_at: parse_ts(&updated),
+        created_at: parse_ts(&created)?,
+        updated_at: parse_ts(&updated)?,
     })
 }
 
-pub async fn create_endpoint(
-    pool: &Pool<Sqlite>,
+pub async fn create_endpoint<'e>(
+    pool: impl sqlx::Executor<'e, Database = Sqlite> + 'e,
     e: &ProviderEndpoint,
 ) -> Result<ProviderEndpoint, DbError> {
     sqlx::query(
@@ -151,7 +158,7 @@ pub async fn create_endpoint(
     .bind(&e.base_url)
     .bind(e.protocol.as_str())
     .bind(&e.discovery_path)
-    .bind(auth_type_as_str(e.auth_type))
+    .bind(e.auth_type.as_str())
     .bind(e.credential_ref.as_ref().map(|c| c.id.to_string()))
     .bind(serde_json::to_string(&e.headers)?)
     .bind(e.enabled as i64)
@@ -162,8 +169,8 @@ pub async fn create_endpoint(
     Ok(e.clone())
 }
 
-pub async fn list_endpoints(
-    pool: &Pool<Sqlite>,
+pub async fn list_endpoints<'e>(
+    pool: impl sqlx::Executor<'e, Database = Sqlite> + 'e,
     provider_id: Uuid,
 ) -> Result<Vec<ProviderEndpoint>, DbError> {
     let rows = sqlx::query_as::<
@@ -181,11 +188,19 @@ pub async fn list_endpoints(
             i64,
             String,
             String,
+            Option<String>,
+            Option<String>,
+            Option<String>,
+            Option<String>,
         ),
     >(
-        "SELECT id, provider_id, name, base_url, protocol, discovery_path, auth_type,
-                credential_ref_id, headers_json, enabled, created_at, updated_at
-         FROM provider_endpoints WHERE provider_id = ? ORDER BY name",
+        "SELECT e.id, e.provider_id, e.name, e.base_url, e.protocol, e.discovery_path,
+                e.auth_type, e.credential_ref_id, e.headers_json, e.enabled,
+                e.created_at, e.updated_at,
+                c.type, c.reference, c.created_at, c.updated_at
+         FROM provider_endpoints e
+         LEFT JOIN credential_refs c ON c.id = e.credential_ref_id
+         WHERE e.provider_id = ? ORDER BY e.name",
     )
     .bind(provider_id.to_string())
     .fetch_all(pool)
@@ -204,28 +219,40 @@ pub async fn list_endpoints(
         enabled,
         created,
         updated,
+        ctype,
+        cref,
+        ccreated,
+        cupdated,
     ) in rows
     {
-        let cred = match cred_id {
-            Some(cid) => {
-                let parsed = Uuid::parse_str(&cid).map_err(|_| DbError::NotFound(cid.clone()))?;
-                Some(get_credential_ref(pool, parsed).await?)
+        let credential_ref = match (cred_id, ctype, cref, ccreated, cupdated) {
+            (Some(cid), Some(kind), Some(reference), Some(ccreated), Some(cupdated)) => {
+                Some(CredentialRef {
+                    id: Uuid::parse_str(&cid).map_err(|_| DbError::InvalidData(cid))?,
+                    kind: CredentialKind::parse_str(&kind),
+                    reference,
+                    created_at: parse_ts(&ccreated)?,
+                    updated_at: parse_ts(&cupdated)?,
+                })
             }
-            None => None,
+            (Some(_), ..) => {
+                return Err(DbError::InvalidData("credential ref row incomplete".into()));
+            }
+            (None, ..) => None,
         };
         out.push(ProviderEndpoint {
-            id: Uuid::parse_str(&id).map_err(|_| DbError::NotFound(id.clone()))?,
-            provider_id: Uuid::parse_str(&pid).map_err(|_| DbError::NotFound(pid))?,
+            id: Uuid::parse_str(&id).map_err(|_| DbError::InvalidData(id))?,
+            provider_id: Uuid::parse_str(&pid).map_err(|_| DbError::InvalidData(pid))?,
             name,
             base_url,
             protocol: Protocol::parse_str(&protocol),
             discovery_path: discovery,
-            auth_type: auth_type_parse(&auth),
-            credential_ref: cred,
+            auth_type: AuthType::parse_str(&auth),
+            credential_ref,
             headers: serde_json::from_str(&headers).unwrap_or_default(),
             enabled: enabled == 1,
-            created_at: parse_ts(&created),
-            updated_at: parse_ts(&updated),
+            created_at: parse_ts(&created)?,
+            updated_at: parse_ts(&updated)?,
         });
     }
     Ok(out)
@@ -248,31 +275,7 @@ fn row_to_provider(
         display_name,
         enabled: enabled == 1,
         notes,
-        created_at: parse_ts(&created),
-        updated_at: parse_ts(&updated),
+        created_at: parse_ts(&created)?,
+        updated_at: parse_ts(&updated)?,
     })
-}
-
-fn auth_type_as_str(auth: AuthType) -> &'static str {
-    match auth {
-        AuthType::None => "none",
-        AuthType::ApiKeyHeader => "api-key-header",
-        AuthType::BearerToken => "bearer-token",
-        AuthType::CustomHeader => "custom-header",
-    }
-}
-
-fn auth_type_parse(s: &str) -> AuthType {
-    match s {
-        "api-key-header" => AuthType::ApiKeyHeader,
-        "bearer-token" => AuthType::BearerToken,
-        "custom-header" => AuthType::CustomHeader,
-        _ => AuthType::None,
-    }
-}
-
-fn parse_ts(s: &str) -> chrono::DateTime<Utc> {
-    chrono::DateTime::parse_from_rfc3339(s)
-        .map(|d| d.with_timezone(&Utc))
-        .unwrap_or_else(|_| Utc::now())
 }

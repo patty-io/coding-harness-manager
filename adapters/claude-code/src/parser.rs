@@ -4,7 +4,6 @@
 use chm_core::domain::mcp::{McpServer, McpTransport, ScopeType};
 use chm_core::domain::models::ModelRoute;
 use chm_harness_sdk::adapter::types::{AdapterError, HarnessMcp, HarnessModel, ParsedState};
-use chrono::Utc;
 use uuid::Uuid;
 
 const ROLE_ENV_VARS: &[(&str, &str)] = &[
@@ -31,21 +30,13 @@ pub fn parse_config(
             for (key, value) in env {
                 if let Some((_, role)) = ROLE_ENV_VARS.iter().find(|(k, _)| *k == key) {
                     if let Some(model) = value.as_str() {
-                        let route = ModelRoute {
-                            id: Uuid::new_v4(),
-                            endpoint_id: Uuid::new_v4(),
-                            model_identity_id: None,
-                            remote_model_id: model.to_string(),
-                            display_name: format!("{role} role"),
-                            context_window: None,
-                            max_input: None,
-                            max_output: None,
-                            capabilities: serde_json::json!({"role": role}),
-                            overrides: serde_json::json!({"env_key": key}),
-                            enabled: true,
-                            created_at: Utc::now(),
-                            updated_at: Utc::now(),
-                        };
+                        let route = ModelRoute::new(
+                            model.to_string(),
+                            format!("{role} role"),
+                            None,
+                            serde_json::json!({"role": role}),
+                            serde_json::json!({"env_key": key}),
+                        );
                         state.models.push(HarnessModel {
                             native_id: role.to_string(),
                             route,

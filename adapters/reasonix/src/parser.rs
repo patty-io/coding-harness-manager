@@ -4,8 +4,6 @@
 
 use chm_core::domain::models::ModelRoute;
 use chm_harness_sdk::adapter::types::{AdapterError, HarnessModel, ParsedState};
-use chrono::Utc;
-use uuid::Uuid;
 
 pub fn parse_config(raw: &str, home: &std::path::Path) -> Result<ParsedState, AdapterError> {
     let toml: toml::Value = toml::from_str(raw).map_err(|e| AdapterError::Parse {
@@ -36,27 +34,20 @@ pub fn parse_config(raw: &str, home: &std::path::Path) -> Result<ParsedState, Ad
             }));
             if let Some(models) = pv.get("models").and_then(|m| m.as_array()) {
                 for model_id in models.iter().filter_map(|v| v.as_str()) {
-                    let route = ModelRoute {
-                        id: Uuid::new_v4(),
-                        endpoint_id: Uuid::new_v4(),
-                        model_identity_id: None,
-                        remote_model_id: model_id.to_string(),
-                        display_name: format!("{name}/{model_id}"),
-                        context_window: pv.get("context_window").and_then(|v| v.as_integer()),
-                        max_input: None,
-                        max_output: pv.get("max_output_tokens").and_then(|v| v.as_integer()),
-                        capabilities: serde_json::json!({
+                    let mut route = ModelRoute::new(
+                        model_id.to_string(),
+                        format!("{name}/{model_id}"),
+                        pv.get("context_window").and_then(|v| v.as_integer()),
+                        serde_json::json!({
                             "kind": pv.get("kind"),
                             "price": pv.get("price"),
                         }),
-                        overrides: serde_json::json!({
+                        serde_json::json!({
                             "native_provider_id": name,
                             "api_key_env": pv.get("api_key_env"),
                         }),
-                        enabled: true,
-                        created_at: Utc::now(),
-                        updated_at: Utc::now(),
-                    };
+                    );
+                    route.max_output = pv.get("max_output_tokens").and_then(|v| v.as_integer());
                     state.models.push(HarnessModel {
                         native_id: model_id.to_string(),
                         route,

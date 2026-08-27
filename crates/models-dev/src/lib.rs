@@ -29,6 +29,10 @@ pub struct ModelsDevCatalog {
 pub async fn fetch_catalog(http: &reqwest::Client) -> Result<ModelsDevCatalog, MdError> {
     let resp = http.get("https://models.dev/api.json").send().await?;
     let raw: serde_json::Value = resp.json().await?;
+    Ok(parse_catalog(&raw))
+}
+
+fn parse_catalog(raw: &serde_json::Value) -> ModelsDevCatalog {
     let mut models = Vec::new();
     if let Some(providers) = raw.as_object() {
         for (pid, pv) in providers {
@@ -55,40 +59,20 @@ pub async fn fetch_catalog(http: &reqwest::Client) -> Result<ModelsDevCatalog, M
             }
         }
     }
-    Ok(ModelsDevCatalog { models })
+    ModelsDevCatalog { models }
 }
 
-/// Parses the bundled fixture catalog (committed with the crate).
+/// Parses the bundled fixture catalog (committed with the crate), cached so
+/// the 4.3MB JSON is parsed exactly once per process.
 pub fn bundled_catalog() -> ModelsDevCatalog {
-    let raw = include_str!("../fixtures/catalog.json");
-    let parsed: serde_json::Value = serde_json::from_str(raw).unwrap_or_default();
-    let mut models = Vec::new();
-    if let Some(providers) = parsed.as_object() {
-        for (pid, pv) in providers {
-            let provider_name = pv
-                .get("id")
-                .and_then(|v| v.as_str())
-                .unwrap_or(pid)
-                .to_string();
-            if let Some(map) = pv.get("models").and_then(|m| m.as_object()) {
-                for (id, meta) in map {
-                    models.push(ModelsDevModel {
-                        id: id.clone(),
-                        name: meta
-                            .get("name")
-                            .and_then(|v| v.as_str())
-                            .unwrap_or(id)
-                            .to_string(),
-                        provider: Some(provider_name.clone()),
-                        context_window: meta.get("context").and_then(|v| v.as_i64()),
-                        max_output: meta.get("max_output").and_then(|v| v.as_i64()),
-                        modalities: meta.clone(),
-                    });
-                }
-            }
-        }
-    }
-    ModelsDevCatalog { models }
+    static CACHE: std::sync::OnceLock<ModelsDevCatalog> = std::sync::OnceLock::new();
+    CACHE
+        .get_or_init(|| {
+            let raw = include_str!("../fixtures/catalog.json");
+            let parsed: serde_json::Value = serde_json::from_str(raw).unwrap_or_default();
+            parse_catalog(&parsed)
+        })
+        .clone()
 }
 
 #[derive(Debug, Clone, PartialEq)]

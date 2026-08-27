@@ -3,14 +3,15 @@
 use chm_core::domain::history::{
     ConfigSnapshot, SyncTransaction, TransactionStatus, TransactionType,
 };
+use chm_core::parse_ts;
 use chrono::Utc;
 use sqlx::{Pool, Sqlite};
 use uuid::Uuid;
 
 use crate::DbError;
 
-pub async fn begin_transaction(
-    pool: &Pool<Sqlite>,
+pub async fn begin_transaction<'e>(
+    pool: impl sqlx::Executor<'e, Database = Sqlite> + 'e,
     tx_type: TransactionType,
     plan: serde_json::Value,
 ) -> Result<SyncTransaction, DbError> {
@@ -37,8 +38,8 @@ pub async fn begin_transaction(
     Ok(tx)
 }
 
-pub async fn finish_transaction(
-    pool: &Pool<Sqlite>,
+pub async fn finish_transaction<'e>(
+    pool: impl sqlx::Executor<'e, Database = Sqlite> + 'e,
     id: Uuid,
     status: TransactionStatus,
     summary: Option<String>,
@@ -61,7 +62,10 @@ pub async fn finish_transaction(
     Ok(())
 }
 
-pub async fn add_snapshot(pool: &Pool<Sqlite>, s: &ConfigSnapshot) -> Result<(), DbError> {
+pub async fn add_snapshot<'e>(
+    pool: impl sqlx::Executor<'e, Database = Sqlite> + 'e,
+    s: &ConfigSnapshot,
+) -> Result<(), DbError> {
     sqlx::query(
         "INSERT INTO config_snapshots
            (id, transaction_id, harness_installation_id, path, before_content, after_content,
@@ -94,8 +98,8 @@ pub async fn list_transactions(pool: &Pool<Sqlite>) -> Result<Vec<SyncTransactio
                 Ok(SyncTransaction {
                     id: Uuid::parse_str(&id).map_err(|_| DbError::NotFound(id))?,
                     transaction_type: TransactionType::parse_str(&tx_type),
-                    started_at: parse_ts(&started),
-                    completed_at: completed.map(|t| parse_ts(&t)),
+                    started_at: parse_ts(&started)?,
+                    completed_at: completed.and_then(|t| parse_ts(&t).ok()),
                     status: TransactionStatus::parse_str(&status),
                     summary,
                     plan: serde_json::from_str(&plan).unwrap_or_default(),
@@ -106,8 +110,8 @@ pub async fn list_transactions(pool: &Pool<Sqlite>) -> Result<Vec<SyncTransactio
         .collect()
 }
 
-pub async fn list_snapshots(
-    pool: &Pool<Sqlite>,
+pub async fn list_snapshots<'e>(
+    pool: impl sqlx::Executor<'e, Database = Sqlite> + 'e,
     transaction_id: Uuid,
 ) -> Result<Vec<ConfigSnapshot>, DbError> {
     let rows = sqlx::query_as::<
@@ -150,8 +154,8 @@ pub async fn list_snapshots(
 }
 
 /// after_content of the newest snapshot for (installation, path) — last known state.
-pub async fn latest_snapshot_content(
-    pool: &Pool<Sqlite>,
+pub async fn latest_snapshot_content<'e>(
+    pool: impl sqlx::Executor<'e, Database = Sqlite> + 'e,
     installation_id: Uuid,
     path: &str,
 ) -> Result<Option<String>, DbError> {
@@ -165,10 +169,4 @@ pub async fn latest_snapshot_content(
     .fetch_optional(pool)
     .await?;
     Ok(row.map(|r| r.0))
-}
-
-fn parse_ts(s: &str) -> chrono::DateTime<Utc> {
-    chrono::DateTime::parse_from_rfc3339(s)
-        .map(|d| d.with_timezone(&Utc))
-        .unwrap_or_else(|_| Utc::now())
 }

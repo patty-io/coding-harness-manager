@@ -1,7 +1,9 @@
 import { useEffect, useState } from "react";
 import { Link } from "react-router-dom";
+import { TIER1_HARNESSES } from "../lib/api";
 import { useInstallations, useScanHarnesses } from "../hooks/useHarnesses";
 import { useImportHarnessState, useReadHarnessState } from "../hooks/useImport";
+import type { ImportOptions, ImportReport } from "../lib/importApi";
 
 type Step = "welcome" | "scan" | "select" | "review" | "done";
 
@@ -17,19 +19,17 @@ const STEP_LABELS: Record<Step, string> = {
 export default function ImportWizard() {
   const [step, setStep] = useState<Step>("welcome");
   const [selected, setSelected] = useState<string[]>([]);
+  const [reports, setReports] = useState<ImportReport[]>([]);
+  const [importError, setImportError] = useState<string | null>(null);
+  const [importing, setImporting] = useState(false);
   const { data: installations, isLoading } = useInstallations();
   const scan = useScanHarnesses();
   const active = selected[0] ?? null;
   const review = useReadHarnessState(active);
-  const importMutation = useImportHarnessState(active ?? "");
+  const importMutation = useImportHarnessState();
 
-  const tier1 = (installations ?? []).filter(
-    (i) =>
-      i.harness_type === "claude-code" ||
-      i.harness_type === "codex" ||
-      i.harness_type === "opencode" ||
-      i.harness_type === "pi" ||
-      i.harness_type === "reasonix",
+  const tier1 = (installations ?? []).filter((i) =>
+    TIER1_HARNESSES.includes(i.harness_type as (typeof TIER1_HARNESSES)[number]),
   );
 
   const stepIndex = STEPS.indexOf(step);
@@ -39,17 +39,43 @@ export default function ImportWizard() {
       prev.includes(id) ? prev.filter((x) => x !== id) : [...prev, id],
     );
 
-  useEffect(() => {
-    if (importMutation.isSuccess) setStep("done");
-  }, [importMutation.isSuccess]);
-
-  const doImport = () => {
-    importMutation.mutate({
+  const doImport = async () => {
+    setImporting(true);
+    setImportError(null);
+    const options: ImportOptions = {
       importModels: true,
       importMcp: true,
       importSkills: true,
-    });
+    };
+    const results = [];
+    for (const id of selected) {
+      try {
+        results.push(await importMutation.mutateAsync({ installationId: id, options }));
+      } catch (e) {
+        setImportError(e instanceof Error ? e.message : String(e));
+        break;
+      }
+    }
+    setReports(results);
+    setImporting(false);
+    if (results.length > 0) setStep("done");
   };
+
+  useEffect(() => {
+    if (step === "review" && importMutation.isSuccess) setStep("done");
+  }, [importMutation.isSuccess, step]);
+
+  const total = reports.reduce(
+    (acc, r) => ({
+      providers: acc.providers + r.providersCreated,
+      models: acc.models + r.modelsImported,
+      mcp: acc.mcp + r.mcpImported,
+      skills: acc.skills + r.skillsImported,
+      symlinked: acc.symlinked + r.skillsSymlinked,
+      duplicates: acc.duplicates.concat(r.duplicates),
+    }),
+    { providers: 0, models: 0, mcp: 0, skills: 0, symlinked: 0, duplicates: [] as string[] },
+  );
 
   return (
     <div className="mx-auto max-w-2xl">
@@ -57,9 +83,7 @@ export default function ImportWizard() {
         {STEPS.map((s, idx) => (
           <li
             key={s}
-            className={
-              idx <= stepIndex ? "font-medium text-blue-600" : undefined
-            }
+            className={idx <= stepIndex ? "font-medium text-blue-600" : undefined}
           >
             {idx + 1}. {STEP_LABELS[s]}
           </li>
@@ -170,39 +194,46 @@ export default function ImportWizard() {
               </div>
               <button
                 onClick={doImport}
-                disabled={importMutation.isPending}
+                disabled={importing}
                 className="mt-4 rounded bg-blue-600 px-4 py-2 text-white disabled:opacity-50"
               >
-                {importMutation.isPending ? "Importing…" : "Import"}
+                {importing ? "Importing…" : `Import from ${selected.length} harness(es)`}
               </button>
-              {importMutation.isError && (
-                <p className="mt-2 text-red-600">
-                  Import failed: {importMutation.error.message}
-                </p>
+              {importError && (
+                <p className="mt-2 text-red-600">Import failed: {importError}</p>
               )}
             </>
           )}
         </section>
       )}
 
-      {step === "done" && importMutation.data && (
+      {step === "done" && reports.length > 0 && (
         <section className="mt-6">
           <h1 className="text-2xl font-bold">Import complete</h1>
           <ul className="mt-4 list-disc pl-5">
-            <li>{importMutation.data.providersCreated} providers created</li>
-            <li>{importMutation.data.modelsImported} models imported</li>
-            <li>{importMutation.data.mcpImported} MCP servers imported</li>
-            <li>{importMutation.data.skillsImported} skills imported</li>
+            <li>{total.providers} providers created</li>
+            <li>{total.models} models imported</li>
+            <li>{total.mcp} MCP servers imported</li>
+            <li>{total.skills} skills imported</li>
+            {total.symlinked > 0 && (
+              <li>
+                {total.symlinked} symlinked skills already canonical (no copy
+                needed)
+              </li>
+            )}
           </ul>
-          {importMutation.data.duplicates.length > 0 && (
+          {total.duplicates.length > 0 && (
             <div className="mt-4">
               <h2 className="font-medium">Skipped as duplicates</h2>
               <ul className="mt-1 list-disc pl-5 text-sm text-gray-600">
-                {importMutation.data.duplicates.map((d) => (
+                {total.duplicates.map((d) => (
                   <li key={d}>{d}</li>
                 ))}
               </ul>
             </div>
+          )}
+          {importError && (
+            <p className="mt-2 text-red-600">Partial failure: {importError}</p>
           )}
           <Link
             to="/"

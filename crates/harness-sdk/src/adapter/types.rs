@@ -135,7 +135,7 @@ pub fn parse_version_supported(version: Option<&str>, supported: &[&str]) -> boo
         None => true,
         Some(v) => {
             let prefix: String = v.split('.').take(2).collect::<Vec<_>>().join(".");
-            supported.iter().any(|s| prefix == *s || v.starts_with(s))
+            supported.iter().any(|s| prefix == *s)
         }
     }
 }

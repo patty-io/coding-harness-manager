@@ -30,6 +30,38 @@ async fn installation_upsert_is_idempotent() {
 }
 
 #[tokio::test]
+async fn upsert_returns_stable_stored_id_across_rescans() {
+    let pool = connect_test().await.unwrap();
+    let now = chrono::Utc::now();
+    let i = HarnessInstallation {
+        id: uuid::Uuid::new_v4(),
+        harness_type: HarnessType::Pi,
+        executable_path: Some("/usr/local/bin/pi".into()),
+        version: Some("0.84.3".into()),
+        config_path: Some("/Users/me/.pi/agent/models.json".into()),
+        detected_at: now,
+        last_scanned_at: Some(now),
+        status: InstallationStatus::Installed,
+    };
+    let first = upsert_installation(&pool, &i).await.unwrap();
+    // a rescan mints a fresh uuid — the stored row's id must win
+    let rescan = HarnessInstallation {
+        id: uuid::Uuid::new_v4(),
+        version: Some("0.84.4".into()),
+        ..i.clone()
+    };
+    let second = upsert_installation(&pool, &rescan).await.unwrap();
+    assert_eq!(
+        first.id, second.id,
+        "installation id must be stable across rescans"
+    );
+    assert_eq!(second.version.as_deref(), Some("0.84.4"));
+    // the scanned (fresh) id must NOT exist in the db
+    let all = list_installations(&pool).await.unwrap();
+    assert!(all.iter().all(|x| x.id == first.id));
+}
+
+#[tokio::test]
 async fn transaction_and_snapshot_flow() {
     let pool = connect_test().await.unwrap();
     let tx = begin_transaction(

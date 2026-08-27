@@ -11,6 +11,7 @@ pub enum CredentialKind {
     Libsecret,
     Env,
     Vault,
+    Unknown,
 }
 
 impl CredentialKind {
@@ -21,6 +22,7 @@ impl CredentialKind {
             Self::Libsecret => "libsecret",
             Self::Env => "env",
             Self::Vault => "vault",
+            Self::Unknown => "unknown",
         }
     }
 
@@ -30,7 +32,8 @@ impl CredentialKind {
             "libsecret" => Self::Libsecret,
             "env" => Self::Env,
             "vault" => Self::Vault,
-            _ => Self::Keychain,
+            "unknown" => Self::Unknown,
+            _ => Self::Unknown,
         }
     }
 }

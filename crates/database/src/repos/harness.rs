@@ -3,7 +3,7 @@
 use chm_core::domain::harness::{
     HarnessInstallation, HarnessModelBinding, HarnessType, InstallationStatus,
 };
-use chrono::Utc;
+use chm_core::parse_ts;
 use sqlx::{Pool, Sqlite};
 use uuid::Uuid;
 
@@ -35,7 +35,38 @@ pub async fn upsert_installation(
     .bind(i.status.as_str())
     .execute(pool)
     .await?;
-    Ok(i.clone())
+    // The stored row owns the canonical id (stable across rescans) — return it,
+    // not the caller-supplied fresh uuid.
+    let row = sqlx::query_as::<
+        _,
+        (
+            String,
+            String,
+            Option<String>,
+            Option<String>,
+            Option<String>,
+            String,
+            Option<String>,
+            String,
+        ),
+    >(
+        "SELECT id, harness_type, executable_path, version, config_path, detected_at,
+                last_scanned_at, status
+         FROM harness_installations WHERE harness_type = ?",
+    )
+    .bind(i.harness_type.as_str())
+    .fetch_one(pool)
+    .await?;
+    Ok(HarnessInstallation {
+        id: Uuid::parse_str(&row.0).map_err(|_| DbError::InvalidData(row.0))?,
+        harness_type: HarnessType::parse_str(&row.1),
+        executable_path: row.2,
+        version: row.3,
+        config_path: row.4,
+        detected_at: parse_ts(&row.5)?,
+        last_scanned_at: row.6.and_then(|t| parse_ts(&t).ok()),
+        status: InstallationStatus::parse_str(&row.7),
+    })
 }
 
 pub async fn list_installations(pool: &Pool<Sqlite>) -> Result<Vec<HarnessInstallation>, DbError> {
@@ -67,8 +98,8 @@ pub async fn list_installations(pool: &Pool<Sqlite>) -> Result<Vec<HarnessInstal
                     executable_path: exe,
                     version,
                     config_path: config,
-                    detected_at: parse_ts(&detected),
-                    last_scanned_at: last_scanned.map(|t| parse_ts(&t)),
+                    detected_at: parse_ts(&detected)?,
+                    last_scanned_at: last_scanned.and_then(|t| parse_ts(&t).ok()),
                     status: InstallationStatus::parse_str(&status),
                 })
             },
@@ -76,8 +107,8 @@ pub async fn list_installations(pool: &Pool<Sqlite>) -> Result<Vec<HarnessInstal
         .collect()
 }
 
-pub async fn create_model_binding(
-    pool: &Pool<Sqlite>,
+pub async fn create_model_binding<'e>(
+    pool: impl sqlx::Executor<'e, Database = Sqlite> + 'e,
     b: &HarnessModelBinding,
 ) -> Result<(), DbError> {
     sqlx::query(
@@ -99,8 +130,8 @@ pub async fn create_model_binding(
     Ok(())
 }
 
-pub async fn list_model_bindings(
-    pool: &Pool<Sqlite>,
+pub async fn list_model_bindings<'e>(
+    pool: impl sqlx::Executor<'e, Database = Sqlite> + 'e,
     installation_id: Uuid,
 ) -> Result<Vec<HarnessModelBinding>, DbError> {
     let rows = sqlx::query_as::<_, (String, String, String, String, String, i64, String, String)>(
@@ -122,16 +153,10 @@ pub async fn list_model_bindings(
                     native_id,
                     native_config: serde_json::from_str(&native_config).unwrap_or_default(),
                     managed: managed == 1,
-                    created_at: parse_ts(&created),
-                    updated_at: parse_ts(&updated),
+                    created_at: parse_ts(&created)?,
+                    updated_at: parse_ts(&updated)?,
                 })
             },
         )
         .collect()
-}
-
-fn parse_ts(s: &str) -> chrono::DateTime<Utc> {
-    chrono::DateTime::parse_from_rfc3339(s)
-        .map(|d| d.with_timezone(&Utc))
-        .unwrap_or_else(|_| Utc::now())
 }

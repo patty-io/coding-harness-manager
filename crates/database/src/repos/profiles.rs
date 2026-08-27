@@ -3,14 +3,15 @@
 use chm_core::domain::harness::HarnessType;
 use chm_core::domain::profiles::LaunchProfile;
 use chm_core::domain::sets::{ConfigurationSet, ConfigurationSetItem, SetItemType};
+use chm_core::parse_ts;
 use chrono::Utc;
 use sqlx::{Pool, Sqlite};
 use uuid::Uuid;
 
 use crate::DbError;
 
-pub async fn create_profile(
-    pool: &Pool<Sqlite>,
+pub async fn create_profile<'e>(
+    pool: impl sqlx::Executor<'e, Database = Sqlite> + 'e,
     p: &LaunchProfile,
 ) -> Result<LaunchProfile, DbError> {
     sqlx::query(
@@ -79,16 +80,16 @@ pub async fn list_profiles(pool: &Pool<Sqlite>) -> Result<Vec<LaunchProfile>, Db
                     env: serde_json::from_str(&env).unwrap_or_default(),
                     role_mappings: serde_json::from_str(&roles).unwrap_or_default(),
                     native_overrides: serde_json::from_str(&overrides).unwrap_or_default(),
-                    created_at: parse_ts(&created),
-                    updated_at: parse_ts(&updated),
+                    created_at: parse_ts(&created)?,
+                    updated_at: parse_ts(&updated)?,
                 })
             },
         )
         .collect()
 }
 
-pub async fn create_set(
-    pool: &Pool<Sqlite>,
+pub async fn create_set<'e>(
+    pool: impl sqlx::Executor<'e, Database = Sqlite> + 'e,
     name: &str,
     description: Option<String>,
 ) -> Result<ConfigurationSet, DbError> {
@@ -114,8 +115,8 @@ pub async fn create_set(
     Ok(set)
 }
 
-pub async fn add_set_item(
-    pool: &Pool<Sqlite>,
+pub async fn add_set_item<'e>(
+    pool: impl sqlx::Executor<'e, Database = Sqlite> + 'e,
     set_id: Uuid,
     item_type: SetItemType,
     item_id: Uuid,
@@ -133,8 +134,8 @@ pub async fn add_set_item(
     Ok(())
 }
 
-pub async fn list_set_items(
-    pool: &Pool<Sqlite>,
+pub async fn list_set_items<'e>(
+    pool: impl sqlx::Executor<'e, Database = Sqlite> + 'e,
     set_id: Uuid,
 ) -> Result<Vec<ConfigurationSetItem>, DbError> {
     let rows = sqlx::query_as::<_, (String, String, String, String)>(
@@ -169,8 +170,8 @@ pub async fn list_sets(pool: &Pool<Sqlite>) -> Result<Vec<ConfigurationSet>, DbE
                 id: Uuid::parse_str(&id).map_err(|_| DbError::NotFound(id))?,
                 name,
                 description,
-                created_at: parse_ts(&created),
-                updated_at: parse_ts(&updated),
+                created_at: parse_ts(&created)?,
+                updated_at: parse_ts(&updated)?,
             })
         })
         .collect()
@@ -181,10 +182,4 @@ fn parse_opt_uuid(s: Option<String>) -> Result<Option<Uuid>, DbError> {
         Some(v) => Ok(Some(Uuid::parse_str(&v).map_err(|_| DbError::NotFound(v))?)),
         None => Ok(None),
     }
-}
-
-fn parse_ts(s: &str) -> chrono::DateTime<Utc> {
-    chrono::DateTime::parse_from_rfc3339(s)
-        .map(|d| d.with_timezone(&Utc))
-        .unwrap_or_else(|_| Utc::now())
 }

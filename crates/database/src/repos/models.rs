@@ -1,14 +1,15 @@
 //! Identity, catalog, and route repositories.
 
 use chm_core::domain::models::*;
+use chm_core::parse_ts;
 use chrono::Utc;
 use sqlx::{Pool, Sqlite};
 use uuid::Uuid;
 
 use crate::DbError;
 
-pub async fn create_identity(
-    pool: &Pool<Sqlite>,
+pub async fn create_identity<'e>(
+    pool: impl sqlx::Executor<'e, Database = Sqlite> + 'e,
     i: &ModelIdentity,
 ) -> Result<ModelIdentity, DbError> {
     sqlx::query(
@@ -29,8 +30,8 @@ pub async fn create_identity(
     Ok(i.clone())
 }
 
-pub async fn upsert_catalog_model(
-    pool: &Pool<Sqlite>,
+pub async fn upsert_catalog_model<'e>(
+    pool: impl sqlx::Executor<'e, Database = Sqlite> + 'e,
     m: &ProviderCatalogModel,
 ) -> Result<ProviderCatalogModel, DbError> {
     sqlx::query(
@@ -61,8 +62,8 @@ pub async fn upsert_catalog_model(
     Ok(m.clone())
 }
 
-pub async fn list_catalog_models(
-    pool: &Pool<Sqlite>,
+pub async fn list_catalog_models<'e>(
+    pool: impl sqlx::Executor<'e, Database = Sqlite> + 'e,
     endpoint_id: Uuid,
 ) -> Result<Vec<ProviderCatalogModel>, DbError> {
     let rows = sqlx::query_as::<
@@ -99,9 +100,9 @@ pub async fn list_catalog_models(
                         .map(|c| Uuid::parse_str(&c).map_err(|_| DbError::NotFound(c.clone())))
                         .transpose()?,
                     match_confidence: conf.map(|c| c as u8),
-                    first_seen_at: parse_ts(&first),
-                    last_seen_at: parse_ts(&last),
-                    missing_since: missing.map(|t| parse_ts(&t)),
+                    first_seen_at: parse_ts(&first)?,
+                    last_seen_at: parse_ts(&last)?,
+                    missing_since: missing.and_then(|t| parse_ts(&t).ok()),
                     status: CatalogStatus::parse_str(&status),
                 })
             },
@@ -109,7 +110,10 @@ pub async fn list_catalog_models(
         .collect()
 }
 
-pub async fn create_route(pool: &Pool<Sqlite>, r: &ModelRoute) -> Result<ModelRoute, DbError> {
+pub async fn create_route<'e>(
+    pool: impl sqlx::Executor<'e, Database = Sqlite> + 'e,
+    r: &ModelRoute,
+) -> Result<ModelRoute, DbError> {
     sqlx::query(
         "INSERT INTO model_routes
            (id, endpoint_id, model_identity_id, remote_model_id, display_name,
@@ -135,7 +139,10 @@ pub async fn create_route(pool: &Pool<Sqlite>, r: &ModelRoute) -> Result<ModelRo
     Ok(r.clone())
 }
 
-pub async fn update_route(pool: &Pool<Sqlite>, r: &ModelRoute) -> Result<ModelRoute, DbError> {
+pub async fn update_route<'e>(
+    pool: impl sqlx::Executor<'e, Database = Sqlite> + 'e,
+    r: &ModelRoute,
+) -> Result<ModelRoute, DbError> {
     let res = sqlx::query(
         "UPDATE model_routes SET
            model_identity_id = ?, display_name = ?, context_window = ?, max_input = ?,
@@ -160,7 +167,10 @@ pub async fn update_route(pool: &Pool<Sqlite>, r: &ModelRoute) -> Result<ModelRo
     Ok(r.clone())
 }
 
-pub async fn delete_route(pool: &Pool<Sqlite>, id: Uuid) -> Result<(), DbError> {
+pub async fn delete_route<'e>(
+    pool: impl sqlx::Executor<'e, Database = Sqlite> + 'e,
+    id: Uuid,
+) -> Result<(), DbError> {
     let res = sqlx::query("DELETE FROM model_routes WHERE id = ?")
         .bind(id.to_string())
         .execute(pool)
@@ -214,16 +224,10 @@ pub async fn list_routes(pool: &Pool<Sqlite>) -> Result<Vec<ModelRoute>, DbError
                     capabilities: serde_json::from_str(&caps).unwrap_or_default(),
                     overrides: serde_json::from_str(&ovr).unwrap_or_default(),
                     enabled: enabled == 1,
-                    created_at: parse_ts(&created),
-                    updated_at: parse_ts(&updated),
+                    created_at: parse_ts(&created)?,
+                    updated_at: parse_ts(&updated)?,
                 })
             },
         )
         .collect()
-}
-
-fn parse_ts(s: &str) -> chrono::DateTime<Utc> {
-    chrono::DateTime::parse_from_rfc3339(s)
-        .map(|d| d.with_timezone(&Utc))
-        .unwrap_or_else(|_| Utc::now())
 }

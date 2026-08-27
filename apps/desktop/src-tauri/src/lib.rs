@@ -3,7 +3,7 @@
 pub mod commands;
 
 use chm_database::connect;
-use chm_secrets::{KeychainStore, SecretStore};
+use chm_secrets::SecretStore;
 use sqlx::{Pool, Sqlite};
 use tauri::Manager;
 
@@ -20,6 +20,7 @@ fn db_path() -> String {
             let home = std::env::var_os("HOME").unwrap_or_default();
             std::path::PathBuf::from(home).join(".coding-harness-manager")
         });
+    std::fs::create_dir_all(&dir).expect("create data directory");
     dir.join("chm.sqlite").display().to_string()
 }
 
@@ -29,15 +30,13 @@ pub fn run() {
         .setup(|app| {
             let pool =
                 tauri::async_runtime::block_on(connect(&db_path())).expect("database connect");
-            #[cfg(target_os = "macos")]
-            let secrets: Box<dyn SecretStore> =
-                Box::new(KeychainStore::new("coding-harness-manager"));
-            #[cfg(not(target_os = "macos"))]
-            let secrets: Box<dyn SecretStore> = Box::new(chm_secrets::EnvStore);
             app.manage(AppState {
                 pool,
-                secrets,
-                http: reqwest::Client::new(),
+                secrets: chm_secrets::default_store(),
+                http: reqwest::Client::builder()
+                    .timeout(std::time::Duration::from_secs(15))
+                    .build()
+                    .expect("http client"),
             });
             Ok(())
         })

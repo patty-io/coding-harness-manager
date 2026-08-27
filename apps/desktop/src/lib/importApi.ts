@@ -23,6 +23,7 @@ export interface ImportReport {
   modelsImported: number;
   mcpImported: number;
   skillsImported: number;
+  skillsSymlinked: number;
   duplicates: string[];
 }
 

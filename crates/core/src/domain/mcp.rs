@@ -8,6 +8,7 @@ pub enum McpTransport {
     Stdio,
     Http,
     Sse,
+    Unknown,
 }
 
 impl McpTransport {
@@ -16,14 +17,16 @@ impl McpTransport {
             Self::Stdio => "stdio",
             Self::Http => "http",
             Self::Sse => "sse",
+            Self::Unknown => "unknown",
         }
     }
 
     pub fn parse_str(s: &str) -> Self {
         match s {
+            "stdio" => Self::Stdio,
             "http" => Self::Http,
             "sse" => Self::Sse,
-            _ => Self::Stdio,
+            _ => Self::Unknown,
         }
     }
 }
@@ -32,6 +35,22 @@ impl McpTransport {
 pub enum ScopeType {
     Global,
     Project,
+}
+
+impl ScopeType {
+    pub fn as_str(&self) -> &'static str {
+        match self {
+            Self::Global => "global",
+            Self::Project => "project",
+        }
+    }
+
+    pub fn parse_str(s: &str) -> Self {
+        match s {
+            "project" => Self::Project,
+            _ => Self::Global,
+        }
+    }
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]

@@ -34,7 +34,8 @@ impl HarnessType {
             "codex" => Self::Codex,
             "opencode" => Self::OpenCode,
             "pi" => Self::Pi,
-            _ => Self::Reasonix,
+            "reasonix" => Self::Reasonix,
+            other => Self::Custom(other.to_string()),
         }
     }
 }
