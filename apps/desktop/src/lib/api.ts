@@ -87,3 +87,110 @@ export async function importHarnessState(
     options,
   });
 }
+
+// --- Providers ---
+
+export interface Provider {
+  id: string;
+  name: string;
+  display_name: string;
+  enabled: boolean;
+  notes: string | null;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface ProviderEndpoint {
+  id: string;
+  provider_id: string;
+  name: string;
+  base_url: string;
+  protocol: string;
+  discovery_path: string | null;
+  auth_type: string;
+  credential_ref: { id: string; kind: string; reference: string; created_at: string; updated_at: string } | null;
+  headers: Record<string, unknown>;
+  enabled: boolean;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface ProviderCatalogModel {
+  id: string;
+  endpoint_id: string;
+  remote_model_id: string;
+  raw_metadata: unknown;
+  canonical_model_id: string | null;
+  match_confidence: number | null;
+  first_seen_at: string;
+  last_seen_at: string;
+  missing_since: string | null;
+  status: "available" | "new" | "missing" | "deprecated" | "unknown";
+}
+
+export interface ProviderSummary {
+  endpoints: number;
+  discoveredModels: number;
+  myModels: number;
+  health: string;
+}
+
+export interface DiscoverReport {
+  total: number;
+  added: number;
+  updated: number;
+}
+
+export interface EndpointInput {
+  providerId: string;
+  name: string;
+  baseUrl: string;
+  protocol: string;
+  discoveryPath: string | null;
+  authType: string;
+  credentialRefId: string | null;
+  headers: Record<string, unknown>;
+  enabled: boolean;
+}
+
+export async function createProvider(name: string, displayName: string): Promise<Provider> {
+  return invoke<Provider>("create_provider_cmd", { name, displayName });
+}
+export async function listProviders(): Promise<Provider[]> {
+  return invoke<Provider[]>("list_providers_cmd");
+}
+export async function updateProvider(
+  id: string,
+  displayName: string,
+  enabled: boolean,
+  notes: string | null,
+): Promise<Provider> {
+  return invoke<Provider>("update_provider_cmd", { id, displayName, enabled, notes });
+}
+export async function deleteProvider(id: string): Promise<void> {
+  return invoke<void>("delete_provider_cmd", { id });
+}
+export async function listEndpoints(providerId: string): Promise<ProviderEndpoint[]> {
+  return invoke<ProviderEndpoint[]>("list_endpoints_cmd", { providerId });
+}
+export async function createEndpoint(input: EndpointInput): Promise<ProviderEndpoint> {
+  return invoke<ProviderEndpoint>("create_endpoint_cmd", { input });
+}
+export async function saveApiKey(keyName: string, value: string): Promise<string> {
+  return invoke<string>("save_api_key", { keyName, value });
+}
+export async function envVarSet(varName: string): Promise<boolean> {
+  return invoke<boolean>("env_var_set", { varName });
+}
+export async function checkEndpointHealth(endpointId: string): Promise<string> {
+  return invoke<string>("check_endpoint_health", { endpointId });
+}
+export async function discoverEndpointModels(endpointId: string): Promise<DiscoverReport> {
+  return invoke<DiscoverReport>("discover_endpoint_models", { endpointId });
+}
+export async function listCatalogModels(endpointId: string): Promise<ProviderCatalogModel[]> {
+  return invoke<ProviderCatalogModel[]>("list_catalog_models_cmd", { endpointId });
+}
+export async function providerSummary(providerId: string): Promise<ProviderSummary> {
+  return invoke<ProviderSummary>("provider_summary", { providerId });
+}
