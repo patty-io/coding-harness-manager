@@ -75,7 +75,7 @@ export default function ProvidersScreen() {
               </Link>
               <span className="ml-2 text-xs text-slate-400">{p.name}</span>
             </div>
-            <div className="flex items-center gap-3">
+            <div className="flex items-center gap-3" onClick={(e) => e.stopPropagation()}>
               <span
                 className={`rounded px-2 py-0.5 text-xs ${
                   p.enabled ? "bg-green-100 text-green-700" : "bg-slate-700 text-slate-300"

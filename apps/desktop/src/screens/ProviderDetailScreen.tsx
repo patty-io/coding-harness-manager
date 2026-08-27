@@ -1,12 +1,14 @@
 import { useState } from "react";
+import { Link, useParams } from "react-router-dom";
 import {
   useCreateEndpoint,
   useEndpoints,
   useProviderSummary,
+  useProviders,
   useSaveApiKey,
   useEnvVarSet,
 } from "../hooks/useProviders";
-import { useParams } from "react-router-dom";
+import { EndpointActions } from "../components/EndpointActions";
 
 const PROTOCOLS = [
   { value: "anthropic-messages", label: "Anthropic Messages compatible" },
@@ -16,18 +18,28 @@ const PROTOCOLS = [
   { value: "custom", label: "Custom / unknown" },
 ];
 
+const PROTOCOL_LABEL: Record<string, string> = Object.fromEntries(
+  PROTOCOLS.map((p) => [p.value, p.label]),
+);
+
 export default function ProviderDetailScreen() {
   const { id } = useParams<{ id: string }>();
-  const { data: endpoints } = useEndpoints(id);
+  const { data: providers } = useProviders();
+  const { data: endpoints, isLoading: endpointsLoading } = useEndpoints(id);
   const { data: summary } = useProviderSummary(id);
   const create = useCreateEndpoint();
   const saveKey = useSaveApiKey();
   const envSet = useEnvVarSet();
 
+  const provider = (providers ?? []).find((p) => p.id === id);
+
+  const [showForm, setShowForm] = useState(false);
   const [name, setName] = useState("");
   const [baseUrl, setBaseUrl] = useState("");
   const [protocol, setProtocol] = useState("anthropic-messages");
-  const [credentialSource, setCredentialSource] = useState<"keychain" | "env" | "none">("env");
+  const [credentialSource, setCredentialSource] = useState<
+    "keychain" | "env" | "none"
+  >("env");
   const [envVarName, setEnvVarName] = useState("");
   const [apiKey, setApiKey] = useState("");
   const [envWarning, setEnvWarning] = useState<string | null>(null);
@@ -50,15 +62,15 @@ export default function ProviderDetailScreen() {
       });
       setSavedNote("Saved to macOS Keychain");
     } else if (credentialSource === "env") {
+      if (!envVarName.trim()) {
+        setSavedNote("Enter an env var name for env references");
+        return;
+      }
       const set = await envSet.mutateAsync(envVarName.trim());
       if (!set) {
         setEnvWarning(
           `Environment variable ${envVarName.trim()} is not currently set — validation will fail until it is exported.`,
         );
-      }
-      if (!envVarName.trim()) {
-        setSavedNote("Enter an env var name for env references");
-        return;
       }
       pendingEnvVar = envVarName.trim();
     }
@@ -79,6 +91,7 @@ export default function ProviderDetailScreen() {
       },
       {
         onSuccess: () => {
+          setShowForm(false);
           setName("");
           setBaseUrl("");
           setApiKey("");
@@ -90,118 +103,186 @@ export default function ProviderDetailScreen() {
 
   return (
     <div>
-      <h1 className="text-2xl font-bold">Provider</h1>
-      {summary && (
-        <div className="mt-2 flex gap-4 text-sm text-slate-300">
-          <span>{summary.endpoints} endpoints</span>
-          <span>{summary.discoveredModels} discovered models</span>
-          <span>{summary.myModels} My Models</span>
-          <span>health: {summary.health}</span>
-        </div>
-      )}
+      <Link
+        to="/providers"
+        className="inline-flex items-center gap-1 text-sm text-slate-400 hover:text-slate-200"
+      >
+        ← Providers
+      </Link>
 
-      <div className="mt-4 rounded border border-slate-700 bg-slate-800 p-4">
-        <h2 className="font-medium">Add Endpoint</h2>
-        <div className="mt-2 grid grid-cols-1 gap-2 md:grid-cols-2">
-          <input
-            value={name}
-            onChange={(e) => setName(e.target.value)}
-            placeholder="endpoint name (e.g. Anthropic-compatible)"
-            className="rounded border border-slate-600 px-2 py-1"
-          />
-          <input
-            value={baseUrl}
-            onChange={(e) => setBaseUrl(e.target.value)}
-            placeholder="base URL (e.g. https://api.z.ai/api/anthropic)"
-            className="rounded border border-slate-600 px-2 py-1"
-          />
-          <select
-            value={protocol}
-            onChange={(e) => setProtocol(e.target.value)}
-            className="rounded border border-slate-600 px-2 py-1"
-          >
-            {PROTOCOLS.map((p) => (
-              <option key={p.value} value={p.value}>
-                {p.label}
-              </option>
-            ))}
-          </select>
-          <div className="flex gap-3 text-sm">
-            <label>
-              <input
-                type="radio"
-                checked={credentialSource === "env"}
-                onChange={() => setCredentialSource("env")}
-              />{" "}
-              Env var
-            </label>
-            <label>
-              <input
-                type="radio"
-                checked={credentialSource === "keychain"}
-                onChange={() => setCredentialSource("keychain")}
-              />{" "}
-              Store on this computer
-            </label>
-            <label>
-              <input
-                type="radio"
-                checked={credentialSource === "none"}
-                onChange={() => setCredentialSource("none")}
-              />{" "}
-              No auth
-            </label>
-          </div>
-          {credentialSource === "env" && (
-            <input
-              value={envVarName}
-              onChange={(e) => setEnvVarName(e.target.value)}
-              placeholder="env var name (e.g. ZAI_API_KEY)"
-              className="rounded border border-slate-600 px-2 py-1"
-            />
-          )}
-          {credentialSource === "keychain" && (
-            <input
-              type="password"
-              value={apiKey}
-              onChange={(e) => setApiKey(e.target.value)}
-              placeholder="API key (stored in Keychain, never in the DB)"
-              className="rounded border border-slate-600 px-2 py-1"
-            />
-          )}
+      <div className="mt-2 flex items-center justify-between">
+        <div>
+          <h1 className="text-2xl font-bold">
+            {provider?.display_name ?? "…"}
+          </h1>
+          <p className="mt-0.5 font-mono text-xs text-slate-500">
+            {provider?.name}
+            {provider?.notes ? ` · ${provider.notes}` : ""}
+          </p>
         </div>
-        <button
-          onClick={submitEndpoint}
-          disabled={create.isPending}
-          className="mt-3 rounded bg-blue-600 px-4 py-1 text-white disabled:opacity-50"
-        >
-          {create.isPending ? "Adding…" : "Add Endpoint"}
-        </button>
-        {savedNote && <p className="mt-2 text-sm text-green-700">{savedNote}</p>}
-        {envWarning && <p className="mt-2 text-sm text-amber-700">{envWarning}</p>}
-        {create.isError && (
-          <p className="mt-2 text-red-600">Failed: {create.error.message}</p>
+        {provider && (
+          <span
+            className={`rounded px-2 py-0.5 text-xs ${
+              provider.enabled
+                ? "bg-green-500/15 text-green-400"
+                : "bg-slate-700 text-slate-400"
+            }`}
+          >
+            {provider.enabled ? "enabled" : "disabled"}
+          </span>
         )}
       </div>
 
-      <h2 className="mt-6 font-medium">Endpoints</h2>
-      <ul className="mt-2 space-y-2">
+      {summary && (
+        <div className="mt-3 flex gap-4 text-sm text-slate-400">
+          <span>
+            <strong className="text-slate-200">{summary.endpoints}</strong>{" "}
+            endpoints
+          </span>
+          <span>
+            <strong className="text-slate-200">
+              {summary.discoveredModels}
+            </strong>{" "}
+            discovered models
+          </span>
+          <span>
+            <strong className="text-slate-200">{summary.myModels}</strong> My
+            Models
+          </span>
+        </div>
+      )}
+
+      <div className="mt-6 flex items-center justify-between">
+        <h2 className="font-medium text-slate-200">Endpoints</h2>
+        <button
+          onClick={() => setShowForm((v) => !v)}
+          className="rounded bg-blue-600 px-3 py-1 text-sm text-white hover:bg-blue-500"
+        >
+          {showForm ? "Cancel" : "+ Add Endpoint"}
+        </button>
+      </div>
+
+      {showForm && (
+        <div className="mt-3 rounded border border-slate-700 bg-slate-800 p-4">
+          <div className="grid grid-cols-1 gap-2 md:grid-cols-2">
+            <input
+              value={name}
+              onChange={(e) => setName(e.target.value)}
+              placeholder="endpoint name (e.g. Anthropic-compatible)"
+              className="rounded border border-slate-600 bg-slate-900 px-2 py-1 text-slate-200"
+            />
+            <input
+              value={baseUrl}
+              onChange={(e) => setBaseUrl(e.target.value)}
+              placeholder="base URL (e.g. https://api.z.ai/api/anthropic)"
+              className="rounded border border-slate-600 bg-slate-900 px-2 py-1 text-slate-200"
+            />
+            <select
+              value={protocol}
+              onChange={(e) => setProtocol(e.target.value)}
+              className="rounded border border-slate-600 bg-slate-900 px-2 py-1 text-slate-200"
+            >
+              {PROTOCOLS.map((p) => (
+                <option key={p.value} value={p.value}>
+                  {p.label}
+                </option>
+              ))}
+            </select>
+            <div className="flex gap-3 text-sm text-slate-300">
+              <label>
+                <input
+                  type="radio"
+                  checked={credentialSource === "env"}
+                  onChange={() => setCredentialSource("env")}
+                />{" "}
+                Env var
+              </label>
+              <label>
+                <input
+                  type="radio"
+                  checked={credentialSource === "keychain"}
+                  onChange={() => setCredentialSource("keychain")}
+                />{" "}
+                Store on this computer
+              </label>
+              <label>
+                <input
+                  type="radio"
+                  checked={credentialSource === "none"}
+                  onChange={() => setCredentialSource("none")}
+                />{" "}
+                No auth
+              </label>
+            </div>
+            {credentialSource === "env" && (
+              <input
+                value={envVarName}
+                onChange={(e) => setEnvVarName(e.target.value)}
+                placeholder="env var name (e.g. ZAI_API_KEY)"
+                className="rounded border border-slate-600 bg-slate-900 px-2 py-1 text-slate-200"
+              />
+            )}
+            {credentialSource === "keychain" && (
+              <input
+                type="password"
+                value={apiKey}
+                onChange={(e) => setApiKey(e.target.value)}
+                placeholder="API key (stored in Keychain, never in the DB)"
+                className="rounded border border-slate-600 bg-slate-900 px-2 py-1 text-slate-200"
+              />
+            )}
+          </div>
+          <button
+            onClick={submitEndpoint}
+            disabled={create.isPending}
+            className="mt-3 rounded bg-blue-600 px-4 py-1 text-white disabled:opacity-50"
+          >
+            {create.isPending ? "Adding…" : "Add Endpoint"}
+          </button>
+          {savedNote && (
+            <p className="mt-2 text-sm text-green-400">{savedNote}</p>
+          )}
+          {envWarning && (
+            <p className="mt-2 text-sm text-amber-400">{envWarning}</p>
+          )}
+          {create.isError && (
+            <p className="mt-2 text-sm text-red-400">
+              Failed: {create.error.message}
+            </p>
+          )}
+        </div>
+      )}
+
+      {endpointsLoading && <p className="mt-3 text-sm">Loading endpoints…</p>}
+
+      {endpointsLoading === false && (endpoints ?? []).length === 0 && (
+        <p className="mt-3 text-sm text-slate-500">
+          No endpoints yet — add one above.
+        </p>
+      )}
+
+      <ul className="mt-3 space-y-3">
         {(endpoints ?? []).map((e) => (
-          <li key={e.id} className="rounded border border-slate-700 bg-slate-800 p-3">
+          <li key={e.id} className="rounded border border-slate-700 bg-slate-800 p-4">
             <div className="flex items-center justify-between">
-              <span className="font-medium">{e.name}</span>
-              <span className="rounded bg-slate-700 px-2 py-0.5 text-xs">
-                {e.protocol}
+              <span className="font-medium text-slate-100">{e.name}</span>
+              <span className="rounded bg-slate-700 px-2 py-0.5 text-xs text-slate-300">
+                {PROTOCOL_LABEL[e.protocol] ?? e.protocol}
               </span>
             </div>
-            <div className="mt-1 font-mono text-xs text-slate-300">{e.base_url}</div>
-            <div className="mt-1 text-xs text-slate-400">
-              auth: {e.auth_type}
+            <div className="mt-1 font-mono text-xs text-slate-400">
+              {e.base_url}
+            </div>
+            <div className="mt-1 flex flex-wrap gap-x-4 gap-y-1 text-xs text-slate-500">
+              <span>auth: {e.auth_type}</span>
+              <span>discovery: {e.discovery_path ?? "—"}</span>
               {e.credential_ref && (
-                <span className="ml-2">
-                  credential: {e.credential_ref.kind} ({e.credential_ref.reference})
+                <span>
+                  credential: {e.credential_ref.kind} —{" "}
+                  <span className="font-mono">{e.credential_ref.reference}</span>
                 </span>
               )}
+              <span>{e.enabled ? "enabled" : "disabled"}</span>
             </div>
             <EndpointActions endpointId={e.id} />
           </li>
@@ -210,5 +291,3 @@ export default function ProviderDetailScreen() {
     </div>
   );
 }
-
-import { EndpointActions } from "../components/EndpointActions";
