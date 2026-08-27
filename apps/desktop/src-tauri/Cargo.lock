@@ -394,6 +394,17 @@ dependencies = [
 ]
 
 [[package]]
+name = "chm-providers"
+version = "0.1.0"
+dependencies = [
+ "chm-core",
+ "chm-secrets",
+ "reqwest 0.12.28",
+ "serde_json",
+ "thiserror 2.0.20",
+]
+
+[[package]]
 name = "chm-secrets"
 version = "0.1.0"
 dependencies = [
@@ -445,6 +456,7 @@ dependencies = [
  "chm-core",
  "chm-database",
  "chm-harness-sdk",
+ "chm-providers",
  "chm-secrets",
  "chrono",
  "reqwest 0.12.28",

@@ -47,6 +47,18 @@ pub fn run() {
             commands::import::read_harness_state,
             commands::import::import_harness_state,
             commands::dashboard::dashboard_stats,
+            commands::providers::create_provider_cmd,
+            commands::providers::list_providers_cmd,
+            commands::providers::update_provider_cmd,
+            commands::providers::delete_provider_cmd,
+            commands::endpoints::list_endpoints_cmd,
+            commands::endpoints::create_endpoint_cmd,
+            commands::endpoints::save_api_key,
+            commands::endpoints::env_var_set,
+            commands::provider_actions::check_endpoint_health,
+            commands::provider_actions::discover_endpoint_models,
+            commands::provider_actions::list_catalog_models_cmd,
+            commands::provider_actions::provider_summary,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
