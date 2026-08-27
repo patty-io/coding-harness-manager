@@ -7,14 +7,14 @@ import ProviderDetailScreen from "./screens/ProviderDetailScreen";
 import ModelsScreen from "./screens/ModelsScreen";
 import McpScreen from "./screens/McpScreen";
 import SkillsScreen from "./screens/SkillsScreen";
+import HistoryScreen from "./screens/HistoryScreen";
+import ProfilesScreen from "./screens/ProfilesScreen";
 import { DashboardScreen } from "./screens/DashboardScreen";
 import { PlaceholderScreen } from "./screens/PlaceholderScreen";
 
 const PLACEHOLDERS = [
-  "profiles",
   "sets",
   "changes",
-  "history",
   "doctor",
   "settings",
 ];
@@ -33,6 +33,9 @@ export default function App() {
           <Route path="/models" element={<ModelsScreen />} />
           <Route path="/mcp" element={<McpScreen />} />
           <Route path="/skills" element={<SkillsScreen />} />
+          <Route path="/profiles" element={<ProfilesScreen />} />
+          <Route path="/history" element={<HistoryScreen />} />
+          <Route path="/profiles" element={<ProfilesScreen />} />
           {PLACEHOLDERS.map((p) => (
             <Route
               key={p}

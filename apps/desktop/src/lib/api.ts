@@ -419,3 +419,32 @@ export async function deleteProfile(id: string): Promise<void> {
   return invoke<void>("delete_profile_cmd", { id });
 }
 
+
+// --- History / rollback ---
+
+export interface SnapshotEntry {
+  path: string;
+  before: string | null;
+  after: string | null;
+}
+
+export interface HistoryEntry {
+  transactionId: string;
+  transactionType: string;
+  status: string;
+  startedAt: string;
+  summary: string | null;
+  snapshots: SnapshotEntry[];
+}
+
+export interface RollbackReport {
+  filesRestored: string[];
+  newTransactionId: string;
+}
+
+export async function listHistory(limit?: number): Promise<HistoryEntry[]> {
+  return invoke<HistoryEntry[]>("list_history_cmd", { limit });
+}
+export async function rollbackTransaction(transactionId: string): Promise<RollbackReport> {
+  return invoke<RollbackReport>("rollback_transaction_cmd", { transactionId });
+}
