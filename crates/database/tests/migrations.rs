@@ -22,13 +22,12 @@ async fn migration_creates_all_tables() {
         "sync_transactions",
         "config_snapshots",
     ] {
-        let row: (i64,) = sqlx::query_as(
-            "SELECT count(*) FROM sqlite_master WHERE type='table' AND name=?",
-        )
-        .bind(table)
-        .fetch_one(&pool)
-        .await
-        .expect("query");
+        let row: (i64,) =
+            sqlx::query_as("SELECT count(*) FROM sqlite_master WHERE type='table' AND name=?")
+                .bind(table)
+                .fetch_one(&pool)
+                .await
+                .expect("query");
         assert_eq!(row.0, 1, "table {table} missing");
     }
 }

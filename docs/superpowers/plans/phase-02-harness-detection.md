@@ -62,7 +62,7 @@ fn every_definition_has_at_least_one_executable_name() {
 fn tier1_ids_match_domain_harness_types() {
     let defs = tier1_definitions();
     for d in &defs {
-        assert_eq!(chm_core::domain::harness::HarnessType::from_str(d.id).as_str(), d.id);
+        assert_eq!(chm_core::domain::harness::HarnessType::parse_str(d.id).as_str(), d.id);
     }
 }
 ```
@@ -550,7 +550,7 @@ pub fn scan(platform: Platform, home: Option<&Path>, path_env: Option<&str>) -> 
             if let Some(exe) = def.executable_names.iter().find_map(|n| find_executable(n, path_env)) {
                 inventory.installations.push(HarnessInstallation {
                     id: Uuid::new_v4(),
-                    harness_type: HarnessType::from_str(def.id),
+                    harness_type: HarnessType::parse_str(def.id),
                     executable_path: Some(exe),
                     version: None,
                     config_path: None,
@@ -568,7 +568,7 @@ pub fn scan(platform: Platform, home: Option<&Path>, path_env: Option<&str>) -> 
                 let version = detect_version(&executable_path, version_args_for(def));
                 HarnessInstallation {
                     id: Uuid::new_v4(),
-                    harness_type: HarnessType::from_str(def.id),
+                    harness_type: HarnessType::parse_str(def.id),
                     executable_path: Some(executable_path),
                     version,
                     config_path,
@@ -579,7 +579,7 @@ pub fn scan(platform: Platform, home: Option<&Path>, path_env: Option<&str>) -> 
             }
             (None, Some(config_path)) => HarnessInstallation {
                 id: Uuid::new_v4(),
-                harness_type: HarnessType::from_str(def.id),
+                harness_type: HarnessType::parse_str(def.id),
                 executable_path: None,
                 version: None,
                 config_path: Some(config_path),

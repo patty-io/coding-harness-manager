@@ -694,7 +694,7 @@ fn adding_a_model_merges_only_the_provider_subtree() {
     apply_native_plan(&plan).unwrap();
 
     let content = std::fs::read_to_string(&config).unwrap();
-    let json: Value = serde_json::from_str(&content).unwrap();
+    let json: Value = serde_json::parse_str(&content).unwrap();
     assert_eq!(json["theme"], "dark", "unmanaged key must survive");
     assert_eq!(json["provider"]["zai"]["models"]["glm-5-air"]["name"], "GLM-5 Air");
     assert_eq!(json["model"], "glm-5", "top-level model untouched");
@@ -731,7 +731,7 @@ pub fn plan_model_add(file_path: &str, provider_id: &str, model_id: &str, displa
 }
 
 pub fn merge_model(raw: &str, provider_id: &str, model_id: &str, display_name: &str) -> String {
-    let mut doc: Value = serde_json::from_str(raw).unwrap_or(Value::Object(Map::new()));
+    let mut doc: Value = serde_json::parse_str(raw).unwrap_or(Value::Object(Map::new()));
     let providers = doc
         .as_object_mut()
         .unwrap()

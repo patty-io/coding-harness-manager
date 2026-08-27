@@ -24,7 +24,7 @@ impl HarnessType {
         }
     }
 
-    pub fn from_str(s: &str) -> Self {
+    pub fn parse_str(s: &str) -> Self {
         match s {
             "claude-code" => Self::ClaudeCode,
             "codex" => Self::Codex,
@@ -53,7 +53,7 @@ impl InstallationStatus {
         }
     }
 
-    pub fn from_str(s: &str) -> Self {
+    pub fn parse_str(s: &str) -> Self {
         match s {
             "installed" => Self::Installed,
             "config-missing" => Self::ConfigMissing,
@@ -113,7 +113,7 @@ impl BindingType {
         }
     }
 
-    pub fn from_str(s: &str) -> Self {
+    pub fn parse_str(s: &str) -> Self {
         match s {
             "symlink" => Self::Symlink,
             "junction" => Self::Junction,

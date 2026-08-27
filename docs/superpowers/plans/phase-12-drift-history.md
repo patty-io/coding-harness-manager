@@ -276,7 +276,7 @@ async fn export_contains_references_never_values() {
     let path = export_config_core(&pool, &dir.path().display().to_string()).await.unwrap();
     let raw = std::fs::read_to_string(&path).unwrap();
     assert!(raw.contains("coding-harness-manager/providers/zai"), "reference kept");
-    let json: serde_json::Value = serde_json::from_str(&raw).unwrap();
+    let json: serde_json::Value = serde_json::parse_str(&raw).unwrap();
     assert_eq!(json["providers"].as_array().unwrap().len(), 1);
     // no secret VALUES anywhere: every credential object is {kind, reference}
     let endpoints = json["endpoints"].as_array().unwrap();

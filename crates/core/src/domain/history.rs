@@ -22,7 +22,7 @@ impl TransactionType {
         }
     }
 
-    pub fn from_str(s: &str) -> Self {
+    pub fn parse_str(s: &str) -> Self {
         match s {
             "import" => Self::Import,
             "rollback" => Self::Rollback,
@@ -48,7 +48,7 @@ impl TransactionStatus {
         }
     }
 
-    pub fn from_str(s: &str) -> Self {
+    pub fn parse_str(s: &str) -> Self {
         match s {
             "succeeded" => Self::Succeeded,
             "failed" => Self::Failed,

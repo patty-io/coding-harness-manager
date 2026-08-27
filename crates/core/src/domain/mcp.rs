@@ -19,7 +19,7 @@ impl McpTransport {
         }
     }
 
-    pub fn from_str(s: &str) -> Self {
+    pub fn parse_str(s: &str) -> Self {
         match s {
             "http" => Self::Http,
             "sse" => Self::Sse,

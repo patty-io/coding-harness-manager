@@ -264,7 +264,7 @@ fn opencode_full_config_parses_without_warnings() {
         let state = adapter.read_state(&inst).expect("read_state ok");
         assert!(state.warnings.is_empty(), "warnings: {:?}", state.warnings);
 
-        let expected: Value = serde_json::from_str(
+        let expected: Value = serde_json::parse_str(
             &std::fs::read_to_string(golden_path).unwrap_or_else(|_| panic!("golden missing for {golden_path}")),
         ).unwrap();
         let actual = serde_json::json!({
@@ -335,7 +335,7 @@ use chrono::Utc;
 use uuid::Uuid;
 
 pub fn parse_config(raw: &str, config_dir: &std::path::Path) -> Result<ParsedState, AdapterError> {
-    let json: serde_json::Value = serde_json::from_str(raw)
+    let json: serde_json::Value = serde_json::parse_str(raw)
         .map_err(|e| AdapterError::Parse { path: "opencode.json".into(), detail: e.to_string() })?;
     let mut state = ParsedState::default();
 
@@ -383,7 +383,7 @@ pub fn parse_config(raw: &str, config_dir: &std::path::Path) -> Result<ParsedSta
     let mcp_file = config_dir.join("opencode-mcp.json");
     if mcp_file.exists() {
         let raw_mcp = std::fs::read_to_string(&mcp_file)?;
-        let json_mcp: serde_json::Value = serde_json::from_str(&raw_mcp)
+        let json_mcp: serde_json::Value = serde_json::parse_str(&raw_mcp)
             .map_err(|e| AdapterError::Parse { path: mcp_file.display().to_string(), detail: e.to_string() })?;
         if let Some(mcp) = json_mcp.as_object() {
             for (name, spec) in mcp {
@@ -571,7 +571,7 @@ use chrono::Utc;
 use uuid::Uuid;
 
 pub fn parse_config(raw: &str, home: &std::path::Path) -> Result<ParsedState, AdapterError> {
-    let toml: toml::Value = toml::from_str(raw)
+    let toml: toml::Value = toml::parse_str(raw)
         .map_err(|e| AdapterError::Parse { path: "~/.pi/agent/config.toml".into(), detail: e.to_string() })?;
     let mut state = ParsedState::default();
 
@@ -718,7 +718,7 @@ use chrono::Utc;
 use uuid::Uuid;
 
 pub fn parse_config(raw: &str, _home: &std::path::Path) -> Result<ParsedState, AdapterError> {
-    let toml: toml::Value = toml::from_str(raw)
+    let toml: toml::Value = toml::parse_str(raw)
         .map_err(|e| AdapterError::Parse { path: "~/.codex/config.toml".into(), detail: e.to_string() })?;
     let mut state = ParsedState::default();
 
@@ -887,7 +887,7 @@ pub fn parse_config(
 
     // settings.json: model role overrides + env/base-url overrides
     if let Some(raw) = settings_raw {
-        let json: serde_json::Value = serde_json::from_str(raw)
+        let json: serde_json::Value = serde_json::parse_str(raw)
             .map_err(|e| AdapterError::Parse { path: "settings.json".into(), detail: e.to_string() })?;
         if let Some(env) = json.get("env").and_then(|e| e.as_object()) {
             for (key, value) in env {
@@ -924,7 +924,7 @@ pub fn parse_config(
 
     // ~/.claude.json: global mcpServers
     if let Some(raw) = claude_json_raw {
-        let json: serde_json::Value = serde_json::from_str(raw)
+        let json: serde_json::Value = serde_json::parse_str(raw)
             .map_err(|e| AdapterError::Parse { path: "~/.claude.json".into(), detail: e.to_string() })?;
         if let Some(mcp) = json.get("mcpServers").and_then(|m| m.as_object()) {
             for (name, spec) in mcp {

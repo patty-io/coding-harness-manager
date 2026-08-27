@@ -54,12 +54,12 @@ fn endpoint_roundtrips_with_credential_ref() {
 #[test]
 fn protocol_and_status_strings_roundtrip() {
     assert_eq!(
-        Protocol::from_str(Protocol::OpenAiResponses.as_str()),
+        Protocol::parse_str(Protocol::OpenAiResponses.as_str()),
         Protocol::OpenAiResponses
     );
-    assert_eq!(Protocol::from_str("garbage"), Protocol::Custom);
+    assert_eq!(Protocol::parse_str("garbage"), Protocol::Custom);
     assert_eq!(
-        CredentialKind::from_str(CredentialKind::Libsecret.as_str()),
+        CredentialKind::parse_str(CredentialKind::Libsecret.as_str()),
         CredentialKind::Libsecret
     );
 }

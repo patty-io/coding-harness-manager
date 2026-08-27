@@ -24,7 +24,7 @@ impl CredentialKind {
         }
     }
 
-    pub fn from_str(s: &str) -> Self {
+    pub fn parse_str(s: &str) -> Self {
         match s {
             "windows-credential-manager" => Self::WindowsCredentialManager,
             "libsecret" => Self::Libsecret,

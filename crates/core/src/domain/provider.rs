@@ -38,7 +38,7 @@ impl Protocol {
         }
     }
 
-    pub fn from_str(s: &str) -> Self {
+    pub fn parse_str(s: &str) -> Self {
         match s {
             "openai-chat" => Self::OpenAiChatCompletions,
             "openai-responses" => Self::OpenAiResponses,

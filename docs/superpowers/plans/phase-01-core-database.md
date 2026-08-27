@@ -415,7 +415,7 @@ pub enum DbError {
 }
 
 pub async fn connect(path: &str) -> Result<Pool<Sqlite>, DbError> {
-    let opts = SqliteConnectOptions::from_str(path)?
+    let opts = SqliteConnectOptions::parse_str(path)?
         .create_if_missing(true)
         .foreign_keys(true);
     let pool = SqlitePoolOptions::new().max_connections(5).connect_with(opts).await?;
@@ -1118,7 +1118,7 @@ fn provider_roundtrips_through_json() {
         updated_at: ts(),
     };
     let json = serde_json::to_string(&p).unwrap();
-    let back: Provider = serde_json::from_str(&json).unwrap();
+    let back: Provider = serde_json::parse_str(&json).unwrap();
     assert_eq!(p, back);
 }
 
@@ -1145,15 +1145,15 @@ fn endpoint_roundtrips_with_credential_ref() {
         updated_at: ts(),
     };
     let json = serde_json::to_string(&e).unwrap();
-    let back: ProviderEndpoint = serde_json::from_str(&json).unwrap();
+    let back: ProviderEndpoint = serde_json::parse_str(&json).unwrap();
     assert_eq!(e, back);
     assert_eq!(back.credential_ref.unwrap().kind, CredentialKind::Keychain);
 }
 
 #[test]
 fn protocol_and_status_strings_roundtrip() {
-    assert_eq!(Protocol::from_str(Protocol::OpenAiResponses.as_str()), Protocol::OpenAiResponses);
-    assert_eq!(Protocol::from_str("garbage"), Protocol::Custom);
+    assert_eq!(Protocol::parse_str(Protocol::OpenAiResponses.as_str()), Protocol::OpenAiResponses);
+    assert_eq!(Protocol::parse_str("garbage"), Protocol::Custom);
 }
 ```
 
@@ -1505,11 +1505,11 @@ pub async fn list_endpoints(pool: &Pool<Sqlite>, provider_id: Uuid) -> Result<Ve
             provider_id: Uuid::parse_str(&pid).map_err(|_| DbError::NotFound(pid))?,
             name,
             base_url,
-            protocol: chm_core::domain::provider::Protocol::from_str(&protocol),
+            protocol: chm_core::domain::provider::Protocol::parse_str(&protocol),
             discovery_path: discovery,
             auth_type: auth_type_from_str(&auth),
             credential_ref: cred,
-            headers: serde_json::from_str(&headers).unwrap_or_default(),
+            headers: serde_json::parse_str(&headers).unwrap_or_default(),
             enabled: enabled == 1,
             created_at: chrono::DateTime::parse_from_rfc3339(&created).map(|d| d.with_timezone(&Utc)).unwrap_or_else(|_| Utc::now()),
             updated_at: chrono::DateTime::parse_from_rfc3339(&updated).map(|d| d.with_timezone(&Utc)).unwrap_or_else(|_| Utc::now()),
@@ -1527,7 +1527,7 @@ async fn fetch_credential(pool: &Pool<Sqlite>, id: &str) -> Result<CredentialRef
     .await?;
     Ok(CredentialRef {
         id: Uuid::parse_str(id).map_err(|_| DbError::NotFound(id.into()))?,
-        kind: chm_core::domain::credentials::CredentialKind::from_str(&kind),
+        kind: chm_core::domain::credentials::CredentialKind::parse_str(&kind),
         reference,
         created_at: chrono::DateTime::parse_from_rfc3339(&created).map(|d| d.with_timezone(&Utc)).unwrap_or_else(|_| Utc::now()),
         updated_at: chrono::DateTime::parse_from_rfc3339(&updated).map(|d| d.with_timezone(&Utc)).unwrap_or_else(|_| Utc::now()),
@@ -1640,13 +1640,13 @@ pub async fn list_catalog_models(pool: &Pool<Sqlite>, endpoint_id: Uuid) -> Resu
                 id: Uuid::parse_str(&id).map_err(|_| DbError::NotFound(id))?,
                 endpoint_id: Uuid::parse_str(&eid).map_err(|_| DbError::NotFound(eid))?,
                 remote_model_id: rid,
-                raw_metadata: serde_json::from_str(&raw).unwrap_or_default(),
+                raw_metadata: serde_json::parse_str(&raw).unwrap_or_default(),
                 canonical_model_id: canon.map(|c| Uuid::parse_str(&c).map_err(|_| DbError::NotFound(c.clone()))).transpose()?,
                 match_confidence: conf.map(|c| c as u8),
                 first_seen_at: parse_ts(&first),
                 last_seen_at: parse_ts(&last),
                 missing_since: missing.map(|t| parse_ts(&t)),
-                status: CatalogStatus::from_str(&status),
+                status: CatalogStatus::parse_str(&status),
             })
         })
         .collect()
@@ -1723,8 +1723,8 @@ pub async fn list_routes(pool: &Pool<Sqlite>) -> Result<Vec<ModelRoute>, DbError
                 context_window: ctx,
                 max_input: mi,
                 max_output: mo,
-                capabilities: serde_json::from_str(&caps).unwrap_or_default(),
-                overrides: serde_json::from_str(&ovr).unwrap_or_default(),
+                capabilities: serde_json::parse_str(&caps).unwrap_or_default(),
+                overrides: serde_json::parse_str(&ovr).unwrap_or_default(),
                 enabled: enabled == 1,
                 created_at: parse_ts(&created),
                 updated_at: parse_ts(&updated),
@@ -1856,11 +1856,11 @@ async fn skill_and_profile_and_set_flow() {
 
 - [ ] **Step 2: Implement the three repo modules**
 
-`repos/mcp.rs` — follows the exact insert/select pattern from Task 1.4 (`create_mcp_server` inserts all columns with `s.transport.as_str()`, `serde_json::to_string(&s.args)?`, `s.scope_type` as `"global"`/`"project"`; `list_mcp_servers` selects all rows ordered by name and reconstructs with `McpTransport::from_str`, `ScopeType` via `match scope { "project" => Project, _ => Global }`, and `serde_json::from_str(&env)`; `delete_mcp_server` deletes by id, `rows_affected == 0` → `NotFound`).
+`repos/mcp.rs` — follows the exact insert/select pattern from Task 1.4 (`create_mcp_server` inserts all columns with `s.transport.as_str()`, `serde_json::to_string(&s.args)?`, `s.scope_type` as `"global"`/`"project"`; `list_mcp_servers` selects all rows ordered by name and reconstructs with `McpTransport::from_str`, `ScopeType` via `match scope { "project" => Project, _ => Global }`, and `serde_json::parse_str(&env)`; `delete_mcp_server` deletes by id, `rows_affected == 0` → `NotFound`).
 
 `repos/skills.rs` — `create_skill` inserts with `s.source_type.as_str()` (match: Folder→"folder", Git→"git", HarnessImport→"harness-import", Package→"package", Remote→"remote") and `from_str` the reverse; `list_skills` selects ordered by name.
 
-`repos/profiles.rs` — `create_profile` inserts with `p.harness_type.as_str()`, `serde_json::to_string(&p.role_mappings)?` into `role_mappings_json`; `list_profiles` reconstructs `role_mappings: serde_json::from_str(&rm_json).unwrap_or_default()`, `env` from `env_json`; `create_set`/`add_set_item`/`list_sets` are trivial inserts/selects (`add_set_item` uses `item_type.as_str()`: ModelRoute→"model_route", McpServer→"mcp_server", Skill→"skill", LaunchProfile→"launch_profile`).
+`repos/profiles.rs` — `create_profile` inserts with `p.harness_type.as_str()`, `serde_json::to_string(&p.role_mappings)?` into `role_mappings_json`; `list_profiles` reconstructs `role_mappings: serde_json::parse_str(&rm_json).unwrap_or_default()`, `env` from `env_json`; `create_set`/`add_set_item`/`list_sets` are trivial inserts/selects (`add_set_item` uses `item_type.as_str()`: ModelRoute→"model_route", McpServer→"mcp_server", Skill→"skill", LaunchProfile→"launch_profile`).
 
 Update `repos/mod.rs` to add `pub mod mcp; pub mod profiles; pub mod skills;`.
 
@@ -2236,7 +2236,7 @@ use serde_json::Value;
 
 fn load_catalog() -> ModelsDevCatalog {
     let raw = std::fs::read_to_string(concat!(env!("CARGO_MANIFEST_DIR"), "/fixtures/catalog.json")).unwrap();
-    let parsed: Value = serde_json::from_str(&raw).unwrap();
+    let parsed: Value = serde_json::parse_str(&raw).unwrap();
     // api.json shape: map of provider -> { models: { id: {...} } }
     let mut models = Vec::new();
     if let Some(providers) = parsed.as_object() {

@@ -22,7 +22,7 @@ impl SetItemType {
         }
     }
 
-    pub fn from_str(s: &str) -> Self {
+    pub fn parse_str(s: &str) -> Self {
         match s {
             "mcp_server" => Self::McpServer,
             "skill" => Self::Skill,

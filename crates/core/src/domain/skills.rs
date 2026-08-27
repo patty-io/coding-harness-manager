@@ -24,7 +24,7 @@ impl SkillSourceType {
         }
     }
 
-    pub fn from_str(s: &str) -> Self {
+    pub fn parse_str(s: &str) -> Self {
         match s {
             "git" => Self::Git,
             "harness-import" => Self::HarnessImport,
