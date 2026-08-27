@@ -179,7 +179,7 @@ pub async fn run_import(
                 None => match placeholder_endpoint {
                     Some(id) => id,
                     None => {
-                        let id = imported_endpoint_id(&mut *tx, inst).await?;
+                        let id = imported_endpoint_id(&mut tx, inst).await?;
                         placeholder_endpoint = Some(id);
                         id
                     }

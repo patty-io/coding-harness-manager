@@ -1,11 +1,11 @@
 //! My Models commands: route CRUD, discovery import, models.dev enrichment.
 
-use chm_core::domain::models::{CatalogStatus, ModelIdentity, ModelRoute, ProviderCatalogModel};
+use chm_core::domain::models::{ModelIdentity, ModelRoute, ProviderCatalogModel};
 use chm_database::repos::models::{
     create_identity, create_route, delete_route, list_catalog_models, list_routes, update_route,
 };
 use chm_database::repos::providers::{list_endpoints, list_providers};
-use chm_models_dev::{bundled_catalog, match_model};
+use chm_models_dev::match_bundled;
 use serde::{Deserialize, Serialize};
 use sqlx::{Pool, Sqlite};
 use tauri::State;
@@ -37,16 +37,6 @@ async fn get_route(pool: &Pool<Sqlite>, id: Uuid) -> Result<ModelRoute, String> 
         .into_iter()
         .find(|r| r.id == id)
         .ok_or_else(|| format!("route {id} not found"))
-}
-
-/// Applies a provenance envelope's value into the matching route field.
-fn apply_override_to_field(route: &mut ModelRoute, field: &str, value: &serde_json::Value) {
-    match field {
-        "context_window" => route.context_window = value.as_i64(),
-        "max_input" => route.max_input = value.as_i64(),
-        "max_output" => route.max_output = value.as_i64(),
-        _ => {}
-    }
 }
 
 pub async fn list_route_views(pool: &Pool<Sqlite>) -> Result<Vec<ModelRouteView>, String> {
@@ -378,7 +368,6 @@ pub async fn enrich_route(pool: &Pool<Sqlite>, route_id: &str) -> Result<EnrichO
     {
         return Ok(EnrichOutcome::Unknown);
     }
-    let catalog = bundled_catalog();
     let hit = match_bundled(&route.remote_model_id);
     match hit.confidence {
         0 => Ok(EnrichOutcome::Unknown),
@@ -433,7 +422,7 @@ pub async fn enrich_route(pool: &Pool<Sqlite>, route_id: &str) -> Result<EnrichO
                 .rsplit('/')
                 .next()
                 .unwrap_or(&route.remote_model_id);
-            let candidates: Vec<EnrichCandidate> = catalog
+            let candidates: Vec<EnrichCandidate> = chm_models_dev::bundled_catalog()
                 .models
                 .iter()
                 .filter(|m| {

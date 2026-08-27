@@ -134,7 +134,9 @@ async fn in_batch_duplicate_mcp_is_reported_not_fatal() {
     )
     .await
     .unwrap();
-    let report = run_import(&pool, &inst, &parsed.2, true, true, true).await.unwrap();
+    let report = run_import(&pool, &inst, &parsed.2, true, true, true)
+        .await
+        .unwrap();
 
     assert_eq!(report.mcp_imported, 1, "first occurrence imports");
     assert!(

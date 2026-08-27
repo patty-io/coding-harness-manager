@@ -249,7 +249,7 @@ pub async fn execute_sync(
                     &inst,
                     &native_plan,
                     &backups,
-                    &[msg.clone()],
+                    std::slice::from_ref(&msg),
                 )
                 .await?;
                 return Err(msg);
@@ -345,7 +345,7 @@ pub async fn execute_sync(
                 &inst,
                 &native_plan,
                 &backups,
-                &[e.clone()],
+                std::slice::from_ref(&e),
             )
             .await?;
             return Err(e);
@@ -444,7 +444,7 @@ pub async fn bind_mcp_sync(
                     inst,
                     &native_plan,
                     &backups,
-                    &[msg.clone()],
+                    std::slice::from_ref(&msg),
                 )
                 .await?;
                 return Err(msg);
@@ -460,7 +460,7 @@ pub async fn bind_mcp_sync(
             inst,
             &native_plan,
             &backups,
-            &[msg.clone()],
+            std::slice::from_ref(&msg),
         )
         .await?;
         return Err(msg);
@@ -525,16 +525,4 @@ pub async fn bind_mcp_sync(
             Err(e.to_string())
         }
     }
-}
-
-// blocking fallback used only on the fire-and-forget error path above
-fn futures_block_on_rollback(
-    _pool: &Pool<Sqlite>,
-    _tx: Uuid,
-    _adapter: &dyn HarnessAdapter,
-    _inst: &HarnessInstallation,
-    _plan: &NativePlan,
-    _backups: &[(String, std::path::PathBuf)],
-    _errors: &[String],
-) {
 }
