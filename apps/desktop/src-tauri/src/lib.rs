@@ -44,6 +44,8 @@ pub fn run() {
         .invoke_handler(tauri::generate_handler![
             commands::scan::scan_harnesses,
             commands::scan::list_installations_cmd,
+            commands::import::read_harness_state,
+            commands::import::import_harness_state,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
