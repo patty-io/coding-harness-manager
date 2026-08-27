@@ -178,7 +178,10 @@ dependencies = [
 name = "chm-filesystem"
 version = "0.1.0"
 dependencies = [
- "serde",
+ "chrono",
+ "libc",
+ "tempfile",
+ "thiserror",
 ]
 
 [[package]]
