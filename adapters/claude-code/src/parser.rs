@@ -37,7 +37,7 @@ pub fn parse_config(
                             serde_json::json!({"env_key": key}),
                         );
                         state.models.push(HarnessModel {
-                            native_id: role.to_string(),
+                            native_id: model.to_string(),
                             route,
                         });
                     }

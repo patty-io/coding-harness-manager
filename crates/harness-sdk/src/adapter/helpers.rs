@@ -8,7 +8,7 @@ use chm_core::domain::mcp::{McpServer, McpTransport, ScopeType};
 use chrono::Utc;
 use uuid::Uuid;
 
-use crate::adapter::types::HarnessSkill;
+use crate::adapter::types::{ApplyResult, HarnessSkill, NativePlan};
 use crate::definition::{HarnessDefinition, Platform};
 
 /// One harness through the standard detection pipeline (executable → config →
@@ -183,4 +183,22 @@ pub fn parse_mcp_json(
             .and_then(|v| v.as_bool())
             .unwrap_or(true),
     }
+}
+
+/// Applies a native plan: backups + atomic writes for every change.
+/// The sync flow ALSO backs up before apply; this helper is for adapter
+/// direct-apply paths (bind_mcp_sync).
+pub fn apply_native_plan(plan: &NativePlan) -> Result<ApplyResult, String> {
+    let mut result = ApplyResult {
+        files_written: vec![],
+        links_created: vec![],
+    };
+    for change in &plan.changes {
+        let after = change.after.clone().ok_or("change without after content")?;
+        let _ = chm_filesystem::backup_file(std::path::Path::new(&change.file_path));
+        chm_filesystem::atomic_write(std::path::Path::new(&change.file_path), &after)
+            .map_err(|e| e.to_string())?;
+        result.files_written.push(change.file_path.clone());
+    }
+    Ok(result)
 }

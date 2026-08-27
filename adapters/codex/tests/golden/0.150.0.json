@@ -70,7 +70,7 @@
       },
       "context_window": 1000000,
       "display_name": "zai/glm-5.2",
-      "native_id": "zai/glm-5.2",
+      "native_id": "glm-5.2",
       "overrides": {
         "native_provider_id": "glm",
         "provider_file": "glm.config.toml",

@@ -57,13 +57,18 @@ impl HarnessAdapter for ClaudeCodeAdapter {
                 )],
             });
         }
-        let mut changes = vec![];
         let mut warnings = vec![];
         let home = chm_harness_sdk::adapter::helpers::install_home_from_config(
             install.config_path.as_deref().unwrap_or(""),
             ".claude",
         );
         let settings_path = home.join(".claude/settings.json").display().to_string();
+        let raw = std::fs::read_to_string(&settings_path).unwrap_or_else(|_| "{}".into());
+        let mut doc = writer::parse_document(&raw).map_err(|e| AdapterError::Parse {
+            path: settings_path.clone(),
+            detail: e,
+        })?;
+        let mut folded = false;
         for action in &plan.actions {
             match action {
                 PlanAction::Add(a) if a.kind == "model" => {
@@ -78,15 +83,35 @@ impl HarnessAdapter for ClaudeCodeAdapter {
                         .get("remote_model_id")
                         .and_then(|v| v.as_str())
                         .unwrap_or("");
-                    changes.push(writer::plan_role_model(&settings_path, role, model_id));
+                    let env_key = match role {
+                        "opus" => "ANTHROPIC_DEFAULT_OPUS_MODEL",
+                        "sonnet" => "ANTHROPIC_DEFAULT_SONNET_MODEL",
+                        "haiku" => "ANTHROPIC_DEFAULT_HAIKU_MODEL",
+                        _ => "ANTHROPIC_MODEL",
+                    };
+                    writer::fold_env(&mut doc, env_key, model_id);
+                    folded = true;
                 }
                 PlanAction::Unsupported(u) => warnings.push(format!("unsupported: {}", u.reason)),
                 PlanAction::Conflict(c) => {
                     warnings.push(format!("conflict on {}: {}", c.identity, c.reason))
                 }
+                PlanAction::Add(a) => warnings.push(format!(
+                    "{} action for {} not supported by claude-code writer yet",
+                    a.kind, a.identity
+                )),
                 _ => {}
             }
         }
+        let changes = if folded {
+            vec![chm_harness_sdk::adapter::types::NativeChange {
+                file_path: settings_path,
+                before: Some(raw),
+                after: Some(writer::serialize(&doc)),
+            }]
+        } else {
+            vec![]
+        };
         Ok(NativePlan {
             changes,
             links: vec![],
@@ -99,7 +124,8 @@ impl HarnessAdapter for ClaudeCodeAdapter {
         _install: &HarnessInstallation,
         native_plan: &NativePlan,
     ) -> Result<ApplyResult, AdapterError> {
-        writer::apply_native_plan(native_plan).map_err(AdapterError::Invalid)
+        chm_harness_sdk::adapter::helpers::apply_native_plan(native_plan)
+            .map_err(AdapterError::Invalid)
     }
 
     fn validate(&self, install: &HarnessInstallation) -> Result<ValidationReport, AdapterError> {

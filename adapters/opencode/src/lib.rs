@@ -9,7 +9,7 @@ use chm_core::domain::harness::HarnessInstallation;
 use chm_harness_sdk::adapter::parse_version_supported;
 use chm_harness_sdk::adapter::plan::PlanAction;
 use chm_harness_sdk::adapter::types::{
-    AdapterError, ApplyResult, HarnessAdapter, HarnessCapabilities, NativeLink, NativePlan,
+    AdapterError, ApplyResult, HarnessAdapter, HarnessCapabilities, NativeChange, NativePlan,
     ParsedState, ValidationReport,
 };
 
@@ -48,7 +48,6 @@ impl HarnessAdapter for OpenCodeAdapter {
         plan: &chm_harness_sdk::adapter::plan::ReconciliationPlan,
         install: &HarnessInstallation,
     ) -> Result<NativePlan, AdapterError> {
-        // version gate: read-only for untested versions
         if !parse_version_supported(
             install.version.as_deref(),
             &["0.30", "0.31", "0.32", "1.1", "1.18"],
@@ -62,10 +61,14 @@ impl HarnessAdapter for OpenCodeAdapter {
                 )],
             });
         }
-        let mut changes: Vec<chm_harness_sdk::adapter::types::NativeChange> = vec![];
-        let links: Vec<NativeLink> = vec![];
         let mut warnings = vec![];
         let config_path = install.config_path.as_deref().unwrap_or("").to_string();
+        let raw = std::fs::read_to_string(&config_path).unwrap_or_else(|_| "{}".into());
+        let mut doc = writer::parse_document(&raw).map_err(|e| AdapterError::Parse {
+            path: config_path.clone(),
+            detail: e,
+        })?;
+        let mut folded = false;
 
         for action in &plan.actions {
             match action {
@@ -85,8 +88,8 @@ impl HarnessAdapter for OpenCodeAdapter {
                         .get("display_name")
                         .and_then(|v| v.as_str())
                         .unwrap_or(model_id);
-                    changes.push(writer::plan_model_add(
-                        &config_path,
+                    writer::fold_model(
+                        &mut doc,
                         provider_id,
                         model_id,
                         display,
@@ -94,25 +97,20 @@ impl HarnessAdapter for OpenCodeAdapter {
                         a.payload
                             .get("capabilities")
                             .unwrap_or(&serde_json::json!({})),
-                    ));
+                    );
+                    folded = true;
                 }
                 PlanAction::Add(a) if a.kind == "mcp" => {
-                    let spec = &a.payload;
-                    let name = a.identity.as_str();
-                    let command = spec
-                        .get("command")
-                        .and_then(|v| v.as_str())
-                        .unwrap_or("npx");
-                    let args: Vec<String> = spec
-                        .get("args")
-                        .and_then(|v| v.as_array())
-                        .map(|a| {
-                            a.iter()
-                                .filter_map(|v| v.as_str().map(String::from))
-                                .collect()
-                        })
-                        .unwrap_or_default();
-                    changes.push(writer::plan_mcp_add(&config_path, name, command, &args));
+                    let name = a.identity.clone();
+                    let spec: chm_core::domain::mcp::McpServer =
+                        serde_json::from_value(a.payload.clone()).map_err(|e| {
+                            AdapterError::Parse {
+                                path: config_path.clone(),
+                                detail: format!("mcp payload not a McpServer: {e}"),
+                            }
+                        })?;
+                    writer::fold_mcp(&mut doc, &name, &spec);
+                    folded = true;
                 }
                 PlanAction::Remove(r) if r.kind == "model" => {
                     warnings.push(format!(
@@ -127,9 +125,18 @@ impl HarnessAdapter for OpenCodeAdapter {
                 _ => {}
             }
         }
+        let changes = if folded {
+            vec![NativeChange {
+                file_path: config_path,
+                before: Some(raw),
+                after: Some(writer::serialize(&doc)),
+            }]
+        } else {
+            vec![]
+        };
         Ok(NativePlan {
             changes,
-            links,
+            links: vec![],
             warnings,
         })
     }
@@ -139,7 +146,8 @@ impl HarnessAdapter for OpenCodeAdapter {
         _install: &HarnessInstallation,
         native_plan: &NativePlan,
     ) -> Result<ApplyResult, AdapterError> {
-        writer::apply_native_plan(native_plan).map_err(AdapterError::Invalid)
+        chm_harness_sdk::adapter::helpers::apply_native_plan(native_plan)
+            .map_err(AdapterError::Invalid)
     }
 
     fn validate(&self, install: &HarnessInstallation) -> Result<ValidationReport, AdapterError> {

@@ -149,6 +149,7 @@ fn parse_provider_file(raw: &str, file_id: &str, state: &mut ParsedState) {
             .next_back()
             .unwrap_or(model_id)
             .to_string();
+        let native_id = remote_id.clone();
         let route = ModelRoute {
             id: Uuid::new_v4(),
             endpoint_id: Uuid::new_v4(),
@@ -175,10 +176,7 @@ fn parse_provider_file(raw: &str, file_id: &str, state: &mut ParsedState) {
             created_at: Utc::now(),
             updated_at: Utc::now(),
         };
-        state.models.push(HarnessModel {
-            native_id: model_id.to_string(),
-            route,
-        });
+        state.models.push(HarnessModel { native_id, route });
     }
     if let Some(mcps) = toml.get("mcp_servers").and_then(|m| m.as_table()) {
         for (name, spec) in mcps {

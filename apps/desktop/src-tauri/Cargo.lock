@@ -396,6 +396,7 @@ name = "chm-harness-sdk"
 version = "0.1.0"
 dependencies = [
  "chm-core",
+ "chm-filesystem",
  "chrono",
  "serde",
  "serde_json",

@@ -100,3 +100,23 @@ pub fn validate_config(file_path: &str) -> ValidationReport {
         },
     }
 }
+
+/// Folds one provider/model add directly into a document.
+pub fn fold_provider(
+    doc: &mut DocumentMut,
+    provider_id: &str,
+    kind: &str,
+    base_url: &str,
+    model_id: &str,
+    api_key_env: Option<&str>,
+) {
+    let after = merge_provider(
+        &doc.to_string(),
+        provider_id,
+        kind,
+        base_url,
+        model_id,
+        api_key_env,
+    );
+    *doc = after.parse().unwrap_or_else(|_| DocumentMut::new());
+}

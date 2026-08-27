@@ -53,12 +53,14 @@ impl HarnessAdapter for CodexAdapter {
                 )],
             });
         }
-        let mut changes = vec![];
         let mut warnings = vec![];
         let home = chm_harness_sdk::adapter::helpers::install_home_from_config(
             install.config_path.as_deref().unwrap_or(""),
             ".codex",
         );
+        // fold per provider file: each <provider>.config.toml gets ONE change
+        let mut by_file: std::collections::BTreeMap<String, (String, toml_edit::DocumentMut)> =
+            std::collections::BTreeMap::new();
         for action in &plan.actions {
             match action {
                 PlanAction::Add(a) if a.kind == "model" => {
@@ -88,22 +90,34 @@ impl HarnessAdapter for CodexAdapter {
                         .join(format!("{provider_id}.config.toml"))
                         .display()
                         .to_string();
-                    changes.push(writer::plan_provider_file(
-                        &file,
-                        provider_id,
-                        model_id,
-                        base_url,
-                        env_key,
-                        wire_api,
-                    ));
+                    let (_raw, doc) = by_file.entry(file.clone()).or_insert_with(|| {
+                        let raw = std::fs::read_to_string(&file).unwrap_or_default();
+                        let doc: toml_edit::DocumentMut = raw.parse().unwrap_or_default();
+                        (raw, doc)
+                    });
+                    writer::fold_provider(doc, provider_id, model_id, base_url, env_key, wire_api);
                 }
                 PlanAction::Unsupported(u) => warnings.push(format!("unsupported: {}", u.reason)),
                 PlanAction::Conflict(c) => {
                     warnings.push(format!("conflict on {}: {}", c.identity, c.reason))
                 }
+                PlanAction::Add(a) => warnings.push(format!(
+                    "{} action for {} not supported by codex writer yet",
+                    a.kind, a.identity
+                )),
                 _ => {}
             }
         }
+        let changes: Vec<chm_harness_sdk::adapter::types::NativeChange> = by_file
+            .into_iter()
+            .map(
+                |(file, (raw, doc))| chm_harness_sdk::adapter::types::NativeChange {
+                    file_path: file,
+                    before: Some(raw),
+                    after: Some(doc.to_string()),
+                },
+            )
+            .collect();
         Ok(NativePlan {
             changes,
             links: vec![],
@@ -116,17 +130,16 @@ impl HarnessAdapter for CodexAdapter {
         _install: &HarnessInstallation,
         native_plan: &NativePlan,
     ) -> Result<ApplyResult, AdapterError> {
-        writer::apply_native_plan(native_plan).map_err(AdapterError::Invalid)
+        chm_harness_sdk::adapter::helpers::apply_native_plan(native_plan)
+            .map_err(AdapterError::Invalid)
     }
 
-    fn validate(&self, install: &HarnessInstallation) -> Result<ValidationReport, AdapterError> {
-        let home = chm_harness_sdk::adapter::helpers::install_home_from_config(
-            install.config_path.as_deref().unwrap_or(""),
-            ".codex",
-        );
-        Ok(writer::validate_config(
-            &home.join(".codex/config.toml").display().to_string(),
-        ))
+    fn validate(&self, _install: &HarnessInstallation) -> Result<ValidationReport, AdapterError> {
+        // the sync flow passes the plan; adapter-level validate checks the main config
+        Ok(writer::validate_config(&home_config(
+            _install,
+            "config.toml",
+        )))
     }
 
     fn rollback(
@@ -136,4 +149,12 @@ impl HarnessAdapter for CodexAdapter {
     ) -> Result<(), AdapterError> {
         Ok(())
     }
+}
+
+fn home_config(install: &HarnessInstallation, name: &str) -> String {
+    let home = chm_harness_sdk::adapter::helpers::install_home_from_config(
+        install.config_path.as_deref().unwrap_or(""),
+        ".codex",
+    );
+    home.join(".codex").join(name).display().to_string()
 }

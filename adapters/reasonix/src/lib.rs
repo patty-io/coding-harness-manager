@@ -53,13 +53,15 @@ impl HarnessAdapter for ReasonixAdapter {
                 )],
             });
         }
-        let mut changes = vec![];
         let mut warnings = vec![];
         let home = chm_harness_sdk::adapter::helpers::install_home_from_config(
             install.config_path.as_deref().unwrap_or(""),
             ".reasonix",
         );
         let config_path = home.join(".reasonix/config.toml").display().to_string();
+        let raw = std::fs::read_to_string(&config_path).unwrap_or_default();
+        let mut doc: toml_edit::DocumentMut = raw.parse().unwrap_or_default();
+        let mut folded = false;
         for action in &plan.actions {
             match action {
                 PlanAction::Add(a) if a.kind == "model" => {
@@ -85,22 +87,29 @@ impl HarnessAdapter for ReasonixAdapter {
                         .and_then(|v| v.as_str())
                         .unwrap_or("https://api.example.com/v1");
                     let env_key = a.payload.get("api_key_env").and_then(|v| v.as_str());
-                    changes.push(writer::plan_provider_add(
-                        &config_path,
-                        provider_id,
-                        kind,
-                        base_url,
-                        model_id,
-                        env_key,
-                    ));
+                    writer::fold_provider(&mut doc, provider_id, kind, base_url, model_id, env_key);
+                    folded = true;
                 }
                 PlanAction::Unsupported(u) => warnings.push(format!("unsupported: {}", u.reason)),
                 PlanAction::Conflict(c) => {
                     warnings.push(format!("conflict on {}: {}", c.identity, c.reason))
                 }
+                PlanAction::Add(a) => warnings.push(format!(
+                    "{} action for {} not supported by reasonix writer yet",
+                    a.kind, a.identity
+                )),
                 _ => {}
             }
         }
+        let changes = if folded {
+            vec![chm_harness_sdk::adapter::types::NativeChange {
+                file_path: config_path,
+                before: Some(raw),
+                after: Some(doc.to_string()),
+            }]
+        } else {
+            vec![]
+        };
         Ok(NativePlan {
             changes,
             links: vec![],
@@ -113,7 +122,8 @@ impl HarnessAdapter for ReasonixAdapter {
         _install: &HarnessInstallation,
         native_plan: &NativePlan,
     ) -> Result<ApplyResult, AdapterError> {
-        writer::apply_native_plan(native_plan).map_err(AdapterError::Invalid)
+        chm_harness_sdk::adapter::helpers::apply_native_plan(native_plan)
+            .map_err(AdapterError::Invalid)
     }
 
     fn validate(&self, install: &HarnessInstallation) -> Result<ValidationReport, AdapterError> {
