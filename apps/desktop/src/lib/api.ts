@@ -194,3 +194,90 @@ export async function listCatalogModels(endpointId: string): Promise<ProviderCat
 export async function providerSummary(providerId: string): Promise<ProviderSummary> {
   return invoke<ProviderSummary>("provider_summary", { providerId });
 }
+
+// --- My Models ---
+
+export interface ModelRouteView {
+  id: string;
+  endpoint_id: string;
+  provider_name: string;
+  remote_model_id: string;
+  display_name: string;
+  context_window: number | null;
+  max_input: number | null;
+  max_output: number | null;
+  capabilities: unknown;
+  overrides: unknown;
+  enabled: boolean;
+  identity_name: string | null;
+  provenance: { source?: string } | null;
+}
+
+export interface CatalogView {
+  id: string;
+  endpoint_id: string;
+  provider_name: string;
+  endpoint_name: string;
+  remote_model_id: string;
+  status: string;
+  matchConfidence: number | null;
+  identity_name: string | null;
+}
+
+export interface RouteUpdateInput {
+  displayName?: string;
+  contextWindow?: number;
+  maxInput?: number;
+  maxOutput?: number;
+  enabled?: boolean;
+  capabilities?: unknown;
+  overrides?: unknown;
+}
+
+export interface RouteCreateInput {
+  endpointId: string;
+  remoteModelId: string;
+  displayName?: string;
+  contextWindow?: number;
+  maxInput?: number;
+  maxOutput?: number;
+  capabilities?: unknown;
+}
+
+export interface EnrichCandidate {
+  modelsDevId: string;
+  displayName: string;
+  contextWindow: number | null;
+  maxOutput: number | null;
+  confidence: number;
+}
+
+export type EnrichOutcome =
+  | { Matched: { confidence: number; identity_id: string; identity_name: string } }
+  | { Ambiguous: { candidates: EnrichCandidate[]; current: unknown } }
+  | "Unknown";
+
+export async function listRoutes(): Promise<ModelRouteView[]> {
+  return invoke<ModelRouteView[]>("list_routes_cmd");
+}
+export async function updateRouteCmd(id: string, input: RouteUpdateInput): Promise<void> {
+  return invoke<void>("update_route_cmd", { id, input });
+}
+export async function deleteRouteCmd(id: string): Promise<void> {
+  return invoke<void>("delete_route_cmd", { id });
+}
+export async function createRouteCmd(input: RouteCreateInput): Promise<string> {
+  return invoke<string>("create_route_cmd", { input });
+}
+export async function listCatalogAll(): Promise<CatalogView[]> {
+  return invoke<CatalogView[]>("list_catalog_all");
+}
+export async function addCatalogBatch(catalogIds: string[]): Promise<number> {
+  return invoke<number>("add_catalog_batch", { catalogIds });
+}
+export async function enrichRoute(routeId: string): Promise<EnrichOutcome> {
+  return invoke<EnrichOutcome>("enrich_route_cmd", { routeId });
+}
+export async function resolveEnrichment(routeId: string, identityId: string): Promise<void> {
+  return invoke<void>("resolve_enrichment_cmd", { routeId, identityId });
+}
