@@ -88,6 +88,27 @@ pub async fn read_harness_state(
     })
 }
 
+/// Returns the primary config file for a harness, verbatim from disk.
+/// The Raw config tab mirrors exactly what is on the machine — no
+/// interpretation, no merging.
+#[tauri::command]
+pub async fn read_harness_raw_config(
+    state: State<'_, AppState>,
+    installation_id: String,
+) -> Result<String, String> {
+    let inst = list_installations(&state.pool)
+        .await
+        .map_err(|e| e.to_string())?
+        .into_iter()
+        .find(|i| i.id.to_string() == installation_id)
+        .ok_or_else(|| format!("installation {installation_id} not found"))?;
+    let path = inst
+        .config_path
+        .as_ref()
+        .ok_or("harness has no known config path")?;
+    std::fs::read_to_string(path).map_err(|e| format!("failed to read {path}: {e}"))
+}
+
 #[tauri::command]
 pub async fn import_harness_state(
     state: State<'_, AppState>,

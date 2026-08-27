@@ -78,6 +78,10 @@ export async function readHarnessState(
   return invoke<ParsedStateView>("read_harness_state", { installationId });
 }
 
+export async function readHarnessRawConfig(installationId: string): Promise<string> {
+  return invoke<string>("read_harness_raw_config", { installationId });
+}
+
 export async function importHarnessState(
   installationId: string,
   options: ImportOptions,

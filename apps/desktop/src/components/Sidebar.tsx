@@ -9,7 +9,11 @@ const SECTIONS: Section[] = [
     items: [{ to: "/", label: "Dashboard" }],
   },
   {
-    heading: "Configure",
+    heading: "Harnesses",
+    items: [{ to: "/harnesses", label: "All harnesses" }],
+  },
+  {
+    heading: "Library",
     items: [
       { to: "/providers", label: "Providers" },
       { to: "/models", label: "Models" },
@@ -18,19 +22,10 @@ const SECTIONS: Section[] = [
     ],
   },
   {
-    heading: "Deploy",
+    heading: "Changes",
     items: [
-      { to: "/scan", label: "Harnesses" },
-      { to: "/profiles", label: "Profiles" },
-      { to: "/sets", label: "Sets" },
-    ],
-  },
-  {
-    heading: "Maintain",
-    items: [
+      { to: "/pending", label: "Pending" },
       { to: "/history", label: "History" },
-      { to: "/doctor", label: "Diagnostics" },
-      { to: "/settings", label: "Settings" },
     ],
   },
 ];
@@ -71,7 +66,19 @@ export default function Sidebar() {
           </div>
         ))}
       </div>
-      <div className="border-t border-slate-700 pt-3">
+      <div className="space-y-0.5 border-t border-slate-700 pt-3">
+        <NavLink
+          to="/settings"
+          className={({ isActive }) =>
+            `block rounded px-2 py-1.5 text-sm ${
+              isActive
+                ? "bg-blue-600/20 font-medium text-blue-300"
+                : "text-slate-300 hover:bg-slate-800"
+            }`
+          }
+        >
+          Settings
+        </NavLink>
         <NavLink
           to="/import"
           className={({ isActive }) =>
