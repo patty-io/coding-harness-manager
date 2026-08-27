@@ -20,3 +20,15 @@ crates/harness-sdk  adapter contract (Phase 3)
 adapters/*          harness adapters
 fixtures/           real config snapshots for golden tests
 docs/               research + plans
+## Install
+
+See [docs/installation.md](docs/installation.md). Download installers from
+[Releases](../../releases).
+
+## Status
+
+V1 targets: Claude Code, Codex, OpenCode, Pi, Reasonix. Additional harnesses
+are detected (Gemini CLI, Qwen Code, Kimi CLI, Cursor, Cline, Roo Code,
+Aider, Amp, Goose, Continue) and shown as "Detected — support coming".
+
+MIT licensed.
