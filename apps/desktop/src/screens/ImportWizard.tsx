@@ -3,7 +3,7 @@ import { Link } from "react-router-dom";
 import { TIER1_HARNESSES } from "../lib/api";
 import { useInstallations, useScanHarnesses } from "../hooks/useHarnesses";
 import { useImportHarnessState, useReadHarnessState } from "../hooks/useImport";
-import type { ImportOptions, ImportReport } from "../lib/importApi";
+import type { ImportOptions, ImportReport } from "../lib/api";
 
 type Step = "welcome" | "scan" | "select" | "review" | "done";
 

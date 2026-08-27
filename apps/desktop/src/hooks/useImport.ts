@@ -3,7 +3,7 @@ import {
   importHarnessState,
   readHarnessState,
   type ImportOptions,
-} from "../lib/importApi";
+} from "../lib/api";
 
 export function useReadHarnessState(installationId: string | null) {
   return useQuery({
