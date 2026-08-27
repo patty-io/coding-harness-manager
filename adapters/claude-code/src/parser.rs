@@ -1,10 +1,9 @@
 //! Claude Code native config parser (settings.json + ~/.claude.json mcpServers).
 //! Shape verified on 2.1.246 — see docs/harnesses/claude-code.md.
 
-use chm_core::domain::mcp::{McpServer, McpTransport, ScopeType};
+use chm_core::domain::mcp::McpServer;
 use chm_core::domain::models::ModelRoute;
 use chm_harness_sdk::adapter::types::{AdapterError, HarnessMcp, HarnessModel, ParsedState};
-use uuid::Uuid;
 
 const ROLE_ENV_VARS: &[(&str, &str)] = &[
     ("ANTHROPIC_DEFAULT_OPUS_MODEL", "opus"),

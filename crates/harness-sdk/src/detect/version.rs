@@ -1,6 +1,7 @@
 //! Version detection: run the harness binary, parse a semver-like token.
 
-use std::process::Command;
+use std::io::Read;
+use std::process::{Command, Stdio};
 
 const VERSION_PROBE_TIMEOUT: std::time::Duration = std::time::Duration::from_secs(3);
 
@@ -15,12 +16,16 @@ pub fn version_args_for(_def: &HarnessDefinition) -> &'static [&'static str] {
 pub fn detect_version(executable_path: &str, version_args: &[&str]) -> Option<String> {
     let mut child = Command::new(executable_path)
         .args(version_args)
+        .stdout(Stdio::piped())
+        .stderr(Stdio::piped())
         .spawn()
         .ok()?;
+    let mut stdout_pipe = child.stdout.take();
+    let mut stderr_pipe = child.stderr.take();
     let deadline = std::time::Instant::now() + VERSION_PROBE_TIMEOUT;
     let status = loop {
         match child.try_wait().ok().flatten() {
-            Some(st) => break Some(st),
+            Some(st) => break st,
             None if std::time::Instant::now() >= deadline => {
                 let _ = child.kill();
                 let _ = child.wait();
@@ -28,13 +33,18 @@ pub fn detect_version(executable_path: &str, version_args: &[&str]) -> Option<St
             }
             None => std::thread::sleep(std::time::Duration::from_millis(25)),
         }
-    }?;
+    };
     if !status.success() {
         return None;
     }
-    let out = child.wait_with_output().ok()?;
-    let stdout = String::from_utf8_lossy(&out.stdout);
-    let stderr = String::from_utf8_lossy(&out.stderr);
+    let mut stdout = String::new();
+    let mut stderr = String::new();
+    if let Some(mut pipe) = stdout_pipe.take() {
+        let _ = pipe.read_to_string(&mut stdout);
+    }
+    if let Some(mut pipe) = stderr_pipe.take() {
+        let _ = pipe.read_to_string(&mut stderr);
+    }
     let all = format!("{stdout}\n{stderr}");
     all.split_whitespace()
         .map(|tok| tok.trim_matches(|c: char| !c.is_ascii_digit() && c != '.'))
