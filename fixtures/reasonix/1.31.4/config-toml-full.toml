@@ -316,4 +316,4 @@ require_mention = true
 name    = "linear"
 type    = "http"
 url     = "https://mcp.linear.app/mcp"
-headers = { Authorization = "Bearer lin_api_SYNTHETIC_FIXTURE" }
+headers = { Authorization = "REDACTED" }
