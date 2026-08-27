@@ -37,31 +37,14 @@ impl HarnessAdapter for ClaudeCodeAdapter {
     }
 
     fn read_state(&self, install: &HarnessInstallation) -> Result<ParsedState, AdapterError> {
-        let home = install_home(install.config_path.as_deref().unwrap_or(""));
-        let settings_path = home.join(".claude/settings.json");
-        let settings_raw = settings_path
-            .exists()
-            .then(|| std::fs::read_to_string(&settings_path))
-            .transpose()?;
-        let claude_json_path = home.join(".claude.json");
-        let claude_json_raw = claude_json_path
-            .exists()
-            .then(|| std::fs::read_to_string(&claude_json_path))
-            .transpose()?;
+        let home = chm_harness_sdk::adapter::helpers::install_home_from_config(
+            install.config_path.as_deref().unwrap_or(""),
+            ".claude",
+        );
+        let settings_raw =
+            chm_harness_sdk::adapter::helpers::read_optional(&home.join(".claude/settings.json"))?;
+        let claude_json_raw =
+            chm_harness_sdk::adapter::helpers::read_optional(&home.join(".claude.json"))?;
         parser::parse_config(settings_raw.as_deref(), claude_json_raw.as_deref(), &home)
     }
-}
-
-fn install_home(config_path: &str) -> std::path::PathBuf {
-    if !config_path.is_empty() {
-        let path = Path::new(config_path);
-        for ancestor in path.ancestors() {
-            if ancestor.file_name().is_some_and(|f| f == ".claude") {
-                return ancestor.parent().map(Path::to_path_buf).unwrap_or_default();
-            }
-        }
-    }
-    std::env::var_os("HOME")
-        .map(std::path::PathBuf::from)
-        .unwrap_or_default()
 }

@@ -71,65 +71,18 @@ pub fn parse_config(
     }
 
     // skills: ~/.claude/skills
-    let skills_dir = home.join(".claude/skills");
-    if skills_dir.is_dir() {
-        for entry in std::fs::read_dir(&skills_dir)? {
-            let entry = entry?;
-            if entry.path().is_dir() {
-                state
-                    .skills
-                    .push(chm_harness_sdk::adapter::types::HarnessSkill {
-                        name: entry.file_name().to_string_lossy().into_owned(),
-                        path: entry.path().display().to_string(),
-                        content_hash: None,
-                        symlinked: entry
-                            .path()
-                            .symlink_metadata()
-                            .map(|m| m.file_type().is_symlink())
-                            .unwrap_or(false),
-                    });
-            }
-        }
-    }
+    state
+        .skills
+        .extend(chm_harness_sdk::adapter::helpers::scan_skills_dir(
+            &home.join(".claude/skills"),
+        ));
 
     Ok(state)
 }
-
 fn parse_mcp(name: &str, spec: &serde_json::Value) -> McpServer {
-    let transport = match spec.get("type").and_then(|t| t.as_str()) {
-        Some("http") | Some("sse") => McpTransport::Http,
-        _ => McpTransport::Stdio,
-    };
-    let mut env: serde_json::Map<String, serde_json::Value> = spec
-        .get("env")
-        .and_then(|v| v.as_object())
-        .cloned()
-        .unwrap_or_default();
-    if let Some(headers) = spec.get("headers").and_then(|v| v.as_object()) {
-        env.insert("headers".into(), serde_json::Value::Object(headers.clone()));
-    }
-    McpServer {
-        id: Uuid::new_v4(),
-        name: name.to_string(),
-        transport,
-        command: spec
-            .get("command")
-            .and_then(|v| v.as_str())
-            .map(String::from),
-        args: spec
-            .get("args")
-            .and_then(|v| v.as_array())
-            .map(|a| {
-                a.iter()
-                    .filter_map(|v| v.as_str().map(String::from))
-                    .collect()
-            })
-            .unwrap_or_default(),
-        url: spec.get("url").and_then(|v| v.as_str()).map(String::from),
-        env,
-        scope_type: ScopeType::Global,
-        scope_path: None,
-        provenance: serde_json::json!({"source": "claude-json-mcpServers"}),
-        enabled: true,
-    }
+    chm_harness_sdk::adapter::helpers::parse_mcp_json(
+        name,
+        spec,
+        serde_json::json!({"source": "claude-json-mcpServers"}),
+    )
 }

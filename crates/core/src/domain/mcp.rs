@@ -35,6 +35,7 @@ impl McpTransport {
 pub enum ScopeType {
     Global,
     Project,
+    Unknown,
 }
 
 impl ScopeType {
@@ -42,13 +43,15 @@ impl ScopeType {
         match self {
             Self::Global => "global",
             Self::Project => "project",
+            Self::Unknown => "unknown",
         }
     }
 
     pub fn parse_str(s: &str) -> Self {
         match s {
+            "global" => Self::Global,
             "project" => Self::Project,
-            _ => Self::Global,
+            _ => Self::Unknown,
         }
     }
 }

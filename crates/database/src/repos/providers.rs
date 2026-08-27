@@ -70,13 +70,19 @@ pub async fn update_provider(
     if res.rows_affected() == 0 {
         return Err(DbError::NotFound(format!("provider {id}")));
     }
+    let (name, created) = sqlx::query_as::<_, (String, String)>(
+        "SELECT name, created_at FROM providers WHERE id = ?",
+    )
+    .bind(id.to_string())
+    .fetch_one(pool)
+    .await?;
     Ok(Provider {
         id,
-        name: String::new(),
+        name,
         display_name: display_name.into(),
         enabled,
         notes,
-        created_at: now,
+        created_at: parse_ts(&created)?,
         updated_at: now,
     })
 }

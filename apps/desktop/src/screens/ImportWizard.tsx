@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useState } from "react";
 import { Link } from "react-router-dom";
 import { TIER1_HARNESSES } from "../lib/api";
 import { useInstallations, useScanHarnesses } from "../hooks/useHarnesses";
@@ -60,10 +60,6 @@ export default function ImportWizard() {
     setImporting(false);
     if (results.length > 0) setStep("done");
   };
-
-  useEffect(() => {
-    if (step === "review" && importMutation.isSuccess) setStep("done");
-  }, [importMutation.isSuccess, step]);
 
   const total = reports.reduce(
     (acc, r) => ({

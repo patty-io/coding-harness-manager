@@ -11,7 +11,7 @@ use chm_database::repos::harness::list_installations;
 use chm_database::repos::mcp::{create_mcp_server, list_mcp_servers};
 use chm_database::repos::models::{create_route, upsert_catalog_model};
 use chm_database::repos::providers::{
-    create_credential_ref, create_endpoint, create_provider, list_providers,
+    create_credential_ref, create_endpoint, create_provider, list_endpoints, list_providers,
 };
 use chm_database::repos::skills::{create_skill, list_skills};
 use chm_harness_sdk::adapter::types::ParsedState;
@@ -148,6 +148,16 @@ pub async fn run_import(
     let existing_skills = list_skills(pool).await.map_err(|e| e.to_string())?;
     let mut endpoint_by_native_provider: std::collections::HashMap<String, Uuid> =
         std::collections::HashMap::new();
+    // pre-seed the map from already-registered providers so a re-import links
+    // routes to the SAME endpoint instead of minting junk placeholder ones
+    for p_ in &existing_providers {
+        if let Ok(endpoints) = list_endpoints(pool, p_.id).await {
+            if let Some(e) = endpoints.first() {
+                endpoint_by_native_provider.insert(p_.name.clone(), e.id);
+            }
+        }
+    }
+    let mut created_in_batch: std::collections::HashSet<String> = Default::default();
 
     // The whole import is one transaction: any failure rolls back everything.
     let mut tx = pool.begin().await.map_err(|e| e.to_string())?;
@@ -160,13 +170,16 @@ pub async fn run_import(
         if name.starts_with('_') {
             continue; // internal marker entries (__schema__, __mcp_imports__)
         }
-        if existing_providers.iter().any(|p| p.name == name) {
+        if existing_providers.iter().any(|p| p.name == name)
+            || created_in_batch.contains(name)
+        {
             report.duplicates.push(format!("provider:{name}"));
             continue;
         }
         let provider = create_provider(&mut *tx, name, name)
             .await
             .map_err(|e| e.to_string())?;
+        created_in_batch.insert(name.to_string());
         report.providers_created += 1;
 
         let base_url = pv
