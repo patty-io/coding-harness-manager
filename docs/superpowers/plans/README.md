@@ -91,7 +91,7 @@ pub fn match_model(remote_id: &str, catalog: &ModelsDevCatalog) -> MatchResult;
 
 These stay open until their owning phase (per project plan §72). Each is marked `[DECISION GATE]` where it blocks work:
 
-- License MIT vs Apache-2.0 → Phase 14 (default: MIT).
+- License → RESOLVED: Patty Public License 1.0 (Apache 2.0 + $100M revenue clause), per user decision in batch 3.
 - CLI name / bundle `harnessctl` in V1 → Phase 11 (default: yes, same core lib).
 - Unknown harness version behavior → Phase 3 (default: read-only mode).
 - Export format JSON vs YAML vs zip → Phase 4 (default: JSON v1).

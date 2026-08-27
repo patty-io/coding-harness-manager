@@ -14,7 +14,7 @@
 - Release artifacts per platform: macOS `.dmg` + `.app`; Windows `.msi` + NSIS `.exe`; Linux `.AppImage` + `.deb`.
 - Native builds only — no cross-compiling from macOS (project plan §53).
 - Min supported versions (decision gates from §72, defaulted): macOS 12+, Windows 10 1903+, Ubuntu 22.04+ / Fedora 38+ (AppImage covers most distros).
-- License: **MIT** (decision recorded in §72 → resolved).
+- License: **Patty Public License 1.0** (Apache 2.0 + $100M revenue limitation) — decided at gate, recorded in LICENSE.
 - Phase exit: `cargo test` green on all three OSes in CI, installers attach to a draft release, V1 acceptance checklist (Task 14.6) fully verified on macOS with a real harness.
 
 ---
