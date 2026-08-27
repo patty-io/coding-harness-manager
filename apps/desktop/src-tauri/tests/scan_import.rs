@@ -11,12 +11,12 @@ async fn scan_writes_inventory_to_db() {
     let homedir = dir.path().join("home");
     std::fs::create_dir_all(&bindir).unwrap();
     std::fs::create_dir_all(homedir.join(".config/opencode")).unwrap();
-    std::fs::write(bindir.join("opencode"), "#!/bin/sh\nprintf 'opencode 0.30.0\n'\n").unwrap();
     std::fs::write(
-        homedir.join(".config/opencode/opencode.jsonc"),
-        "{}",
+        bindir.join("opencode"),
+        "#!/bin/sh\nprintf 'opencode 0.30.0\n'\n",
     )
     .unwrap();
+    std::fs::write(homedir.join(".config/opencode/opencode.jsonc"), "{}").unwrap();
     #[cfg(unix)]
     {
         use std::os::unix::fs::PermissionsExt;

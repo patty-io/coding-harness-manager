@@ -27,8 +27,8 @@ fn db_path() -> String {
 pub fn run() {
     tauri::Builder::default()
         .setup(|app| {
-            let pool = tauri::async_runtime::block_on(connect(&db_path()))
-                .expect("database connect");
+            let pool =
+                tauri::async_runtime::block_on(connect(&db_path())).expect("database connect");
             #[cfg(target_os = "macos")]
             let secrets: Box<dyn SecretStore> =
                 Box::new(KeychainStore::new("coding-harness-manager"));

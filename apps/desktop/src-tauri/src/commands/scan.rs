@@ -19,13 +19,17 @@ pub async fn scan_and_persist(pool: &Pool<Sqlite>) -> Result<Vec<HarnessInstalla
 
     let inventory = scan(platform, None, None);
     for inst in &inventory.installations {
-        upsert_installation(pool, inst).await.map_err(|e| e.to_string())?;
+        upsert_installation(pool, inst)
+            .await
+            .map_err(|e| e.to_string())?;
     }
     Ok(inventory.installations)
 }
 
 #[tauri::command]
-pub async fn scan_harnesses(state: State<'_, AppState>) -> Result<Vec<HarnessInstallation>, String> {
+pub async fn scan_harnesses(
+    state: State<'_, AppState>,
+) -> Result<Vec<HarnessInstallation>, String> {
     scan_and_persist(&state.pool).await
 }
 
@@ -33,5 +37,7 @@ pub async fn scan_harnesses(state: State<'_, AppState>) -> Result<Vec<HarnessIns
 pub async fn list_installations_cmd(
     state: State<'_, AppState>,
 ) -> Result<Vec<HarnessInstallation>, String> {
-    list_installations(&state.pool).await.map_err(|e| e.to_string())
+    list_installations(&state.pool)
+        .await
+        .map_err(|e| e.to_string())
 }

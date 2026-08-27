@@ -6,7 +6,7 @@ use chm_database::repos::mcp::list_mcp_servers;
 use chm_database::repos::providers::{create_provider, list_providers};
 use chm_database::repos::skills::list_skills;
 use chrono::Utc;
-use coding_harness_manager_lib::commands::import::{run_import, ImportOptions};
+use coding_harness_manager_lib::commands::import::{ImportOptions, run_import};
 use uuid::Uuid;
 
 /// Builds a temp "machine" with an opencode.jsonc config; returns install + config path.
@@ -116,16 +116,28 @@ async fn import_reports_duplicates_without_overwriting() {
         provenance: serde_json::json!({}),
         enabled: true,
     };
-    chm_database::repos::mcp::create_mcp_server(&pool, &existing).await.unwrap();
+    chm_database::repos::mcp::create_mcp_server(&pool, &existing)
+        .await
+        .unwrap();
 
     let report = run_import(&pool, &inst.id.to_string(), &full_options())
         .await
         .unwrap();
 
-    assert_eq!(report.providers_created, 0, "provider name conflict must not overwrite");
-    assert_eq!(report.mcp_imported, 0, "mcp name conflict must not overwrite");
+    assert_eq!(
+        report.providers_created, 0,
+        "provider name conflict must not overwrite"
+    );
+    assert_eq!(
+        report.mcp_imported, 0,
+        "mcp name conflict must not overwrite"
+    );
     assert_eq!(report.duplicates.len(), 2);
     let servers = list_mcp_servers(&pool).await.unwrap();
     assert_eq!(servers.len(), 1);
-    assert_eq!(servers[0].command.as_deref(), Some("node"), "existing server untouched");
+    assert_eq!(
+        servers[0].command.as_deref(),
+        Some("node"),
+        "existing server untouched"
+    );
 }

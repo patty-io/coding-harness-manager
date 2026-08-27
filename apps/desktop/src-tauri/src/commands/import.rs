@@ -136,12 +136,23 @@ pub async fn run_import(
             report.duplicates.push(format!("provider:{name}"));
             continue;
         }
-        let provider = create_provider(pool, name, name).await.map_err(|e| e.to_string())?;
+        let provider = create_provider(pool, name, name)
+            .await
+            .map_err(|e| e.to_string())?;
         report.providers_created += 1;
 
-        let base_url = pv.get("base_url").and_then(|v| v.as_str()).map(String::from);
-        let protocol = pv.get("protocol").and_then(|v| v.as_str()).unwrap_or("custom");
-        let env_key = pv.get("env_key").and_then(|v| v.as_str());
+        let base_url = pv
+            .get("base_url")
+            .and_then(|v| v.as_str())
+            .map(String::from);
+        let protocol = pv
+            .get("protocol")
+            .and_then(|v| v.as_str())
+            .unwrap_or("custom");
+        let env_key = pv
+            .get("env_key")
+            .or_else(|| pv.get("env_reference"))
+            .and_then(|v| v.as_str());
         let credential_ref: Option<CredentialRef> = match env_key {
             Some(key) => Some(
                 create_credential_ref(pool, CredentialKind::Env, key)
@@ -165,7 +176,9 @@ pub async fn run_import(
                 created_at: Utc::now(),
                 updated_at: Utc::now(),
             };
-            create_endpoint(pool, &endpoint).await.map_err(|e| e.to_string())?;
+            create_endpoint(pool, &endpoint)
+                .await
+                .map_err(|e| e.to_string())?;
         }
     }
 
@@ -212,9 +225,9 @@ pub async fn run_import(
                     .await
                     .map_err(|e| e.to_string())?;
                 }
-                Err(_) => {
-                    report.duplicates.push(format!("model:{}", m.route.remote_model_id))
-                }
+                Err(_) => report
+                    .duplicates
+                    .push(format!("model:{}", m.route.remote_model_id)),
             }
         }
     }
@@ -239,7 +252,9 @@ pub async fn run_import(
                 provenance: provenance.clone(),
                 enabled: true,
             };
-            create_mcp_server(pool, &server).await.map_err(|e| e.to_string())?;
+            create_mcp_server(pool, &server)
+                .await
+                .map_err(|e| e.to_string())?;
             report.mcp_imported += 1;
         }
     }
@@ -268,7 +283,9 @@ pub async fn run_import(
                 created_at: Utc::now(),
                 updated_at: Utc::now(),
             };
-            create_skill(pool, &skill).await.map_err(|e| e.to_string())?;
+            create_skill(pool, &skill)
+                .await
+                .map_err(|e| e.to_string())?;
             report.skills_imported += 1;
         }
     }
@@ -278,10 +295,15 @@ pub async fn run_import(
 
 /// Endpoint used for imported routes: first endpoint of the first imported
 /// provider, else a placeholder "imported" endpoint.
-async fn imported_endpoint_id(pool: &Pool<Sqlite>, inst: &HarnessInstallation) -> Result<Uuid, String> {
+async fn imported_endpoint_id(
+    pool: &Pool<Sqlite>,
+    inst: &HarnessInstallation,
+) -> Result<Uuid, String> {
     let providers = list_providers(pool).await.map_err(|e| e.to_string())?;
     for p in providers {
-        let endpoints = list_endpoints(pool, p.id).await.map_err(|e| e.to_string())?;
+        let endpoints = list_endpoints(pool, p.id)
+            .await
+            .map_err(|e| e.to_string())?;
         if let Some(e) = endpoints.first() {
             return Ok(e.id);
         }
@@ -303,7 +325,9 @@ async fn imported_endpoint_id(pool: &Pool<Sqlite>, inst: &HarnessInstallation) -
         created_at: Utc::now(),
         updated_at: Utc::now(),
     };
-    create_endpoint(pool, &endpoint).await.map_err(|e| e.to_string())?;
+    create_endpoint(pool, &endpoint)
+        .await
+        .map_err(|e| e.to_string())?;
     Ok(endpoint.id)
 }
 
