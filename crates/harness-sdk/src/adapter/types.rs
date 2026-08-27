@@ -118,10 +118,81 @@ pub struct ParsedState {
     pub warnings: Vec<String>,
 }
 
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
+pub struct NativeChange {
+    pub file_path: String,
+    pub before: Option<String>,
+    pub after: Option<String>,
+}
+
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
+pub struct NativeLink {
+    pub kind: String,
+    pub source: String,
+    pub target: String,
+}
+
+#[derive(Debug, Clone, Default, serde::Serialize, serde::Deserialize)]
+pub struct NativePlan {
+    pub changes: Vec<NativeChange>,
+    pub links: Vec<NativeLink>,
+    pub warnings: Vec<String>,
+}
+
+#[derive(Debug, Clone, serde::Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ApplyResult {
+    pub files_written: Vec<String>,
+    pub links_created: Vec<String>,
+}
+
+#[derive(Debug, Clone, serde::Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ValidationReport {
+    pub ok: bool,
+    pub errors: Vec<String>,
+}
+
 pub trait HarnessAdapter: Send + Sync {
     fn id(&self) -> &'static str;
     fn capabilities(&self) -> HarnessCapabilities;
     fn read_state(&self, install: &HarnessInstallation) -> Result<ParsedState, AdapterError>;
+    fn plan(
+        &self,
+        _plan: &crate::adapter::plan::ReconciliationPlan,
+        _install: &HarnessInstallation,
+    ) -> Result<NativePlan, AdapterError> {
+        Err(AdapterError::UnsupportedVersion {
+            harness: self.id().into(),
+            version: None,
+        })
+    }
+    fn apply(
+        &self,
+        _install: &HarnessInstallation,
+        _native_plan: &NativePlan,
+    ) -> Result<ApplyResult, AdapterError> {
+        Err(AdapterError::UnsupportedVersion {
+            harness: self.id().into(),
+            version: None,
+        })
+    }
+    fn validate(&self, _install: &HarnessInstallation) -> Result<ValidationReport, AdapterError> {
+        Err(AdapterError::UnsupportedVersion {
+            harness: self.id().into(),
+            version: None,
+        })
+    }
+    fn rollback(
+        &self,
+        _install: &HarnessInstallation,
+        _native_plan: &NativePlan,
+    ) -> Result<(), AdapterError> {
+        Err(AdapterError::UnsupportedVersion {
+            harness: self.id().into(),
+            version: None,
+        })
+    }
 }
 
 /// Version gate: supported list uses two-component prefixes ("0.30").
