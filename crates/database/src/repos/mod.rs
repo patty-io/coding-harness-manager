@@ -1,1 +1,2 @@
-//! Repository modules (populated in tasks 1.4-1.6).
+pub mod models;
+pub mod providers;

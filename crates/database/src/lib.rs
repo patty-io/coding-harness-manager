@@ -13,6 +13,8 @@ pub enum DbError {
     Migration(#[from] sqlx::migrate::MigrateError),
     #[error("database error: {0}")]
     Sqlx(#[from] sqlx::Error),
+    #[error("serialize error: {0}")]
+    Serialize(#[from] serde_json::Error),
     #[error("not found: {0}")]
     NotFound(String),
 }
