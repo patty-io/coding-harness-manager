@@ -68,7 +68,8 @@ export default function ProvidersScreen() {
         {(providers ?? []).map((p) => (
           <li
             key={p.id}
-            className="flex items-center justify-between rounded border border-slate-700 bg-slate-800 p-3"
+            onClick={() => navigate(`/providers/${p.id}`)}
+            className="flex cursor-pointer items-center justify-between rounded border border-slate-700 bg-slate-800 p-3 hover:border-slate-500"
           >
             <div>
               <Link to={`/providers/${p.id}`} className="font-medium hover:underline">
