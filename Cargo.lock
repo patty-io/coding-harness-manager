@@ -222,7 +222,13 @@ dependencies = [
 name = "chm-reconciliation"
 version = "0.1.0"
 dependencies = [
+ "chm-core",
+ "chm-harness-sdk",
+ "chrono",
  "serde",
+ "serde_json",
+ "thiserror",
+ "uuid",
 ]
 
 [[package]]
