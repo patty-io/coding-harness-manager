@@ -55,9 +55,7 @@ pub fn redact(text: &str) -> String {
     out
 }
 
-async fn harness_checks(
-    pool: &Pool<Sqlite>,
-) -> Result<Vec<HarnessCheckGroup>, String> {
+async fn harness_checks(pool: &Pool<Sqlite>) -> Result<Vec<HarnessCheckGroup>, String> {
     let installs = list_installations(pool).await.map_err(|e| e.to_string())?;
     let mut groups = Vec::new();
     for inst in &installs {
@@ -122,7 +120,10 @@ async fn provider_checks(
     let providers = list_providers(pool).await.map_err(|e| e.to_string())?;
     let mut groups = Vec::new();
     for p in &providers {
-        for e in list_endpoints(pool, p.id).await.map_err(|e| e.to_string())? {
+        for e in list_endpoints(pool, p.id)
+            .await
+            .map_err(|e| e.to_string())?
+        {
             let cred =
                 resolve_credential(e.credential_ref.as_ref().unwrap_or(&fake_ref()), secrets);
             let status = health_check(&e, cred.as_deref(), http).await;
@@ -137,10 +138,16 @@ async fn provider_checks(
                 CheckResult {
                     check: "authentication works".into(),
                     passed: auth_ok,
-                    detail: if auth_ok { "accepted".into() } else { "credentials rejected".into() },
+                    detail: if auth_ok {
+                        "accepted".into()
+                    } else {
+                        "credentials rejected".into()
+                    },
                 },
             ];
-            if !matches!(e.protocol, chm_core::domain::provider::Protocol::Custom) && e.discovery_path.is_some() {
+            if !matches!(e.protocol, chm_core::domain::provider::Protocol::Custom)
+                && e.discovery_path.is_some()
+            {
                 match discover_models(&e, cred.as_deref(), http).await {
                     Ok(models) => checks.push(CheckResult {
                         check: "discovery works".into(),
@@ -189,8 +196,19 @@ pub async fn run_doctor_core(
         + 0;
     let failures: Vec<String> = harness
         .iter()
-        .flat_map(|g| g.checks.iter().filter(|c| !c.passed).map(|c| format!("{}: {}", g.harness_type, c.check)).collect::<Vec<_>>())
-        .chain(provider.iter().flat_map(|g| g.checks.iter().filter(|c| !c.passed).map(|c| format!("{}/{}", g.provider_name, c.check))))
+        .flat_map(|g| {
+            g.checks
+                .iter()
+                .filter(|c| !c.passed)
+                .map(|c| format!("{}: {}", g.harness_type, c.check))
+                .collect::<Vec<_>>()
+        })
+        .chain(provider.iter().flat_map(|g| {
+            g.checks
+                .iter()
+                .filter(|c| !c.passed)
+                .map(|c| format!("{}/{}", g.provider_name, c.check))
+        }))
         .collect();
     let checks_passed = total - failures.len();
     Ok(DoctorReport {
@@ -225,8 +243,7 @@ pub async fn export_diagnostics_core(
     let json = serde_json::to_string_pretty(&report).map_err(|e| e.to_string())?;
     let redacted = redact(&json);
     let stamp = chrono::Utc::now().format("%Y%m%dT%H%M%S");
-    let path = std::path::Path::new(dest_dir)
-        .join(format!("chm-diagnostics-{stamp}.json"));
+    let path = std::path::Path::new(dest_dir).join(format!("chm-diagnostics-{stamp}.json"));
     std::fs::write(&path, redacted.as_bytes()).map_err(|e| e.to_string())?;
     Ok(path.display().to_string())
 }

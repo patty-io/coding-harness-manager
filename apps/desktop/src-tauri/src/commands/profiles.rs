@@ -64,7 +64,6 @@ pub async fn profile_views(pool: &Pool<Sqlite>) -> Result<Vec<ProfileView>, Stri
                     && ends.iter().any(|e| e.id == ep_id)
                 {
                     provider_name = Some(prov.display_name.clone());
-                    endpoint_provider = Some(prov.id);
                     break;
                 }
             }

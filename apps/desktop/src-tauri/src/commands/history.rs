@@ -1,9 +1,8 @@
 //! History, rollback, and purge commands (Phase 12).
 
 use chm_core::domain::history::{TransactionStatus, TransactionType};
-use chm_database::repos::harness::list_installations;
 use chm_database::repos::history::{
-    add_snapshot, begin_transaction, finish_transaction, list_snapshots, list_transactions,
+    begin_transaction, finish_transaction, list_snapshots, list_transactions,
 };
 use serde::Serialize;
 use sqlx::{Pool, Sqlite};
@@ -40,7 +39,9 @@ pub async fn list_history_cmd(
     let txs = list_transactions(pool).await.map_err(|e| e.to_string())?;
     let mut entries = Vec::new();
     for tx in txs.into_iter().take(limit.unwrap_or(100).max(1) as usize) {
-        let snaps = list_snapshots(pool, tx.id).await.map_err(|e| e.to_string())?;
+        let snaps = list_snapshots(pool, tx.id)
+            .await
+            .map_err(|e| e.to_string())?;
         entries.push(HistoryEntry {
             transaction_id: tx.id.to_string(),
             transaction_type: tx.transaction_type.as_str().to_string(),
