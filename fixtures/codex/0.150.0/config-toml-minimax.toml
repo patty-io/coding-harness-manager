@@ -1,0 +1,23 @@
+model = "MiniMax-M3"
+model_reasoning_effort = "high"
+model_provider = "minimax"
+
+[mcp_servers.playwright]
+command = "npx"
+args = ["@playwright/mcp@latest"]
+startup_timeout_sec = 15
+
+experimental_use_rmcp_client = true
+
+[features]
+multi_agent = true
+codex_hooks = true
+[agents]
+max_threads = 6
+max_depth = 2
+
+[model_providers.minimax]
+name = "MiniMax"
+base_url = "https://api.minimax.io/v1"
+wire_api = "responses"
+env_key = "MINIMAX_API_KEY"

@@ -1,0 +1,35 @@
+#:schema https://developers.openai.com/codex/config-schema.json
+model = "zai/glm-5.2"
+model_reasoning_effort = "max"
+model_provider = "glm"
+model_supports_reasoning_summaries = true # Force reasoning
+model_context_window = 1000000             # Context window size
+model_auto_compact_token_limit = 850000
+
+[mcp_servers.playwright]
+command = "npx"
+args = ["@playwright/mcp@latest"]
+startup_timeout_sec = 15
+
+[features]
+multi_agent = true
+codex_hooks = true
+
+[agents]
+max_threads = 6
+max_depth = 2
+
+[model_providers.glm]
+name = "GLM"
+#base_url = "https://jebo.ai/v2"
+base_url = "https://omni.agents.patty.io/v1"
+wire_api = "responses"
+#env_key = "OMNIROUTE_API_KEY"
+env_key = "AGENTS_PATTY_API_KEY"
+stream_idle_timeout_ms = 300000
+
+[projects."/Users/patrickrho/.claude/skills"]
+trust_level = "trusted"
+
+[projects."/Users/patrickrho/projects/OmniRoute"]
+trust_level = "trusted"

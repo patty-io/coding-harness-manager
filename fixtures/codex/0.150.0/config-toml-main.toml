@@ -1,0 +1,979 @@
+model_reasoning_effort = "low"
+model = "gpt-5.6-sol"
+plan_mode_reasoning_effort = "xhigh"
+service_tier = "default"
+
+[projects."/Users/patrickrho/projects/hagwon"]
+trust_level = "trusted"
+
+[projects."/Users/patrickrho/projects/joongjaewon"]
+trust_level = "trusted"
+
+[projects."/Users/patrickrho/projects/one"]
+trust_level = "trusted"
+
+[projects."/Users/patrickrho/projects/claude_code_bridge"]
+trust_level = "trusted"
+
+[projects."/Users/patrickrho/projects/faker-zero"]
+trust_level = "trusted"
+
+[projects."/Users/patrickrho/projects/void"]
+trust_level = "trusted"
+
+[projects."/Users/patrickrho/projects/deskflow"]
+trust_level = "trusted"
+
+[projects."/Users/patrickrho/projects/trade-master"]
+trust_level = "trusted"
+
+[projects."/Users/patrickrho/Desktop"]
+trust_level = "trusted"
+
+[projects."/Users/patrickrho/projects/trade-master/t1-bot"]
+trust_level = "trusted"
+
+[projects."/Users/patrickrho/projects/folio-fonts"]
+trust_level = "trusted"
+
+[projects."/Users/patrickrho/.openclaw"]
+trust_level = "trusted"
+
+[projects."/Users/patrickrho/.config/ghostty"]
+trust_level = "trusted"
+
+[projects."/Users/patrickrho"]
+trust_level = "trusted"
+
+[projects."/Users/patrickrho/projects/vibe-skill/.test-sandbox"]
+trust_level = "trusted"
+
+[projects."/Users/patrickrho/projects/claudio"]
+trust_level = "trusted"
+
+[projects."/Users/patrickrho/projects/chorus"]
+trust_level = "trusted"
+
+[projects."/Users/patrickrho/.config/lvim"]
+trust_level = "trusted"
+
+[projects."/Users/patrickrho/projects/blogwriter"]
+trust_level = "trusted"
+
+[projects."/Users/patrickrho/.codex"]
+trust_level = "trusted"
+
+[projects."/Users/patrickrho/projects/trade-master/t1-bot/tools/ml-intern"]
+trust_level = "trusted"
+
+[projects."/Users/patrickrho/projects/patty-web"]
+trust_level = "trusted"
+
+[projects."/Users/patrickrho/projects/hyupup"]
+trust_level = "trusted"
+
+[projects."/Users/patrickrho/.config/nvim"]
+trust_level = "trusted"
+
+[projects."/Users/patrickrho/projects/t1/main"]
+trust_level = "trusted"
+
+[projects."/Users/patrickrho/projects/separation"]
+trust_level = "trusted"
+
+[projects."/Users/patrickrho/.config/opencode"]
+trust_level = "trusted"
+
+[projects."/Users/patrickrho/.claude"]
+trust_level = "trusted"
+
+[projects."/Users/patrickrho/projects/music-maker"]
+trust_level = "trusted"
+
+[projects."/Users/patrickrho/projects/dotfiles"]
+trust_level = "trusted"
+
+[projects."/Users/patrickrho/Downloads"]
+trust_level = "trusted"
+
+[projects."/Users/patrickrho/projects/patty-cli"]
+trust_level = "trusted"
+
+[projects."/Users/patrickrho/projects/patty-os"]
+trust_level = "trusted"
+
+[projects."/Users/patrickrho/projects/patty"]
+trust_level = "trusted"
+
+[projects."/Users/patrickrho/projects/OmniRoute"]
+trust_level = "trusted"
+
+[projects."/private/tmp/agtest"]
+trust_level = "trusted"
+
+[projects."/private/tmp/omni-marker-agtest"]
+trust_level = "trusted"
+
+[projects."/private/tmp/omni-generic-agent-test"]
+trust_level = "trusted"
+
+[projects."/private/tmp/near-review-test"]
+trust_level = "trusted"
+
+[projects."/private/tmp/codex-parity-smoke"]
+trust_level = "trusted"
+
+[projects."/private/tmp/codex-parity-smoke-cgpt"]
+trust_level = "trusted"
+
+[projects."/private/tmp/codex-resume-smoke"]
+trust_level = "trusted"
+
+[projects."/private/tmp/cgpt-metadata-smoke"]
+trust_level = "trusted"
+
+[projects."/private/tmp/cgpt-metadata-smoke2"]
+trust_level = "trusted"
+
+[projects."/private/tmp/cgpt-native-slug-smoke"]
+trust_level = "trusted"
+
+[projects."/private/tmp/omni-parity-runner-smoke/direct/read-basic-txt"]
+trust_level = "trusted"
+
+[projects."/private/tmp/omni-parity-runner-cgpt-smoke/cgpt/read-basic-txt"]
+trust_level = "trusted"
+
+[projects."/private/tmp/omni-codex-parity-full-20260718-073740/direct/read-basic-txt"]
+trust_level = "trusted"
+
+[projects."/private/tmp/omni-codex-parity-full-20260718-073740/cgpt/read-basic-txt"]
+trust_level = "trusted"
+
+[projects."/private/tmp/omni-parity-runner-cgpt-smoke2/cgpt/read-basic-txt"]
+trust_level = "trusted"
+
+[projects."/private/tmp/omni-codex-parity-tranche5/direct/read-basic-txt"]
+trust_level = "trusted"
+
+[projects."/private/tmp/omni-codex-parity-tranche5/cgpt/read-basic-txt"]
+trust_level = "trusted"
+
+[projects."/private/tmp/omni-codex-parity-tranche5/direct/read-package-json"]
+trust_level = "trusted"
+
+[projects."/private/tmp/omni-codex-parity-tranche5/cgpt/read-package-json"]
+trust_level = "trusted"
+
+[projects."/private/tmp/omni-codex-parity-tranche5/direct/nearby-review-folder-english"]
+trust_level = "trusted"
+
+[projects."/private/tmp/omni-codex-parity-tranche5/cgpt/nearby-review-folder-english"]
+trust_level = "trusted"
+
+[projects."/private/tmp/omni-codex-parity-tranche5/direct/nearby-review-folder-korean"]
+trust_level = "trusted"
+
+[projects."/private/tmp/omni-codex-parity-tranche5/cgpt/nearby-review-folder-korean"]
+trust_level = "trusted"
+
+[projects."/private/tmp/omni-near-review-current/cgpt/nearby-review-folder-english"]
+trust_level = "trusted"
+
+[projects."/private/tmp/omni-codex-parity-full2-20260718-075956/direct/read-basic-txt"]
+trust_level = "trusted"
+
+[projects."/private/tmp/omni-codex-parity-full2-20260718-075956/cgpt/read-basic-txt"]
+trust_level = "trusted"
+
+[projects."/private/tmp/omni-body-metrics-smoke/cgpt/read-basic-txt"]
+trust_level = "trusted"
+
+[projects."/private/tmp/omni-body-metrics-smoke2/cgpt/read-basic-txt"]
+trust_level = "trusted"
+
+[projects."/private/tmp/omni-body-metrics-smoke3/cgpt/read-basic-txt"]
+trust_level = "trusted"
+
+[projects."/private/tmp/omni-body-metrics-smoke4/cgpt/read-basic-txt"]
+trust_level = "trusted"
+
+[projects."/private/tmp/omni-body-metrics-smoke5/cgpt/read-basic-txt"]
+trust_level = "trusted"
+
+[projects."/private/tmp/omni-body-metrics-smoke6/cgpt/read-basic-txt"]
+trust_level = "trusted"
+
+[projects."/private/tmp/omni-body-metrics-smoke7/cgpt/read-basic-txt"]
+trust_level = "trusted"
+
+[projects."/private/tmp/omni-body-metrics-smoke8/cgpt/read-basic-txt"]
+trust_level = "trusted"
+
+[projects."/private/tmp/omni-body-metrics-smoke9/cgpt/read-basic-txt"]
+trust_level = "trusted"
+
+[projects."/private/tmp/omni-body-metrics-smoke10/cgpt/read-basic-txt"]
+trust_level = "trusted"
+
+[projects."/private/tmp/omni-body-metrics-smoke11/cgpt/read-basic-txt"]
+trust_level = "trusted"
+
+[projects."/private/tmp/omni-body-metrics-smoke12/cgpt/read-basic-txt"]
+trust_level = "trusted"
+
+[projects."/private/tmp/omni-body-metrics-smoke13/cgpt/read-basic-txt"]
+trust_level = "trusted"
+
+[projects."/private/tmp/omni-codex-parity-full3-20260718-084004/direct/read-basic-txt"]
+trust_level = "trusted"
+
+[projects."/private/tmp/omni-codex-parity-full3-20260718-084004/cgpt/read-basic-txt"]
+trust_level = "trusted"
+
+[projects."/private/tmp/omni-codex-parity-full3-20260718-084004/direct/read-package-json"]
+trust_level = "trusted"
+
+[projects."/private/tmp/omni-codex-parity-full3-20260718-084004/cgpt/read-package-json"]
+trust_level = "trusted"
+
+[projects."/private/tmp/omni-codex-parity-full3-20260718-084004/direct/nearby-review-folder-english"]
+trust_level = "trusted"
+
+[projects."/private/tmp/omni-codex-parity-full3-20260718-084004/cgpt/nearby-review-folder-english"]
+trust_level = "trusted"
+
+[projects."/private/tmp/omni-body-metrics-smoke14/cgpt/read-basic-txt"]
+trust_level = "trusted"
+
+[projects."/private/tmp/omni-codex-parity-full3-20260718-084004/direct/nearby-review-folder-korean"]
+trust_level = "trusted"
+
+[projects."/private/tmp/omni-body-metrics-smoke15/cgpt/read-basic-txt"]
+trust_level = "trusted"
+
+[projects."/private/tmp/omni-codex-parity-full4-20260718-084721/direct/read-basic-txt"]
+trust_level = "trusted"
+
+[projects."/private/tmp/omni-codex-parity-full3-20260718-084004/cgpt/nearby-review-folder-korean"]
+trust_level = "trusted"
+
+[projects."/private/tmp/omni-codex-parity-full4-20260718-084721/cgpt/read-basic-txt"]
+trust_level = "trusted"
+
+[projects."/private/tmp/omni-codex-parity-full4-20260718-084721/direct/read-package-json"]
+trust_level = "trusted"
+
+[projects."/private/tmp/omni-codex-parity-full4-20260718-084721/cgpt/read-package-json"]
+trust_level = "trusted"
+
+[projects."/private/tmp/omni-codex-parity-full4-20260718-084721/direct/nearby-review-folder-english"]
+trust_level = "trusted"
+
+[projects."/private/tmp/omni-task-aware-smoke/cgpt/read-basic-txt"]
+trust_level = "trusted"
+
+[projects."/private/tmp/omni-codex-parity-full4-20260718-084721/cgpt/nearby-review-folder-english"]
+trust_level = "trusted"
+
+[projects."/private/tmp/omni-codex-parity-full5-20260718-085021/direct/read-basic-txt"]
+trust_level = "trusted"
+
+[projects."/private/tmp/omni-codex-parity-full5-20260718-085021/cgpt/read-basic-txt"]
+trust_level = "trusted"
+
+[projects."/private/tmp/omni-codex-parity-full5-20260718-085021/direct/read-package-json"]
+trust_level = "trusted"
+
+[projects."/private/tmp/omni-codex-parity-full5-20260718-085021/cgpt/read-package-json"]
+trust_level = "trusted"
+
+[projects."/private/tmp/omni-codex-parity-full5-20260718-085021/direct/nearby-review-folder-english"]
+trust_level = "trusted"
+
+[projects."/private/tmp/omni-codex-parity-full5-20260718-085021/cgpt/nearby-review-folder-english"]
+trust_level = "trusted"
+
+[projects."/private/tmp/omni-near-review-persona/cgpt/nearby-review-folder-english"]
+trust_level = "trusted"
+
+[projects."/private/tmp/omni-near-review-toolnames/cgpt/nearby-review-folder-english"]
+trust_level = "trusted"
+
+[projects."/private/tmp/omni-noretry-smoke/cgpt/read-basic-txt"]
+trust_level = "trusted"
+
+[projects."/private/tmp/omni-contract-placement/cgpt/read-basic-txt"]
+trust_level = "trusted"
+
+[projects."/private/tmp/omni-final-arch-smoke/cgpt/read-basic-txt"]
+trust_level = "trusted"
+
+[projects."/private/tmp/omni-final-arch-near/cgpt/nearby-review-folder-english"]
+trust_level = "trusted"
+
+[projects."/private/tmp/omni-arch-near-healthy/cgpt/nearby-review-folder-english"]
+trust_level = "trusted"
+
+[projects."/private/tmp/omni-codex-parity-final-20260718-100900/direct/read-basic-txt"]
+trust_level = "trusted"
+
+[projects."/private/tmp/omni-codex-parity-final-20260718-100900/cgpt/read-basic-txt"]
+trust_level = "trusted"
+
+[projects."/private/tmp/omni-codex-parity-final-20260718-100900/direct/read-package-json"]
+trust_level = "trusted"
+
+[projects."/private/tmp/omni-codex-parity-final-20260718-100900/cgpt/read-package-json"]
+trust_level = "trusted"
+
+[projects."/private/tmp/omni-codex-parity-final-20260718-100900/direct/nearby-review-folder-english"]
+trust_level = "trusted"
+
+[projects."/private/tmp/omni-codex-parity-final-20260718-100900/cgpt/nearby-review-folder-english"]
+trust_level = "trusted"
+
+[projects."/private/tmp/omni-codex-parity-final-20260718-100900/direct/nearby-review-folder-korean"]
+trust_level = "trusted"
+
+[projects."/private/tmp/omni-codex-parity-final-20260718-100900/cgpt/nearby-review-folder-korean"]
+trust_level = "trusted"
+
+[projects."/private/tmp/omni-codex-parity-final-20260718-100900/direct/nearby-review-folder-spanish"]
+trust_level = "trusted"
+
+[projects."/private/tmp/omni-codex-parity-final-20260718-100900/cgpt/nearby-review-folder-spanish"]
+trust_level = "trusted"
+
+[projects."/private/tmp/omni-codex-parity-final-20260718-100900/direct/nearby-review-folder-japanese"]
+trust_level = "trusted"
+
+[projects."/private/tmp/omni-codex-parity-final-20260718-100900/cgpt/nearby-review-folder-japanese"]
+trust_level = "trusted"
+
+[projects."/private/tmp/omni-codex-parity-final-20260718-100900/direct/nearby-review-folder-arabic"]
+trust_level = "trusted"
+
+[projects."/private/tmp/omni-codex-parity-final-20260718-100900/cgpt/nearby-review-folder-arabic"]
+trust_level = "trusted"
+
+[projects."/private/tmp/omni-codex-parity-final-20260718-100900/direct/create-result-file"]
+trust_level = "trusted"
+
+[projects."/private/tmp/omni-crosslingual-korean/cgpt/nearby-review-folder-korean"]
+trust_level = "trusted"
+
+[projects."/private/tmp/omni-korean-latest/cgpt/nearby-review-folder-korean"]
+trust_level = "trusted"
+
+[projects."/private/tmp/omni-latest-english/cgpt/read-basic-txt"]
+trust_level = "trusted"
+
+[projects."/private/tmp/omni-latest-english/cgpt/nearby-review-folder-english"]
+trust_level = "trusted"
+
+[projects."/private/tmp/omni-debug-enforce/cgpt/nearby-review-folder-english"]
+trust_level = "trusted"
+
+[projects."/private/tmp/omni-debug2/cgpt/nearby-review-folder-korean"]
+trust_level = "trusted"
+
+[projects."/private/tmp/omni-definitive-20260718-103444/direct/read-basic-txt"]
+trust_level = "trusted"
+
+[projects."/private/tmp/omni-definitive-20260718-103444/cgpt/read-basic-txt"]
+trust_level = "trusted"
+
+[projects."/private/tmp/omni-definitive-20260718-103444/direct/read-package-json"]
+trust_level = "trusted"
+
+[projects."/private/tmp/omni-definitive-20260718-103444/cgpt/read-package-json"]
+trust_level = "trusted"
+
+[projects."/private/tmp/omni-definitive-20260718-103444/direct/nearby-review-folder-english"]
+trust_level = "trusted"
+
+[projects."/private/tmp/omni-definitive-20260718-103444/cgpt/nearby-review-folder-english"]
+trust_level = "trusted"
+
+[projects."/private/tmp/omni-definitive-20260718-103444/direct/nearby-review-folder-korean"]
+trust_level = "trusted"
+
+[projects."/private/tmp/omni-definitive-20260718-103444/cgpt/nearby-review-folder-korean"]
+trust_level = "trusted"
+
+[projects."/private/tmp/omni-definitive-20260718-103444/direct/nearby-review-folder-spanish"]
+trust_level = "trusted"
+
+[projects."/private/tmp/omni-definitive-20260718-103444/cgpt/nearby-review-folder-spanish"]
+trust_level = "trusted"
+
+[projects."/private/tmp/omni-definitive-20260718-103444/direct/nearby-review-folder-japanese"]
+trust_level = "trusted"
+
+[projects."/private/tmp/omni-definitive-20260718-103444/cgpt/nearby-review-folder-japanese"]
+trust_level = "trusted"
+
+[projects."/private/tmp/omni-definitive-20260718-103444/direct/nearby-review-folder-arabic"]
+trust_level = "trusted"
+
+[projects."/private/tmp/omni-definitive-20260718-103444/cgpt/nearby-review-folder-arabic"]
+trust_level = "trusted"
+
+[projects."/private/tmp/omni-definitive-20260718-103444/direct/create-result-file"]
+trust_level = "trusted"
+
+[projects."/private/tmp/omni-definitive-20260718-103444/cgpt/create-result-file"]
+trust_level = "trusted"
+
+[projects."/private/tmp/omni-definitive-20260718-103444/direct/append-list-file"]
+trust_level = "trusted"
+
+[projects."/private/tmp/omni-definitive-20260718-103444/cgpt/append-list-file"]
+trust_level = "trusted"
+
+[projects."/private/tmp/omni-definitive-20260718-103444/direct/edit-json-enabled"]
+trust_level = "trusted"
+
+[projects."/private/tmp/omni-definitive-20260718-103444/cgpt/edit-json-enabled"]
+trust_level = "trusted"
+
+[projects."/private/tmp/omni-definitive-20260718-103444/direct/create-nested-summary"]
+trust_level = "trusted"
+
+[projects."/private/tmp/omni-definitive-20260718-103444/cgpt/create-nested-summary"]
+trust_level = "trusted"
+
+[projects."/private/tmp/omni-definitive-20260718-103444/direct/rename-draft"]
+trust_level = "trusted"
+
+[projects."/private/tmp/omni-definitive-20260718-103444/cgpt/rename-draft"]
+trust_level = "trusted"
+
+[projects."/private/tmp/omni-definitive-20260718-103444/direct/delete-temp"]
+trust_level = "trusted"
+
+[projects."/private/tmp/omni-definitive-20260718-103444/cgpt/delete-temp"]
+trust_level = "trusted"
+
+[projects."/private/tmp/omni-definitive-20260718-103444/direct/count-lines"]
+trust_level = "trusted"
+
+[projects."/private/tmp/omni-definitive-20260718-103444/cgpt/count-lines"]
+trust_level = "trusted"
+
+[projects."/private/tmp/omni-definitive-20260718-103444/direct/sum-numbers"]
+trust_level = "trusted"
+
+[projects."/private/tmp/omni-definitive-20260718-103444/cgpt/sum-numbers"]
+trust_level = "trusted"
+
+[projects."/private/tmp/omni-definitive-20260718-103444/direct/find-target-flag"]
+trust_level = "trusted"
+
+[projects."/private/tmp/omni-definitive-20260718-103444/cgpt/find-target-flag"]
+trust_level = "trusted"
+
+[projects."/private/tmp/omni-definitive-20260718-103444/direct/run-node-script"]
+trust_level = "trusted"
+
+[projects."/private/tmp/omni-definitive-20260718-103444/cgpt/run-node-script"]
+trust_level = "trusted"
+
+[projects."/private/tmp/omni-definitive-20260718-103444/direct/inspect-csv-highest"]
+trust_level = "trusted"
+
+[projects."/private/tmp/omni-definitive-20260718-103444/cgpt/inspect-csv-highest"]
+trust_level = "trusted"
+
+[projects."/private/tmp/omni-definitive-20260718-103444/direct/combine-files"]
+trust_level = "trusted"
+
+[projects."/private/tmp/omni-definitive-20260718-103444/cgpt/combine-files"]
+trust_level = "trusted"
+
+[projects."/private/tmp/omni-definitive-20260718-103444/direct/sort-names"]
+trust_level = "trusted"
+
+[projects."/private/tmp/omni-definitive-20260718-103444/cgpt/sort-names"]
+trust_level = "trusted"
+
+[projects."/private/tmp/omni-definitive-20260718-103444/direct/extract-todos"]
+trust_level = "trusted"
+
+[projects."/private/tmp/omni-definitive-20260718-103444/cgpt/extract-todos"]
+trust_level = "trusted"
+
+[projects."/private/tmp/omni-definitive-20260718-103444/direct/edit-yaml-mode"]
+trust_level = "trusted"
+
+[projects."/private/tmp/omni-definitive-20260718-103444/cgpt/edit-yaml-mode"]
+trust_level = "trusted"
+
+[projects."/private/tmp/omni-definitive-20260718-103444/direct/korean-create-file"]
+trust_level = "trusted"
+
+[projects."/private/tmp/omni-definitive-20260718-103444/cgpt/korean-create-file"]
+trust_level = "trusted"
+
+[projects."/private/tmp/omni-definitive-20260718-103444/direct/chinese-append-file"]
+trust_level = "trusted"
+
+[projects."/private/tmp/omni-definitive-20260718-103444/cgpt/chinese-append-file"]
+trust_level = "trusted"
+
+[projects."/private/tmp/omni-definitive-20260718-103444/direct/french-read-file"]
+trust_level = "trusted"
+
+[projects."/private/tmp/omni-definitive-20260718-103444/cgpt/french-read-file"]
+trust_level = "trusted"
+
+[projects."/private/tmp/omni-definitive-20260718-103444/direct/pwd-basename"]
+trust_level = "trusted"
+
+[projects."/private/tmp/omni-definitive-20260718-103444/cgpt/pwd-basename"]
+trust_level = "trusted"
+
+[projects."/private/tmp/omni-definitive-20260718-103444/direct/multiturn-append-state"]
+trust_level = "trusted"
+
+[projects."/private/tmp/omni-definitive-20260718-103444/cgpt/multiturn-append-state"]
+trust_level = "trusted"
+
+[projects."/private/tmp/omni-definitive-20260718-103444/direct/multiturn-review-report"]
+trust_level = "trusted"
+
+[projects."/private/tmp/omni-definitive-20260718-103444/cgpt/multiturn-review-report"]
+trust_level = "trusted"
+
+[projects."/private/tmp/omni-hostloop-20260718-182817/direct/read-basic-txt"]
+trust_level = "trusted"
+
+[projects."/private/tmp/omni-hostloop-20260718-182817/cgpt/read-basic-txt"]
+trust_level = "trusted"
+
+[projects."/private/tmp/omni-hostloop-20260718-182817/direct/nearby-review-folder-english"]
+trust_level = "trusted"
+
+[projects."/private/tmp/omni-hostloop-20260718-182817/cgpt/nearby-review-folder-english"]
+trust_level = "trusted"
+
+[projects."/private/tmp/omni-hostloop-20260718-182817/direct/nearby-review-folder-korean"]
+trust_level = "trusted"
+
+[projects."/private/tmp/omni-hostloop-20260718-182817/cgpt/nearby-review-folder-korean"]
+trust_level = "trusted"
+
+[projects."/private/tmp/omni-hostloop-20260718-182817/direct/nearby-review-folder-spanish"]
+trust_level = "trusted"
+
+[projects."/private/tmp/omni-hostloop-20260718-182817/cgpt/nearby-review-folder-spanish"]
+trust_level = "trusted"
+
+[projects."/private/tmp/omni-hostloop-20260718-182817/direct/nearby-review-folder-japanese"]
+trust_level = "trusted"
+
+[projects."/private/tmp/omni-hostloop-20260718-182817/cgpt/nearby-review-folder-japanese"]
+trust_level = "trusted"
+
+[projects."/private/tmp/omni-hostloop-20260718-182817/direct/nearby-review-folder-arabic"]
+trust_level = "trusted"
+
+[projects."/private/tmp/omni-hostloop-20260718-182817/cgpt/nearby-review-folder-arabic"]
+trust_level = "trusted"
+
+[projects."/private/tmp/omni-hostloop-20260718-182817/direct/delete-temp"]
+trust_level = "trusted"
+
+[projects."/private/tmp/omni-hostloop-20260718-182817/cgpt/delete-temp"]
+trust_level = "trusted"
+
+[projects."/private/tmp/omni-hostloop-20260718-182817/direct/extract-todos"]
+trust_level = "trusted"
+
+[projects."/private/tmp/omni-hostloop-20260718-182817/cgpt/extract-todos"]
+trust_level = "trusted"
+
+[projects."/private/tmp/omni-hostloop-20260718-182817/direct/chinese-append-file"]
+trust_level = "trusted"
+
+[projects."/private/tmp/omni-hostloop-20260718-182817/cgpt/chinese-append-file"]
+trust_level = "trusted"
+
+[projects."/private/tmp/omni-hostloop2-20260718-190808/direct/nearby-review-folder-korean"]
+trust_level = "trusted"
+
+[projects."/private/tmp/omni-hostloop2-20260718-190808/cgpt/nearby-review-folder-korean"]
+trust_level = "trusted"
+
+[projects."/private/tmp/omni-hostloop2-20260718-190808/direct/nearby-review-folder-japanese"]
+trust_level = "trusted"
+
+[projects."/private/tmp/omni-hostloop2-20260718-190808/cgpt/nearby-review-folder-japanese"]
+trust_level = "trusted"
+
+[projects."/private/tmp/omni-hostloop2-20260718-190808/direct/nearby-review-folder-arabic"]
+trust_level = "trusted"
+
+[projects."/private/tmp/omni-hostloop2-20260718-190808/cgpt/nearby-review-folder-arabic"]
+trust_level = "trusted"
+
+[projects."/private/tmp/omni-hostloop2-20260718-190808/direct/create-result-file"]
+trust_level = "trusted"
+
+[projects."/private/tmp/omni-hostloop2-20260718-190808/cgpt/create-result-file"]
+trust_level = "trusted"
+
+[projects."/private/tmp/omni-hostloop2-20260718-190808/direct/delete-temp"]
+trust_level = "trusted"
+
+[projects."/private/tmp/omni-hostloop2-20260718-190808/cgpt/delete-temp"]
+trust_level = "trusted"
+
+[projects."/private/tmp/omni-hostloop2-20260718-190808/direct/count-lines"]
+trust_level = "trusted"
+
+[projects."/private/tmp/omni-hostloop2-20260718-190808/cgpt/count-lines"]
+trust_level = "trusted"
+
+[projects."/private/tmp/omni-hostloop2-20260718-190808/direct/extract-todos"]
+trust_level = "trusted"
+
+[projects."/private/tmp/omni-hostloop2-20260718-190808/cgpt/extract-todos"]
+trust_level = "trusted"
+
+[projects."/private/tmp/omni-hostloop3-20260718-201559/direct/read-basic-txt"]
+trust_level = "trusted"
+
+[projects."/private/tmp/omni-hostloop3-20260718-201559/cgpt/read-basic-txt"]
+trust_level = "trusted"
+
+[projects."/private/tmp/omni-hostloop3-20260718-201559/direct/nearby-review-folder-korean"]
+trust_level = "trusted"
+
+[projects."/private/tmp/omni-hostloop3-20260718-201559/cgpt/nearby-review-folder-korean"]
+trust_level = "trusted"
+
+[projects."/private/tmp/omni-hostloop3-20260718-201559/direct/nearby-review-folder-japanese"]
+trust_level = "trusted"
+
+[projects."/private/tmp/omni-hostloop3-20260718-201559/cgpt/nearby-review-folder-japanese"]
+trust_level = "trusted"
+
+[projects."/private/tmp/omni-hostloop3-20260718-201559/direct/delete-temp"]
+trust_level = "trusted"
+
+[projects."/private/tmp/omni-hostloop3-20260718-201559/cgpt/delete-temp"]
+trust_level = "trusted"
+
+[projects."/private/tmp/omni-hostloop3-20260718-201559/direct/count-lines"]
+trust_level = "trusted"
+
+[projects."/private/tmp/omni-hostloop3-20260718-201559/cgpt/count-lines"]
+trust_level = "trusted"
+
+[projects."/private/tmp/omni-hostloop3-20260718-201559/direct/extract-todos"]
+trust_level = "trusted"
+
+[projects."/private/tmp/omni-hostloop3-20260718-201559/cgpt/extract-todos"]
+trust_level = "trusted"
+
+[projects."/private/tmp/omni-hostloop4-20260718-202947/direct/read-basic-txt"]
+trust_level = "trusted"
+
+[projects."/private/tmp/omni-hostloop4-20260718-202947/cgpt/read-basic-txt"]
+trust_level = "trusted"
+
+[projects."/private/tmp/omni-hostloop4-20260718-204036/direct/read-basic-txt"]
+trust_level = "trusted"
+
+[projects."/private/tmp/omni-hostloop4-20260718-204036/cgpt/read-basic-txt"]
+trust_level = "trusted"
+
+[projects."/private/tmp/omni-hostloop4-20260718-204036/direct/nearby-review-folder-korean"]
+trust_level = "trusted"
+
+[projects."/private/tmp/omni-hostloop4-20260718-204036/cgpt/nearby-review-folder-korean"]
+trust_level = "trusted"
+
+[projects."/private/tmp/omni-hostloop4-20260718-204036/direct/delete-temp"]
+trust_level = "trusted"
+
+[projects."/private/tmp/omni-hostloop4-20260718-204036/cgpt/delete-temp"]
+trust_level = "trusted"
+
+[projects."/private/tmp/omni-hostloop4-20260718-204036/direct/extract-todos"]
+trust_level = "trusted"
+
+[projects."/private/tmp/omni-hostloop4-20260718-204036/cgpt/extract-todos"]
+trust_level = "trusted"
+
+[projects."/private/tmp/omni-hostloop5-20260718-205637/direct/read-basic-txt"]
+trust_level = "trusted"
+
+[projects."/private/tmp/omni-hostloop5-20260718-205637/cgpt/read-basic-txt"]
+trust_level = "trusted"
+
+[projects."/private/tmp/omni-hostloop5-20260718-205637/direct/nearby-review-folder-korean"]
+trust_level = "trusted"
+
+[projects."/private/tmp/omni-hostloop5-20260718-205637/cgpt/nearby-review-folder-korean"]
+trust_level = "trusted"
+
+[projects."/private/tmp/omni-hostloop5-20260718-205637/direct/delete-temp"]
+trust_level = "trusted"
+
+[projects."/private/tmp/omni-hostloop5-20260718-205637/cgpt/delete-temp"]
+trust_level = "trusted"
+
+[projects."/private/tmp/omni-hostloop5-20260718-205637/direct/extract-todos"]
+trust_level = "trusted"
+
+[projects."/private/tmp/omni-hostloop5-20260718-205637/cgpt/extract-todos"]
+trust_level = "trusted"
+
+[projects."/private/tmp/omni-definitive2-20260718-211123/direct/read-basic-txt"]
+trust_level = "trusted"
+
+[projects."/private/tmp/omni-definitive2-20260718-211123/cgpt/read-basic-txt"]
+trust_level = "trusted"
+
+[projects."/private/tmp/omni-definitive2-20260718-211123/direct/read-package-json"]
+trust_level = "trusted"
+
+[projects."/private/tmp/omni-definitive2-20260718-211123/cgpt/read-package-json"]
+trust_level = "trusted"
+
+[projects."/private/tmp/omni-definitive2-20260718-211123/direct/nearby-review-folder-english"]
+trust_level = "trusted"
+
+[projects."/private/tmp/omni-definitive2-20260718-211123/cgpt/nearby-review-folder-english"]
+trust_level = "trusted"
+
+[projects."/private/tmp/omni-definitive2-20260718-211123/direct/nearby-review-folder-korean"]
+trust_level = "trusted"
+
+[projects."/private/tmp/omni-definitive2-20260718-211123/cgpt/nearby-review-folder-korean"]
+trust_level = "trusted"
+
+[projects."/private/tmp/omni-definitive2-20260718-211123/direct/nearby-review-folder-spanish"]
+trust_level = "trusted"
+
+[projects."/private/tmp/omni-definitive2-20260718-211123/cgpt/nearby-review-folder-spanish"]
+trust_level = "trusted"
+
+[projects."/private/tmp/omni-definitive2-20260718-211123/direct/nearby-review-folder-japanese"]
+trust_level = "trusted"
+
+[projects."/private/tmp/omni-definitive2-20260718-211123/cgpt/nearby-review-folder-japanese"]
+trust_level = "trusted"
+
+[projects."/private/tmp/omni-definitive2-20260718-211123/direct/nearby-review-folder-arabic"]
+trust_level = "trusted"
+
+[projects."/private/tmp/omni-definitive2-20260718-211123/cgpt/nearby-review-folder-arabic"]
+trust_level = "trusted"
+
+[projects."/private/tmp/omni-definitive2-20260718-211123/direct/create-result-file"]
+trust_level = "trusted"
+
+[projects."/private/tmp/omni-definitive2-20260718-211123/cgpt/create-result-file"]
+trust_level = "trusted"
+
+[projects."/private/tmp/omni-definitive2-20260718-211123/direct/append-list-file"]
+trust_level = "trusted"
+
+[projects."/private/tmp/omni-definitive2-20260718-211123/cgpt/append-list-file"]
+trust_level = "trusted"
+
+[projects."/private/tmp/omni-definitive2-20260718-211123/direct/edit-json-enabled"]
+trust_level = "trusted"
+
+[projects."/private/tmp/omni-definitive2-20260718-211123/cgpt/edit-json-enabled"]
+trust_level = "trusted"
+
+[projects."/private/tmp/omni-definitive2-20260718-211123/direct/create-nested-summary"]
+trust_level = "trusted"
+
+[projects."/private/tmp/omni-definitive2-20260718-211123/cgpt/create-nested-summary"]
+trust_level = "trusted"
+
+[projects."/private/tmp/omni-definitive2-20260718-211123/direct/rename-draft"]
+trust_level = "trusted"
+
+[projects."/private/tmp/omni-definitive2-20260718-211123/cgpt/rename-draft"]
+trust_level = "trusted"
+
+[projects."/private/tmp/omni-definitive2-20260718-211123/direct/delete-temp"]
+trust_level = "trusted"
+
+[projects."/private/tmp/omni-definitive2-20260718-211123/cgpt/delete-temp"]
+trust_level = "trusted"
+
+[projects."/private/tmp/omni-definitive2-20260718-211123/direct/count-lines"]
+trust_level = "trusted"
+
+[projects."/private/tmp/omni-definitive2-20260718-211123/cgpt/count-lines"]
+trust_level = "trusted"
+
+[projects."/private/tmp/omni-definitive2-20260718-211123/direct/sum-numbers"]
+trust_level = "trusted"
+
+[projects."/private/tmp/omni-definitive2-20260718-211123/cgpt/sum-numbers"]
+trust_level = "trusted"
+
+[projects."/private/tmp/omni-definitive2-20260718-211123/direct/find-target-flag"]
+trust_level = "trusted"
+
+[projects."/private/tmp/omni-definitive2-20260718-211123/cgpt/find-target-flag"]
+trust_level = "trusted"
+
+[projects."/private/tmp/omni-definitive2-20260718-211123/direct/run-node-script"]
+trust_level = "trusted"
+
+[projects."/private/tmp/omni-definitive2-20260718-211123/cgpt/run-node-script"]
+trust_level = "trusted"
+
+[projects."/private/tmp/omni-definitive2-20260718-211123/direct/inspect-csv-highest"]
+trust_level = "trusted"
+
+[projects."/private/tmp/omni-definitive2-20260718-211123/cgpt/inspect-csv-highest"]
+trust_level = "trusted"
+
+[projects."/private/tmp/omni-definitive2-20260718-211123/direct/combine-files"]
+trust_level = "trusted"
+
+[projects."/private/tmp/omni-definitive2-20260718-211123/cgpt/combine-files"]
+trust_level = "trusted"
+
+[projects."/private/tmp/omni-definitive2-20260718-211123/direct/sort-names"]
+trust_level = "trusted"
+
+[projects."/private/tmp/omni-definitive2-20260718-211123/cgpt/sort-names"]
+trust_level = "trusted"
+
+[projects."/private/tmp/omni-definitive2-20260718-211123/direct/extract-todos"]
+trust_level = "trusted"
+
+[projects."/private/tmp/omni-definitive2-20260718-211123/cgpt/extract-todos"]
+trust_level = "trusted"
+
+[projects."/private/tmp/omni-definitive2-20260718-211123/direct/edit-yaml-mode"]
+trust_level = "trusted"
+
+[projects."/private/tmp/omni-definitive2-20260718-211123/cgpt/edit-yaml-mode"]
+trust_level = "trusted"
+
+[projects."/private/tmp/omni-definitive2-20260718-211123/direct/korean-create-file"]
+trust_level = "trusted"
+
+[projects."/private/tmp/omni-definitive2-20260718-211123/cgpt/korean-create-file"]
+trust_level = "trusted"
+
+[projects."/private/tmp/omni-definitive2-20260718-211123/direct/chinese-append-file"]
+trust_level = "trusted"
+
+[projects."/Users/patrickrho/.pi"]
+trust_level = "trusted"
+
+[projects."/Users/patrickrho/projects/9router"]
+trust_level = "trusted"
+
+[projects."/Users/patrickrho/.config/kitty"]
+trust_level = "trusted"
+
+[projects."/Users/patrickrho/projects/pie"]
+trust_level = "trusted"
+
+[projects."/private/tmp"]
+trust_level = "trusted"
+
+[projects."/Users/patrickrho/projects/patty-code"]
+trust_level = "trusted"
+
+[projects."/Users/patrickrho/.reasonix"]
+trust_level = "trusted"
+
+[projects."/Users/patrickrho/projects/pccp"]
+trust_level = "trusted"
+
+[projects."/Users/patrickrho/Library/CloudStorage/GoogleDrive-patrickrho@gmail.com/My Drive/Patty/HR/Termniation/hyunjin_packet"]
+trust_level = "trusted"
+
+[projects."/Users/patrickrho/projects/video-production"]
+trust_level = "trusted"
+
+[projects."/Users/patrickrho/projects/patty-corp"]
+trust_level = "trusted"
+
+[projects."/Volumes/patty-browser"]
+trust_level = "trusted"
+
+[notice]
+hide_rate_limit_model_nudge = true
+hide_full_access_warning = true
+
+[notice.model_migrations]
+"gpt-5.3-codex" = "gpt-5.5"
+"gpt-5.2" = "gpt-5.4"
+"gpt-5.4" = "gpt-5.5"
+
+[apps._default]
+enabled = false
+
+[features]
+multi_agent = true
+hooks = true
+terminal_resize_reflow = true
+goals = true
+
+[agents]
+max_threads = 10
+max_depth = 2
+
+[tui]
+status_line = [ "model-with-reasoning", "context-remaining", "current-dir", "project-root", "weekly-limit", "five-hour-limit" ]
+
+[tui.model_availability_nux]
+"gpt-5.5" = 4
+"gpt-5.6-sol" = 4
+
+[plugins."superpowers@openai-curated"]
+enabled = true
+
+[mcp_servers.codegraph]
+command = "/Users/patrickrho/.nvm/versions/node/v24.7.0/bin/node"
+args = ["/Users/patrickrho/.local/bin/codegraph", "serve", "--mcp"]
+
+[mcp_servers.semble]
+command = "uvx"
+args = ["--from", "semble[mcp]", "semble"]
+
+[mcp_servers.semble.tools.search]
+approval_mode = "approve"
+
+[mcp_servers.linear]
+url = "https://mcp.linear.app/mcp"
+
+[mcp_servers.atlassian]
+url = "https://mcp.atlassian.com/v1/mcp/authv2"
+
+[mcp_servers.openaiDeveloperDocs]
+url = "https://developers.openai.com/mcp"
+
+[mcp_servers.lightpanda]
+url = "http://127.0.0.1:9334/mcp"
+
+[mcp_servers.google-docs]
+command = "node"
+args = ["/Users/patrickrho/.local/mcp/google-docs-mcp/node_modules/@a-bonus/google-docs-mcp/dist/index.js"]
+
+[mcp_servers.google-docs.env]
+GOOGLE_IMPERSONATE_USER = "patrick@patty.io"
+MCP_TOOL_GROUPS = "docs,drive,sheets,utils"
+SERVICE_ACCOUNT_PATH = "/Users/patrickrho/projects/spreadsheet-mcp/credentials/service-key.json"
+
+[hooks.state]
+
+[hooks.state."/Users/patrickrho/projects/t1/main/.codex/hooks.json:pre_tool_use:0:0"]
+trusted_hash = "sha256:916de4f1ffad1d2b7bbcdf0c5e33dfa26da67730e8382aa48694f104255f4cd1"
