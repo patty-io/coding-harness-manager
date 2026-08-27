@@ -378,3 +378,45 @@ pub async fn sync_apply(
 ) -> Result<ApplyReport, String> {
     execute_sync(&state.pool, &installation_id, &parse_mode(&mode), force).await
 }
+
+/// Syncs ONE canonical MCP server into a harness's native config (append).
+pub async fn bind_mcp_sync(
+    pool: &Pool<Sqlite>,
+    inst: &HarnessInstallation,
+    server: &chm_core::domain::mcp::McpServer,
+) -> Result<(), String> {
+    let adapter = adapter_for(inst.harness_type.as_str()).ok_or("no adapter for harness")?;
+    let parsed = adapter.read_state(inst).map_err(|e| e.to_string())?;
+    use chm_harness_sdk::adapter::plan::{ActualState, DesiredState, Mode, PlanAction};
+    let desired = DesiredState {
+        mcp_servers: vec![server.clone()],
+        ..Default::default()
+    };
+    let actual = ActualState {
+        mcp: parsed.mcp.clone(),
+        ..Default::default()
+    };
+    let plan = chm_reconciliation::engine::reconcile(&desired, &actual, Mode::Append)
+        .map_err(|e| e.to_string())?;
+    let plan = chm_reconciliation::engine::filter_unsupported(plan, &adapter.capabilities());
+    let plan = chm_harness_sdk::adapter::plan::ReconciliationPlan {
+        actions: plan
+            .actions
+            .into_iter()
+            .filter(|a| matches!(a, PlanAction::Add(x) if x.kind == "mcp"))
+            .collect(),
+    };
+    if plan.actions.is_empty() {
+        return Ok(()); // already present or unsupported
+    }
+    let native_plan = adapter.plan(&plan, inst).map_err(|e| e.to_string())?;
+    let _ = adapter.apply(inst, &native_plan).map_err(|e| e.to_string())?;
+    let validation = adapter.validate(inst).map_err(|e| e.to_string())?;
+    if !validation.ok {
+        return Err(format!(
+            "bind failed validation: {:?} — native config may be inconsistent",
+            validation.errors
+        ));
+    }
+    Ok(())
+}

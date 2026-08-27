@@ -33,6 +33,16 @@ pub async fn scan_harnesses(
     scan_and_persist(&state.pool).await
 }
 
+/// PATH lookup used by MCP diagnostics.
+pub fn command_on_path(name: &str) -> bool {
+    if name.contains('/') {
+        return std::path::Path::new(name).is_file();
+    }
+    std::env::var_os("PATH")
+        .map(|p| std::env::split_paths(&p).any(|dir| dir.join(name).is_file()))
+        .unwrap_or(false)
+}
+
 #[tauri::command]
 pub async fn list_installations_cmd(
     state: State<'_, AppState>,

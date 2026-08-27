@@ -461,6 +461,7 @@ name = "claude-code-adapter"
 version = "0.1.0"
 dependencies = [
  "chm-core",
+ "chm-filesystem",
  "chm-harness-sdk",
  "chrono",
  "serde_json",
@@ -472,10 +473,12 @@ name = "codex-adapter"
 version = "0.1.0"
 dependencies = [
  "chm-core",
+ "chm-filesystem",
  "chm-harness-sdk",
  "chrono",
  "serde_json",
  "toml 0.8.23",
+ "toml_edit 0.22.27",
  "uuid",
 ]
 
@@ -2713,6 +2716,7 @@ name = "pi-adapter"
 version = "0.1.0"
 dependencies = [
  "chm-core",
+ "chm-filesystem",
  "chm-harness-sdk",
  "chrono",
  "serde_json",
@@ -3056,10 +3060,12 @@ name = "reasonix-adapter"
 version = "0.1.0"
 dependencies = [
  "chm-core",
+ "chm-filesystem",
  "chm-harness-sdk",
  "chrono",
  "serde_json",
  "toml 0.8.23",
+ "toml_edit 0.22.27",
  "uuid",
 ]
 

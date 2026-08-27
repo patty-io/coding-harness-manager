@@ -70,6 +70,12 @@ pub fn run() {
             commands::models::set_user_override_cmd,
             commands::sync::sync_preview,
             commands::sync::sync_apply,
+            commands::mcp::create_mcp_cmd,
+            commands::mcp::list_mcp_cmd,
+            commands::mcp::delete_mcp_cmd,
+            commands::mcp::mcp_detail_cmd,
+            commands::mcp::bind_mcp_cmd,
+            commands::mcp::run_mcp_diagnostics,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

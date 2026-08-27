@@ -281,3 +281,47 @@ export async function enrichRoute(routeId: string): Promise<EnrichOutcome> {
 export async function resolveEnrichment(routeId: string, identityId: string): Promise<void> {
   return invoke<void>("resolve_enrichment_cmd", { routeId, identityId });
 }
+
+// --- MCP ---
+
+export interface McpServer {
+  id: string;
+  name: string;
+  transport: string;
+  command: string | null;
+  args: string[];
+  url: string | null;
+  env: Record<string, unknown>;
+  scope_type: string;
+  scope_path: string | null;
+  provenance: unknown;
+  enabled: boolean;
+}
+
+export interface McpInput {
+  name: string;
+  transport: string;
+  command: string | null;
+  args: string[];
+  url: string | null;
+  env: Record<string, unknown>;
+}
+
+export interface CheckResult {
+  check: string;
+  passed: boolean;
+  detail: string;
+}
+
+export async function createMcp(input: McpInput): Promise<McpServer> {
+  return invoke<McpServer>("create_mcp_cmd", { input });
+}
+export async function listMcp(): Promise<McpServer[]> {
+  return invoke<McpServer[]>("list_mcp_cmd");
+}
+export async function deleteMcp(id: string): Promise<void> {
+  return invoke<void>("delete_mcp_cmd", { id });
+}
+export async function runMcpDiagnostics(mcpId: string): Promise<CheckResult[]> {
+  return invoke<CheckResult[]>("run_mcp_diagnostics", { mcpId });
+}

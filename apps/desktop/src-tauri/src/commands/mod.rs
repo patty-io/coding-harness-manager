@@ -1,6 +1,7 @@
 pub mod dashboard;
 pub mod endpoints;
 pub mod import;
+pub mod mcp;
 pub mod models;
 pub mod provider_actions;
 pub mod providers;
