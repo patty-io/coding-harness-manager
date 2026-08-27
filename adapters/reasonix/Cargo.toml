@@ -6,10 +6,12 @@ license.workspace = true
 
 [dependencies]
 chm-core.workspace = true
+chm-filesystem.workspace = true
 chm-harness-sdk.workspace = true
 chrono.workspace = true
 serde_json.workspace = true
 toml = "0.8"
+toml_edit = "0.22"
 uuid.workspace = true
 
 [dev-dependencies]

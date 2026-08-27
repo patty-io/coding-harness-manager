@@ -1,10 +1,14 @@
 //! Pi read-only adapter.
 
 pub mod parser;
+pub mod writer;
 
 use chm_core::domain::harness::HarnessInstallation;
+use chm_harness_sdk::adapter::parse_version_supported;
+use chm_harness_sdk::adapter::plan::PlanAction;
 use chm_harness_sdk::adapter::types::{
-    AdapterError, HarnessAdapter, HarnessCapabilities, ParsedState,
+    AdapterError, ApplyResult, HarnessAdapter, HarnessCapabilities, NativeLink, NativePlan,
+    ParsedState, ValidationReport,
 };
 
 pub struct PiAdapter;
