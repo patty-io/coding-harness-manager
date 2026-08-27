@@ -16,6 +16,7 @@ chm-core = { path = "../../../crates/core" }
 chm-database = { path = "../../../crates/database" }
 chm-harness-sdk = { path = "../../../crates/harness-sdk" }
 chm-providers = { path = "../../../crates/providers" }
+chm-models-dev = { path = "../../../crates/models-dev" }
 chm-secrets = { path = "../../../crates/secrets" }
 chrono = "0.4"
 reqwest = { version = "0.12", default-features = false, features = ["json", "rustls-tls"] }

@@ -59,6 +59,15 @@ pub fn run() {
             commands::provider_actions::discover_endpoint_models,
             commands::provider_actions::list_catalog_models_cmd,
             commands::provider_actions::provider_summary,
+            commands::models::list_routes_cmd,
+            commands::models::update_route_cmd,
+            commands::models::delete_route_cmd,
+            commands::models::create_route_cmd,
+            commands::models::list_catalog_all,
+            commands::models::add_catalog_batch,
+            commands::models::enrich_route_cmd,
+            commands::models::resolve_enrichment_cmd,
+            commands::models::set_user_override_cmd,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
