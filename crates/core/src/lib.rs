@@ -1,5 +1,30 @@
 //! Pure domain types shared across all CHM crates. No I/O.
 
+/// Wires an enum as its stable string form using existing
+/// `as_str()` / `parse_str()` methods — never an externally-tagged object.
+#[macro_export]
+macro_rules! wire_serializable_enum {
+    ($t:ident) => {
+        impl serde::Serialize for $t {
+            fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
+            where
+                S: serde::Serializer,
+            {
+                serializer.serialize_str(self.as_str())
+            }
+        }
+        impl<'de> serde::Deserialize<'de> for $t {
+            fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+            where
+                D: serde::Deserializer<'de>,
+            {
+                let s = String::deserialize(deserializer)?;
+                Ok(<$t>::parse_str(&s))
+            }
+        }
+    };
+}
+
 pub mod domain;
 
 pub use domain::*;

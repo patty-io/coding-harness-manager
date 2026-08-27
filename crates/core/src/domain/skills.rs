@@ -4,7 +4,9 @@ use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
 use uuid::Uuid;
 
-#[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq)]
+crate::wire_serializable_enum!(SkillSourceType);
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum SkillSourceType {
     Folder,
     Git,

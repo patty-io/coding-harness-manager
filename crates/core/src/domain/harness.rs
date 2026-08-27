@@ -4,7 +4,9 @@ use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
 use uuid::Uuid;
 
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq, Hash)]
+crate::wire_serializable_enum!(HarnessType);
+
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub enum HarnessType {
     ClaudeCode,
     Codex,
@@ -40,8 +42,10 @@ impl HarnessType {
     }
 }
 
-#[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq)]
-#[serde(rename_all = "kebab-case")]
+crate::wire_serializable_enum!(InstallationStatus);
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+
 pub enum InstallationStatus {
     Detected,
     Installed,

@@ -4,7 +4,9 @@ use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
 use uuid::Uuid;
 
-#[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq)]
+crate::wire_serializable_enum!(TransactionType);
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum TransactionType {
     Sync,
     Import,
@@ -32,7 +34,9 @@ impl TransactionType {
     }
 }
 
-#[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq)]
+crate::wire_serializable_enum!(TransactionStatus);
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum TransactionStatus {
     Running,
     Succeeded,

@@ -16,7 +16,9 @@ pub struct ModelIdentity {
     pub updated_at: DateTime<Utc>,
 }
 
-#[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq)]
+crate::wire_serializable_enum!(CatalogStatus);
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum CatalogStatus {
     Available,
     New,

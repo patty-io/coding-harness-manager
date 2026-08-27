@@ -18,7 +18,9 @@ pub struct Provider {
     pub updated_at: DateTime<Utc>,
 }
 
-#[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq)]
+crate::wire_serializable_enum!(Protocol);
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Protocol {
     OpenAiChatCompletions,
     OpenAiResponses,
@@ -49,7 +51,9 @@ impl Protocol {
     }
 }
 
-#[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq)]
+crate::wire_serializable_enum!(AuthType);
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum AuthType {
     None,
     ApiKeyHeader,

@@ -4,7 +4,9 @@ use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
 use uuid::Uuid;
 
-#[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq)]
+crate::wire_serializable_enum!(CredentialKind);
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum CredentialKind {
     Keychain,
     WindowsCredentialManager,
@@ -28,11 +30,11 @@ impl CredentialKind {
 
     pub fn parse_str(s: &str) -> Self {
         match s {
+            "keychain" => Self::Keychain,
             "windows-credential-manager" => Self::WindowsCredentialManager,
             "libsecret" => Self::Libsecret,
             "env" => Self::Env,
             "vault" => Self::Vault,
-            "unknown" => Self::Unknown,
             _ => Self::Unknown,
         }
     }

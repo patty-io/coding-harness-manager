@@ -3,7 +3,9 @@
 use serde::{Deserialize, Serialize};
 use uuid::Uuid;
 
-#[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq)]
+crate::wire_serializable_enum!(McpTransport);
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum McpTransport {
     Stdio,
     Http,
@@ -31,7 +33,9 @@ impl McpTransport {
     }
 }
 
-#[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq)]
+crate::wire_serializable_enum!(ScopeType);
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum ScopeType {
     Global,
     Project,

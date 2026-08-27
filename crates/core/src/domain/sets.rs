@@ -4,7 +4,9 @@ use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
 use uuid::Uuid;
 
-#[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq)]
+crate::wire_serializable_enum!(SetItemType);
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum SetItemType {
     ModelRoute,
     McpServer,
