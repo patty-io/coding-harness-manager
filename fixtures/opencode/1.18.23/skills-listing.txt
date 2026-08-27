@@ -1,0 +1,8 @@
+total 0
+drwxr-xr-x@  7 patrickrho  staff  224 Aug 21 06:20 .
+drwxr-xr-x  17 patrickrho  staff  544 Aug 26 00:02 ..
+lrwxr-xr-x@  1 patrickrho  staff   31 Aug 21 06:20 caveman -> ../../../.agents/skills/caveman
+lrwxr-xr-x@  1 patrickrho  staff   32 Aug 21 06:17 codebook -> ../../../.agents/skills/codebook
+lrwxr-xr-x@  1 patrickrho  staff   40 May  4 00:12 feature-research -> ../../../.agents/skills/feature-research
+lrwxr-xr-x@  1 patrickrho  staff   40 Aug 21 06:17 fix-linear-issue -> ../../../.agents/skills/fix-linear-issue
+lrwxr-xr-x@  1 patrickrho  staff   31 Aug 21 06:17 j-space -> ../../../.agents/skills/j-space
