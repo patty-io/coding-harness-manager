@@ -380,3 +380,42 @@ export interface SkillView {
 export async function listSkills(): Promise<SkillView[]> {
   return invoke<SkillView[]>("list_skills_cmd");
 }
+
+// --- Profiles ---
+
+export interface RoleMappingView {
+  role: string;
+  model: string;
+}
+
+export interface ProfileView {
+  id: string;
+  name: string;
+  harnessType: string;
+  modelRouteId: string | null;
+  providerEndpointId: string | null;
+  providerName: string | null;
+  modelDisplay: string | null;
+  env: Record<string, unknown>;
+  roleMappings: RoleMappingView[];
+}
+
+export interface ProfileInput {
+  name: string;
+  harnessType: string;
+  modelRouteId: string | null;
+  providerEndpointId: string | null;
+  env: Record<string, unknown>;
+  roleMappings: { role: string; model: string }[];
+}
+
+export async function listProfiles(): Promise<ProfileView[]> {
+  return invoke<ProfileView[]>("list_profiles_cmd");
+}
+export async function createProfile(input: ProfileInput): Promise<string> {
+  return invoke<string>("create_profile_cmd", { input });
+}
+export async function deleteProfile(id: string): Promise<void> {
+  return invoke<void>("delete_profile_cmd", { id });
+}
+
