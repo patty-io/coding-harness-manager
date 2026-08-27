@@ -1,6 +1,5 @@
 import { Route, Routes } from "react-router-dom";
 import Sidebar from "./components/Sidebar";
-import InventoryScreen from "./screens/InventoryScreen";
 import HarnessesScreen from "./screens/HarnessesScreen";
 import ImportWizard from "./screens/ImportWizard";
 import ProvidersScreen from "./screens/ProvidersScreen";
