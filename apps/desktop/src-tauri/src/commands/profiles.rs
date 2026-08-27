@@ -61,12 +61,12 @@ pub async fn profile_views(pool: &Pool<Sqlite>) -> Result<Vec<ProfileView>, Stri
         let mut endpoint_provider: Option<Uuid> = None;
         if let Some(ep_id) = p.provider_endpoint_id {
             for prov in &providers {
-                if let Ok(ends) = list_endpoints(pool, prov.id).await {
-                    if ends.iter().any(|e| e.id == ep_id) {
-                        provider_name = Some(prov.display_name.clone());
-                        endpoint_provider = Some(prov.id);
-                        break;
-                    }
+                if let Ok(ends) = list_endpoints(pool, prov.id).await
+                    && ends.iter().any(|e| e.id == ep_id)
+                {
+                    provider_name = Some(prov.display_name.clone());
+                    endpoint_provider = Some(prov.id);
+                    break;
                 }
             }
         }
@@ -180,7 +180,7 @@ pub async fn launch_profile_cmd(
         .clone()
         .ok_or("harness executable not found")?;
 
-    let mut inherited: HashMap<String, String> = std::env::vars().collect();
+    let inherited: HashMap<String, String> = std::env::vars().collect();
     let resolved = crate::commands::launcher::resolve_profile_env(
         &profile.env,
         state.secrets.as_ref(),

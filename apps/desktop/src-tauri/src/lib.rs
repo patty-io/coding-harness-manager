@@ -1,6 +1,7 @@
 //! Tauri backend: commands + app state.
 
 pub mod commands;
+pub mod drift;
 pub mod services;
 pub mod skill_lib;
 
@@ -93,6 +94,9 @@ pub fn run() {
             commands::sets::remove_set_item_cmd,
             commands::sets::apply_set_preview_cmd,
             commands::sets::apply_set_cmd,
+            commands::history::list_history_cmd,
+            commands::history::rollback_transaction_cmd,
+            commands::history::purge_old_snapshots_cmd,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

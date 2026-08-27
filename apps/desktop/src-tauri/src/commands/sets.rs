@@ -1,6 +1,6 @@
 //! Configuration set commands.
 
-use chm_core::domain::sets::{ConfigurationSetItem, SetItemType};
+use chm_core::domain::sets::SetItemType;
 use chm_database::repos::models::list_routes;
 use chm_database::repos::profiles::{add_set_item, list_set_items, list_sets};
 use serde::Serialize;

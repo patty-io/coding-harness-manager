@@ -1,8 +1,7 @@
 //! Launcher: env resolution + process spawn (shared core lives here; CLI
 //! reuses these functions via the same lib).
 
-use chm_core::domain::harness::HarnessInstallation;
-use chm_core::domain::profiles::{LaunchProfile, RoleMapping};
+use chm_core::domain::profiles::RoleMapping;
 use chm_secrets::SecretStore;
 use std::collections::HashMap;
 

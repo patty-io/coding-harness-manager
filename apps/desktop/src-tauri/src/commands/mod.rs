@@ -1,5 +1,6 @@
 pub mod dashboard;
 pub mod endpoints;
+pub mod history;
 pub mod import;
 pub mod launcher;
 pub mod mcp;
