@@ -151,10 +151,10 @@ pub async fn run_import(
     // pre-seed the map from already-registered providers so a re-import links
     // routes to the SAME endpoint instead of minting junk placeholder ones
     for p_ in &existing_providers {
-        if let Ok(endpoints) = list_endpoints(pool, p_.id).await {
-            if let Some(e) = endpoints.first() {
-                endpoint_by_native_provider.insert(p_.name.clone(), e.id);
-            }
+        if let Ok(endpoints) = list_endpoints(pool, p_.id).await
+            && let Some(e) = endpoints.first()
+        {
+            endpoint_by_native_provider.insert(p_.name.clone(), e.id);
         }
     }
     let mut created_in_batch: std::collections::HashSet<String> = Default::default();
@@ -170,9 +170,7 @@ pub async fn run_import(
         if name.starts_with('_') {
             continue; // internal marker entries (__schema__, __mcp_imports__)
         }
-        if existing_providers.iter().any(|p| p.name == name)
-            || created_in_batch.contains(name)
-        {
+        if existing_providers.iter().any(|p| p.name == name) || created_in_batch.contains(name) {
             report.duplicates.push(format!("provider:{name}"));
             continue;
         }

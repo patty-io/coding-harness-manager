@@ -134,10 +134,19 @@ async fn failed_import_rolls_back_entire_transaction() {
     let err = run_import(&pool, &inst.id.to_string(), &full_options())
         .await
         .expect_err("duplicate mcp name in one batch must fail the import");
-    assert!(err.contains("import failed") || err.contains("UNIQUE"), "got: {err}");
+    assert!(
+        err.contains("import failed") || err.contains("UNIQUE"),
+        "got: {err}"
+    );
     // nothing persisted: provider + mcp + routes all rolled back
-    assert!(list_providers(&pool).await.unwrap().is_empty(), "providers must roll back");
-    assert!(list_mcp_servers(&pool).await.unwrap().is_empty(), "mcp must roll back");
+    assert!(
+        list_providers(&pool).await.unwrap().is_empty(),
+        "providers must roll back"
+    );
+    assert!(
+        list_mcp_servers(&pool).await.unwrap().is_empty(),
+        "mcp must roll back"
+    );
 }
 
 #[tokio::test]
@@ -155,18 +164,33 @@ async fn reimport_links_routes_to_existing_provider_endpoint() {
     let (_dir, inst) = fixture_install(config);
     upsert_installation(&pool, &inst).await.unwrap();
 
-    let first = run_import(&pool, &inst.id.to_string(), &full_options()).await.unwrap();
+    let first = run_import(&pool, &inst.id.to_string(), &full_options())
+        .await
+        .unwrap();
     assert_eq!(first.models_imported, 1);
     // second import: provider exists -> not recreated; route links to the
     // EXISTING endpoint, so the unique (endpoint_id, remote_model_id) hits
     // and the model is reported as a duplicate — no junk "imported" provider.
-    let second = run_import(&pool, &inst.id.to_string(), &full_options()).await.unwrap();
+    let second = run_import(&pool, &inst.id.to_string(), &full_options())
+        .await
+        .unwrap();
     assert_eq!(second.providers_created, 0);
     assert_eq!(second.models_imported, 0);
-    assert!(second.duplicates.iter().any(|d| d.starts_with("model:")), "got: {:?}", second.duplicates);
-    assert!(second.duplicates.iter().any(|d| d.starts_with("provider:")), "existing provider reported as duplicate");
+    assert!(
+        second.duplicates.iter().any(|d| d.starts_with("model:")),
+        "got: {:?}",
+        second.duplicates
+    );
+    assert!(
+        second.duplicates.iter().any(|d| d.starts_with("provider:")),
+        "existing provider reported as duplicate"
+    );
     let providers = list_providers(&pool).await.unwrap();
-    assert_eq!(providers.len(), 1, "no placeholder 'imported' provider may be created");
+    assert_eq!(
+        providers.len(),
+        1,
+        "no placeholder 'imported' provider may be created"
+    );
     assert_eq!(providers[0].name, "zai");
 }
 
