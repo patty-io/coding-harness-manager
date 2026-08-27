@@ -107,7 +107,16 @@ fn field_differs(field: &str, actual: &ModelRoute, desired: &ModelRoute) -> bool
         "max_input" => actual.max_input != desired.max_input,
         "max_output" => actual.max_output != desired.max_output,
         "display_name" => actual.display_name != desired.display_name,
-        "capabilities" => actual.capabilities != desired.capabilities,
+        // empty desired capabilities = "leave native as-is"; only flag drift
+        // when the desired side actually specifies capability metadata
+        "capabilities" => {
+            !desired.capabilities.is_null()
+                && !desired
+                    .capabilities
+                    .as_object()
+                    .is_some_and(|m| m.is_empty())
+                && desired.capabilities != actual.capabilities
+        }
         _ => false,
     }
 }

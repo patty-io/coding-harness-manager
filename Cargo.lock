@@ -1166,6 +1166,7 @@ name = "opencode-adapter"
 version = "0.1.0"
 dependencies = [
  "chm-core",
+ "chm-filesystem",
  "chm-harness-sdk",
  "chrono",
  "json_comments",

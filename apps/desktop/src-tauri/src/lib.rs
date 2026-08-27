@@ -68,6 +68,8 @@ pub fn run() {
             commands::models::enrich_route_cmd,
             commands::models::resolve_enrichment_cmd,
             commands::models::set_user_override_cmd,
+            commands::sync::sync_preview,
+            commands::sync::sync_apply,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

@@ -6,6 +6,7 @@ license.workspace = true
 
 [dependencies]
 chm-core.workspace = true
+chm-filesystem.workspace = true
 chm-harness-sdk.workspace = true
 chrono.workspace = true
 json_comments = "0.2"
