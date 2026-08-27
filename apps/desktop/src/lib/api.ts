@@ -448,3 +448,12 @@ export async function listHistory(limit?: number): Promise<HistoryEntry[]> {
 export async function rollbackTransaction(transactionId: string): Promise<RollbackReport> {
   return invoke<RollbackReport>("rollback_transaction_cmd", { transactionId });
 }
+
+export interface LaunchResult {
+  pid: number | null;
+  executable: string;
+}
+
+export async function launchProfile(profileId: string): Promise<LaunchResult> {
+  return invoke<LaunchResult>("launch_profile_cmd", { profileId });
+}

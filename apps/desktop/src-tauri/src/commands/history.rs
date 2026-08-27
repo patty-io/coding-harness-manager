@@ -68,12 +68,20 @@ pub async fn rollback_transaction_core(
     let snaps = list_snapshots(pool, id).await.map_err(|e| e.to_string())?;
     let mut files_restored = Vec::new();
     for snap in snaps.iter().rev() {
-        if let Some(before) = &snap.before_content {
-            chm_filesystem::atomic_write(std::path::Path::new(&snap.path), before)
-                .map_err(|e| e.to_string())?;
-            files_restored.push(snap.path.clone());
-        } else if !std::path::Path::new(&snap.path).exists() {
-            continue;
+        match &snap.before_content {
+            Some(before) => {
+                chm_filesystem::atomic_write(std::path::Path::new(&snap.path), before)
+                    .map_err(|e| e.to_string())?;
+                files_restored.push(snap.path.clone());
+            }
+            None => {
+                // no backup = file was CREATED by this transaction — remove it
+                let path = std::path::Path::new(&snap.path);
+                if path.exists() {
+                    std::fs::remove_file(path).map_err(|e| e.to_string())?;
+                    files_restored.push(snap.path.clone());
+                }
+            }
         }
     }
     let rollback_tx = begin_transaction(

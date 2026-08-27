@@ -12,16 +12,6 @@ pub struct LaunchResult {
     pub executable: String,
 }
 
-pub trait SecretStoreRead {
-    fn read(&self, key: &str) -> Option<String>;
-}
-
-impl<S: SecretStore> SecretStoreRead for S {
-    fn read(&self, key: &str) -> Option<String> {
-        SecretStore::get(self, key).ok().flatten()
-    }
-}
-
 /// Resolves profile env entries: `$LP_<NAME>` / `${LP_<NAME>}` go through the
 /// secret store; `$NAME` through the inherited environment; plain values pass
 /// through untouched.

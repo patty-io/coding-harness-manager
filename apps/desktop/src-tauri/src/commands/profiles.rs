@@ -58,7 +58,6 @@ pub async fn profile_views(pool: &Pool<Sqlite>) -> Result<Vec<ProfileView>, Stri
     let mut views = Vec::new();
     for p in profiles {
         let mut provider_name = None;
-        let mut endpoint_provider: Option<Uuid> = None;
         if let Some(ep_id) = p.provider_endpoint_id {
             for prov in &providers {
                 if let Ok(ends) = list_endpoints(pool, prov.id).await
@@ -70,7 +69,6 @@ pub async fn profile_views(pool: &Pool<Sqlite>) -> Result<Vec<ProfileView>, Stri
                 }
             }
         }
-        let _ = endpoint_provider;
         let model_display = routes
             .iter()
             .find(|r| Some(r.id) == p.model_route_id)

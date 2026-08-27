@@ -1,17 +1,12 @@
+import { useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { invoke } from "@tauri-apps/api/core";
 
-interface ProfileView {
-  id: string;
-  name: string;
-  harnessType: string;
-  modelDisplay: string | null;
-  providerName: string | null;
-  roleMappings: { role: string; model: string }[];
-}
+import { launchProfile, type ProfileView } from "../lib/api";
 
 export default function ProfilesScreen() {
   const qc = useQueryClient();
+  const [launchNote, setLaunchNote] = useState<string | null>(null);
   const { data: profiles, isLoading } = useQuery({
     queryKey: ["profiles"],
     queryFn: () => invoke<ProfileView[]>("list_profiles_cmd"),
@@ -25,6 +20,12 @@ export default function ProfilesScreen() {
     <div>
       <h1 className="text-2xl font-bold">Profiles</h1>
       {isLoading && <p className="mt-4">Loading…</p>}
+      <button
+        onClick={() => qc.invalidateQueries({ queryKey: ["profiles"] })}
+        className="mt-3 rounded border border-gray-300 px-3 py-1 text-sm"
+      >
+        Refresh
+      </button>
       <ul className="mt-4 space-y-2">
         {(profiles ?? []).map((p) => (
           <li key={p.id} className="flex items-center justify-between rounded border border-gray-200 bg-white p-3 text-sm">
@@ -32,18 +33,34 @@ export default function ProfilesScreen() {
               <span className="font-medium">{p.name}</span>{" "}
               <span className="text-gray-500">{p.harnessType}</span>
             </div>
-            <button
-              onClick={() => { if (window.confirm("Delete profile?")) del.mutate(p.id); }}
-              className="rounded border border-red-200 px-2 py-0.5 text-xs text-red-600"
-            >
-              Delete
-            </button>
+            <div className="flex gap-2">
+              <button
+                onClick={async () => {
+                  try {
+                    const r = await launchProfile(p.id);
+                    setLaunchNote(`Launched ${r.executable} (pid ${r.pid ?? "?"})`);
+                  } catch (e) {
+                    setLaunchNote(`Launch failed: ${e instanceof Error ? e.message : String(e)}`);
+                  }
+                }}
+                className="rounded border border-green-300 px-2 py-0.5 text-xs text-green-700"
+              >
+                Launch
+              </button>
+              <button
+                onClick={() => { if (window.confirm("Delete profile?")) del.mutate(p.id); }}
+                className="rounded border border-red-200 px-2 py-0.5 text-xs text-red-600"
+              >
+                Delete
+              </button>
+            </div>
           </li>
         ))}
       </ul>
+      {launchNote && <p className="mt-3 text-sm text-gray-700">{launchNote}</p>}
       {(profiles ?? []).length === 0 && !isLoading && (
         <p className="mt-3 text-sm text-gray-500">
-          No profiles yet. Create one with “create profile” in the CLI or UI.
+          No profiles yet. Create one with "create profile" in the UI.
         </p>
       )}
     </div>
