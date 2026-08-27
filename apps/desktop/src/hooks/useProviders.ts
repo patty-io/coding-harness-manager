@@ -9,6 +9,7 @@ import {
   createProvider,
   deleteProvider,
   discoverEndpointModels,
+  discoverProviderModels,
   envVarSet,
   listCatalogModels,
   listEndpoints,
@@ -102,6 +103,18 @@ export function useDiscover(endpointId: string) {
   return useMutation({
     mutationFn: () => discoverEndpointModels(endpointId),
     onSuccess: () => qc.invalidateQueries({ queryKey: ["catalog", endpointId] }),
+  });
+}
+
+export function useDiscoverProvider(providerId: string | undefined) {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: () => discoverProviderModels(providerId!),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["provider-summary", providerId] });
+      qc.invalidateQueries({ queryKey: ["endpoints", providerId] });
+      qc.invalidateQueries({ queryKey: ["catalog"] });
+    },
   });
 }
 

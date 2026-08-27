@@ -141,6 +141,22 @@ export interface DiscoverReport {
   updated: number;
 }
 
+export interface EndpointDiscoverOutcome {
+  endpoint_id: string;
+  endpoint_name: string;
+  report: DiscoverReport | null;
+  error: string | null;
+}
+
+export interface ProviderDiscoverReport {
+  endpoints_attempted: number;
+  endpoints_succeeded: number;
+  total: number;
+  added: number;
+  updated: number;
+  outcomes: EndpointDiscoverOutcome[];
+}
+
 export interface EndpointInput {
   providerId: string;
   name: string;
@@ -193,6 +209,9 @@ export async function checkEndpointHealth(endpointId: string): Promise<string> {
 }
 export async function discoverEndpointModels(endpointId: string): Promise<DiscoverReport> {
   return invoke<DiscoverReport>("discover_endpoint_models", { endpointId });
+}
+export async function discoverProviderModels(providerId: string): Promise<ProviderDiscoverReport> {
+  return invoke<ProviderDiscoverReport>("discover_provider_models", { providerId });
 }
 export async function listCatalogModels(endpointId: string): Promise<ProviderCatalogModel[]> {
   return invoke<ProviderCatalogModel[]>("list_catalog_models_cmd", { endpointId });

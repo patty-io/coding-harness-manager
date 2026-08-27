@@ -5,10 +5,12 @@ import {
   useEndpoints,
   useProviderSummary,
   useProviders,
+  useDiscoverProvider,
   useSaveApiKey,
   useEnvVarSet,
 } from "../hooks/useProviders";
 import { EndpointActions } from "../components/EndpointActions";
+import type { ProviderDiscoverReport } from "../lib/api";
 
 const PROTOCOLS = [
   { value: "anthropic-messages", label: "Anthropic Messages compatible" },
@@ -32,6 +34,9 @@ export default function ProviderDetailScreen() {
   const envSet = useEnvVarSet();
 
   const provider = (providers ?? []).find((p) => p.id === id);
+
+  const discoverAll = useDiscoverProvider(id);
+  const [discoverResult, setDiscoverResult] = useState<ProviderDiscoverReport | null>(null);
 
   const [showForm, setShowForm] = useState(false);
   const [name, setName] = useState("");
@@ -154,13 +159,83 @@ export default function ProviderDetailScreen() {
 
       <div className="mt-6 flex items-center justify-between">
         <h2 className="font-medium text-slate-200">Endpoints</h2>
-        <button
-          onClick={() => setShowForm((v) => !v)}
-          className="rounded bg-blue-600 px-3 py-1 text-sm text-white hover:bg-blue-500"
-        >
-          {showForm ? "Cancel" : "+ Add Endpoint"}
-        </button>
+        <div className="flex items-center gap-2">
+          <button
+            onClick={() =>
+              discoverAll.mutate(undefined, { onSuccess: setDiscoverResult })
+            }
+            disabled={discoverAll.isPending || (endpoints ?? []).length === 0}
+            className="rounded border border-blue-500 px-3 py-1 text-sm text-blue-300 hover:bg-blue-500/10 disabled:opacity-50"
+          >
+            {discoverAll.isPending ? "Discovering all…" : "Discover all models"}
+          </button>
+          <button
+            onClick={() => setShowForm((v) => !v)}
+            className="rounded bg-blue-600 px-3 py-1 text-sm text-white hover:bg-blue-500"
+          >
+            {showForm ? "Cancel" : "+ Add Endpoint"}
+          </button>
+        </div>
       </div>
+
+      {discoverAll.isError && (
+        <p className="mt-2 text-sm text-red-400">
+          Discovery failed: {discoverAll.error.message}
+        </p>
+      )}
+
+      {discoverResult && (
+        <div className="mt-3 rounded border border-slate-700 bg-slate-800 p-3 text-sm text-slate-200">
+          <div className="flex items-center justify-between">
+            <div>
+              <strong>{discoverResult.endpoints_succeeded}</strong> /{" "}
+              {discoverResult.endpoints_attempted} endpoints reached ·
+              {" "}
+              <strong>{discoverResult.added}</strong> new,
+              {" "}
+              <strong>{discoverResult.updated}</strong> updated
+              {" "}
+              (<strong>{discoverResult.total}</strong> models seen)
+            </div>
+            <button
+              onClick={() => setDiscoverResult(null)}
+              className="text-xs text-slate-400 hover:text-slate-200"
+            >
+              dismiss
+            </button>
+          </div>
+          <ul className="mt-2 space-y-1 text-xs">
+            {discoverResult.outcomes.map((o) => (
+              <li key={o.endpoint_id} className="flex items-center gap-2">
+                <span
+                  className={
+                    o.error
+                      ? "text-red-400"
+                      : o.report && o.report.added > 0
+                        ? "text-green-400"
+                        : "text-slate-400"
+                  }
+                >
+                  {o.error
+                    ? "✗"
+                    : o.report && o.report.added > 0
+                      ? "✓"
+                      : "•"}
+                </span>
+                <span className="font-mono">{o.endpoint_name}</span>
+                {o.error ? (
+                  <span className="text-red-400">{o.error}</span>
+                ) : (
+                  <span className="text-slate-500">
+                    {o.report?.total} seen, {o.report?.added} new,{" "}
+                    {o.report?.updated} updated
+                  </span>
+                )}
+              </li>
+            ))}
+          </ul>
+        </div>
+      )}
 
       {showForm && (
         <div className="mt-3 rounded border border-slate-700 bg-slate-800 p-4">

@@ -88,6 +88,7 @@ pub fn run() {
             commands::endpoints::env_var_set,
             commands::provider_actions::check_endpoint_health,
             commands::provider_actions::discover_endpoint_models,
+            commands::provider_actions::discover_provider_models,
             commands::provider_actions::list_catalog_models_cmd,
             commands::provider_actions::provider_summary,
             commands::models::list_routes_cmd,

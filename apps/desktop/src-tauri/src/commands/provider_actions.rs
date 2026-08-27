@@ -2,6 +2,7 @@
 
 use chm_core::domain::models::ProviderCatalogModel;
 use chm_database::repos::models::{list_catalog_models, upsert_catalog_model};
+use chm_database::repos::providers::list_endpoints;
 use chm_providers::{discover_models, health_check};
 use serde::Serialize;
 use tauri::State;
@@ -31,18 +32,37 @@ pub struct DiscoverReport {
     pub updated: usize,
 }
 
-#[tauri::command]
-pub async fn discover_endpoint_models(
-    state: State<'_, AppState>,
-    endpoint_id: String,
+#[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct EndpointDiscoverOutcome {
+    pub endpoint_id: String,
+    pub endpoint_name: String,
+    pub report: Option<DiscoverReport>,
+    pub error: Option<String>,
+}
+
+#[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ProviderDiscoverReport {
+    pub endpoints_attempted: usize,
+    pub endpoints_succeeded: usize,
+    pub total: usize,
+    pub added: usize,
+    pub updated: usize,
+    pub outcomes: Vec<EndpointDiscoverOutcome>,
+}
+
+async fn discover_into_catalog(
+    pool: &sqlx::Pool<sqlx::Sqlite>,
+    endpoint_id: Uuid,
+    endpoint: &chm_core::domain::provider::ProviderEndpoint,
+    cred: Option<&str>,
+    http: &reqwest::Client,
 ) -> Result<DiscoverReport, String> {
-    let id = Uuid::parse_str(&endpoint_id).map_err(|e| e.to_string())?;
-    let endpoint = find_endpoint(&state.pool, id).await?;
-    let cred = resolve_endpoint_credential(&endpoint, state.secrets.as_ref());
-    let models = discover_models(&endpoint, cred.as_deref(), &state.http)
+    let models = discover_models(endpoint, cred, http)
         .await
         .map_err(|e| e.to_string())?;
-    let existing = list_catalog_models(&state.pool, id)
+    let existing = list_catalog_models(pool, endpoint_id)
         .await
         .map_err(|e| e.to_string())?;
     let mut added = 0;
@@ -51,10 +71,10 @@ pub async fn discover_endpoint_models(
     for m in &models {
         let is_new = !existing.iter().any(|c| c.remote_model_id == m.id);
         upsert_catalog_model(
-            &state.pool,
+            pool,
             &ProviderCatalogModel {
                 id: Uuid::new_v4(),
-                endpoint_id: id,
+                endpoint_id,
                 remote_model_id: m.id.clone(),
                 raw_metadata: m.raw.clone(),
                 canonical_model_id: None,
@@ -81,6 +101,67 @@ pub async fn discover_endpoint_models(
         total: models.len(),
         added,
         updated,
+    })
+}
+
+#[tauri::command]
+pub async fn discover_endpoint_models(
+    state: State<'_, AppState>,
+    endpoint_id: String,
+) -> Result<DiscoverReport, String> {
+    let id = Uuid::parse_str(&endpoint_id).map_err(|e| e.to_string())?;
+    let endpoint = find_endpoint(&state.pool, id).await?;
+    let cred = resolve_endpoint_credential(&endpoint, state.secrets.as_ref());
+    discover_into_catalog(&state.pool, id, &endpoint, cred.as_deref(), &state.http).await
+}
+
+#[tauri::command]
+pub async fn discover_provider_models(
+    state: State<'_, AppState>,
+    provider_id: String,
+) -> Result<ProviderDiscoverReport, String> {
+    let id = Uuid::parse_str(&provider_id).map_err(|e| e.to_string())?;
+    let endpoints = list_endpoints(&state.pool, id)
+        .await
+        .map_err(|e| e.to_string())?;
+    let enabled: Vec<_> = endpoints.into_iter().filter(|e| e.enabled).collect();
+    let mut outcomes = Vec::with_capacity(enabled.len());
+    let mut total = 0;
+    let mut added = 0;
+    let mut updated = 0;
+    let mut succeeded = 0;
+    for ep in enabled {
+        let cred = resolve_endpoint_credential(&ep, state.secrets.as_ref());
+        match discover_into_catalog(&state.pool, ep.id, &ep, cred.as_deref(), &state.http).await {
+            Ok(report) => {
+                total += report.total;
+                added += report.added;
+                updated += report.updated;
+                succeeded += 1;
+                outcomes.push(EndpointDiscoverOutcome {
+                    endpoint_id: ep.id.to_string(),
+                    endpoint_name: ep.name.clone(),
+                    report: Some(report),
+                    error: None,
+                });
+            }
+            Err(err) => {
+                outcomes.push(EndpointDiscoverOutcome {
+                    endpoint_id: ep.id.to_string(),
+                    endpoint_name: ep.name.clone(),
+                    report: None,
+                    error: Some(err),
+                });
+            }
+        }
+    }
+    Ok(ProviderDiscoverReport {
+        endpoints_attempted: outcomes.len(),
+        endpoints_succeeded: succeeded,
+        total,
+        added,
+        updated,
+        outcomes,
     })
 }
 
@@ -113,9 +194,9 @@ pub async fn provider_summary(
     let pool = &state.pool;
     let row = sqlx::query_as::<_, (i64, i64, i64)>(
         "SELECT
-           (SELECT COUNT(*) FROM provider_endpoints WHERE provider_id = ?1),
-           (SELECT COUNT(*) FROM provider_catalog_models c JOIN provider_endpoints e ON e.id = c.endpoint_id WHERE e.provider_id = ?1),
-           (SELECT COUNT(*) FROM model_routes r JOIN provider_endpoints e ON e.id = r.endpoint_id WHERE e.provider_id = ?1)",
+           (SELECT COUNT(*) FROM provider_endpoints WHERE LOWER(provider_id) = LOWER(?1)),
+           (SELECT COUNT(*) FROM provider_catalog_models c JOIN provider_endpoints e ON e.id = c.endpoint_id WHERE LOWER(e.provider_id) = LOWER(?1)),
+           (SELECT COUNT(*) FROM model_routes r JOIN provider_endpoints e ON e.id = r.endpoint_id WHERE LOWER(e.provider_id) = LOWER(?1))",
     )
     .bind(provider_id.clone())
     .fetch_one(pool)
