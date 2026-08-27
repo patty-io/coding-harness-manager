@@ -1,6 +1,7 @@
 import { Route, Routes } from "react-router-dom";
 import Sidebar from "./components/Sidebar";
 import InventoryScreen from "./screens/InventoryScreen";
+import ImportWizard from "./screens/ImportWizard";
 import { DashboardScreen } from "./screens/DashboardScreen";
 import { PlaceholderScreen } from "./screens/PlaceholderScreen";
 
@@ -25,6 +26,7 @@ export default function App() {
         <Routes>
           <Route path="/" element={<DashboardScreen />} />
           <Route path="/scan" element={<InventoryScreen />} />
+          <Route path="/import" element={<ImportWizard />} />
           {PLACEHOLDERS.map((p) => (
             <Route
               key={p}
