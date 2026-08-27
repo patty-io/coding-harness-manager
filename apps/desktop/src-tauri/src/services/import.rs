@@ -86,10 +86,10 @@ pub async fn run_import(
     // pre-seed from already-registered providers so a re-import links routes
     // to the SAME endpoint instead of minting junk placeholder ones
     for p in &existing_providers {
-        if let Ok(endpoints) = list_endpoints(pool, p.id).await {
-            if let Some(e) = endpoints.first() {
-                endpoint_by_native_provider.insert(p.name.clone(), e.id);
-            }
+        if let Ok(endpoints) = list_endpoints(pool, p.id).await
+            && let Some(e) = endpoints.first()
+        {
+            endpoint_by_native_provider.insert(p.name.clone(), e.id);
         }
     }
     let mut created_in_batch: std::collections::HashSet<String> = Default::default();
@@ -176,7 +176,7 @@ pub async fn run_import(
                 None => match placeholder_endpoint {
                     Some(id) => id,
                     None => {
-                        let id = imported_endpoint_id(&mut *tx, inst).await?;
+                        let id = imported_endpoint_id(&mut tx, inst).await?;
                         placeholder_endpoint = Some(id);
                         id
                     }
