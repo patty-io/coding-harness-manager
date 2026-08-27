@@ -1,4 +1,5 @@
 pub mod dashboard;
+pub mod detect;
 pub mod doctor;
 pub mod drift;
 pub mod endpoints;

@@ -198,6 +198,9 @@ pub struct CatalogView {
     pub status: String,
     pub match_confidence: Option<u8>,
     pub identity_name: Option<String>,
+    /// True when a model route already exists for this model on any of the
+    /// provider's endpoints. The "Not imported" tab filters on this.
+    pub in_my_models: bool,
 }
 
 #[tauri::command]
@@ -205,17 +208,53 @@ pub async fn list_catalog_all(state: State<'_, AppState>) -> Result<Vec<CatalogV
     let providers = list_providers(&state.pool)
         .await
         .map_err(|e| e.to_string())?;
-    let mut views = Vec::new();
+    // Models belong to the provider, not the endpoint: collapse catalog rows
+    // across duplicate-protocol endpoints, keeping the best-priority one.
+    const PRIORITY: &[&str] = &[
+        "openai-chat",
+        "openai-responses",
+        "openrouter-openai",
+        "anthropic-messages",
+        "custom",
+    ];
+    let proto_rank = |p: &str| PRIORITY.iter().position(|x| *x == p).unwrap_or(99);
+
+    // All routed (provider, remote_model_id) pairs, so a model counts as
+    // "in My Models" when it is routed on ANY endpoint of its provider.
+    let routes = list_routes(&state.pool).await.map_err(|e| e.to_string())?;
+    let mut endpoint_provider: HashMap<uuid::Uuid, uuid::Uuid> = HashMap::new();
     for p in &providers {
         for e in list_endpoints(&state.pool, p.id)
             .await
             .map_err(|e| e.to_string())?
         {
+            endpoint_provider.insert(e.id, p.id);
+        }
+    }
+    let routed: std::collections::HashSet<(uuid::Uuid, String)> = routes
+        .into_iter()
+        .filter_map(|r| {
+            endpoint_provider
+                .get(&r.endpoint_id)
+                .map(|pid| (*pid, r.remote_model_id.to_lowercase()))
+        })
+        .collect();
+
+    use std::collections::HashMap;
+    let mut best: HashMap<(String, String), (i32, CatalogView)> = HashMap::new();
+    for p in &providers {
+        for e in list_endpoints(&state.pool, p.id)
+            .await
+            .map_err(|e| e.to_string())?
+        {
+            let rank = proto_rank(e.protocol.as_str()) as i32;
             for m in list_catalog_models(&state.pool, e.id)
                 .await
                 .map_err(|e| e.to_string())?
             {
-                views.push(CatalogView {
+                let key = (p.display_name.clone(), m.remote_model_id.clone());
+                let in_my = routed.contains(&(p.id, m.remote_model_id.to_lowercase()));
+                let view = CatalogView {
                     id: m.id.to_string(),
                     endpoint_id: e.id.to_string(),
                     provider_name: p.display_name.clone(),
@@ -224,10 +263,23 @@ pub async fn list_catalog_all(state: State<'_, AppState>) -> Result<Vec<CatalogV
                     status: m.status.as_str().to_string(),
                     match_confidence: m.match_confidence,
                     identity_name: None,
-                });
+                    in_my_models: in_my,
+                };
+                match best.get(&key) {
+                    Some((existing_rank, _)) if *existing_rank <= rank => {}
+                    _ => {
+                        best.insert(key, (rank, view));
+                    }
+                }
             }
         }
     }
+    let mut views: Vec<CatalogView> = best.into_values().map(|(_, v)| v).collect();
+    views.sort_by(|a, b| {
+        a.provider_name
+            .cmp(&b.provider_name)
+            .then(a.remote_model_id.cmp(&b.remote_model_id))
+    });
     Ok(views)
 }
 

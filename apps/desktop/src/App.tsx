@@ -1,4 +1,5 @@
 import { Route, Routes, Navigate } from "react-router-dom";
+import { useBackForwardNavigation } from "./hooks/useBackForwardNavigation";
 import Sidebar from "./components/Sidebar";
 import HarnessesScreen from "./screens/HarnessesScreen";
 import HarnessDetailScreen from "./screens/HarnessDetailScreen";
@@ -12,14 +13,15 @@ import HistoryScreen from "./screens/HistoryScreen";
 import ProfilesScreen from "./screens/ProfilesScreen";
 import { DashboardScreen } from "./screens/DashboardScreen";
 import { PlaceholderScreen } from "./screens/PlaceholderScreen";
+import SettingsScreen from "./screens/SettingsScreen";
 
 const PLACEHOLDERS = [
   "pending",
   "doctor",
-  "settings",
 ];
 
 export default function App() {
+  useBackForwardNavigation();
   return (
     <div className="flex h-screen bg-slate-950 text-slate-200">
       <Sidebar />
@@ -37,6 +39,7 @@ export default function App() {
           <Route path="/skills" element={<SkillsScreen />} />
           <Route path="/profiles" element={<ProfilesScreen />} />
           <Route path="/history" element={<HistoryScreen />} />
+          <Route path="/settings" element={<SettingsScreen />} />
           <Route path="/profiles" element={<ProfilesScreen />} />
           {PLACEHOLDERS.map((p) => (
             <Route

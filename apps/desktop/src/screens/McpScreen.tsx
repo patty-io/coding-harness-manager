@@ -1,8 +1,91 @@
 // MCP screen: registry table, add form, bindings, diagnostics.
 
 import { useState } from "react";
+import { useQuery } from "@tanstack/react-query";
 import { useCreateMcp, useDeleteMcp, useMcpServers, useRunDiagnostics } from "../hooks/useMcp";
 import { SyncToHarnessButton } from "../components/SyncToHarnessButton";
+import { detectMcp, type DetectedMcp } from "../lib/api";
+
+function DetectedMcpSection({
+  onAdd,
+  adding,
+}: {
+  onAdd: (d: DetectedMcp) => void;
+  adding: boolean;
+}) {
+  const [open, setOpen] = useState(false);
+  const { data: detected, isLoading } = useQuery({
+    queryKey: ["detected-mcp"],
+    queryFn: detectMcp,
+    enabled: open,
+  });
+  const notInLibrary = (detected ?? []).filter((d) => !d.in_library);
+
+  return (
+    <div className="mt-4 rounded border border-slate-700 bg-slate-800/60 p-4">
+      <button
+        onClick={() => setOpen((v) => !v)}
+        className="flex w-full items-center justify-between text-left"
+      >
+        <span className="font-medium text-slate-200">
+          Detected from your harnesses
+          {notInLibrary.length > 0 && (
+            <span className="ml-2 rounded bg-blue-500/15 px-2 py-0.5 text-xs text-blue-300">
+              {notInLibrary.length} not in library
+            </span>
+          )}
+        </span>
+        <span className="text-xs text-slate-400">{open ? "hide" : "show"}</span>
+      </button>
+      {open && (
+        <>
+          {isLoading && <p className="mt-3 text-sm text-slate-400">Reading harness configs…</p>}
+          {detected && detected.length === 0 && (
+            <p className="mt-3 text-sm text-slate-500">No MCP servers found in any harness config.</p>
+          )}
+          <ul className="mt-3 space-y-1.5">
+            {(detected ?? []).map((d) => (
+              <li
+                key={`${d.name}|${d.transport}|${d.command ?? d.url ?? ""}`}
+                className="flex items-center gap-3 rounded border border-slate-700 bg-slate-900 px-3 py-2 text-sm"
+              >
+                <div className="min-w-0 flex-1">
+                  <div className="text-slate-100">
+                    {d.name}
+                    <span className="ml-2 rounded bg-slate-700 px-1.5 py-0.5 text-xs text-slate-300">
+                      {d.transport}
+                    </span>
+                  </div>
+                  <div className="truncate font-mono text-xs text-slate-500">
+                    {d.command
+                      ? [d.command, ...d.args].join(" ")
+                      : d.url}
+                  </div>
+                  <div className="mt-0.5 text-xs text-slate-500">
+                    found in {d.found_in.join(", ")}
+                  </div>
+                </div>
+                {d.in_library ? (
+                  <span className="rounded bg-green-500/15 px-2 py-0.5 text-xs text-green-400">
+                    in library
+                  </span>
+                ) : (
+                  <button
+                    onClick={() => onAdd(d)}
+                    disabled={adding}
+                    className="rounded border border-blue-500 px-2 py-0.5 text-xs text-blue-300 hover:bg-blue-500/10 disabled:opacity-50"
+                  >
+                    + Add to library
+                  </button>
+                )}
+              </li>
+            ))}
+          </ul>
+        </>
+      )}
+    </div>
+  );
+}
 
 export default function McpScreen() {
   const { data: servers, isLoading } = useMcpServers();
@@ -102,6 +185,20 @@ export default function McpScreen() {
           </p>
         )}
       </div>
+
+      <DetectedMcpSection
+        onAdd={(d) =>
+          create.mutate({
+            name: d.name,
+            transport: d.transport,
+            command: d.command,
+            args: d.args,
+            url: d.url,
+            env: {},
+          })
+        }
+        adding={create.isPending}
+      />
 
       {isLoading && <p className="mt-4">Loading…</p>}
       <table className="mt-4 w-full bg-slate-800 text-sm">

@@ -312,8 +312,33 @@ export interface CatalogView {
   endpoint_name: string;
   remote_model_id: string;
   status: string;
-  matchConfidence: number | null;
+  match_confidence: number | null;
   identity_name: string | null;
+  in_my_models: boolean;
+}
+
+export interface DetectedMcp {
+  name: string;
+  transport: string;
+  command: string | null;
+  args: string[];
+  url: string | null;
+  env: Record<string, unknown>;
+  found_in: string[];
+  in_library: boolean;
+}
+
+export interface DetectedSkill {
+  name: string;
+  found_in: string[];
+  in_library: boolean;
+}
+
+export async function detectMcp(): Promise<DetectedMcp[]> {
+  return invoke<DetectedMcp[]>("detect_mcp_cmd");
+}
+export async function detectSkills(): Promise<DetectedSkill[]> {
+  return invoke<DetectedSkill[]>("detect_skills_cmd");
 }
 
 export interface RouteUpdateInput {

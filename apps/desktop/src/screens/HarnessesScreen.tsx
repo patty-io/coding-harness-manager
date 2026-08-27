@@ -30,6 +30,18 @@ export default function HarnessesScreen() {
   const { data: installations, isLoading } = useInstallations();
   const scan = useScanHarnesses();
   const [syncing, setSyncing] = useState<{ id: string; type: string } | null>(null);
+  const [query, setQuery] = useState("");
+
+  const filtered = (installations ?? []).filter((i) => {
+    const q = query.trim().toLowerCase();
+    if (!q) return true;
+    return (
+      i.harness_type.toLowerCase().includes(q) ||
+      i.status.toLowerCase().includes(q) ||
+      (i.version ?? "").toLowerCase().includes(q) ||
+      (i.config_path ?? "").toLowerCase().includes(q)
+    );
+  });
 
   return (
     <div>
@@ -41,13 +53,21 @@ export default function HarnessesScreen() {
             servers, and skills as they are on disk right now.
           </p>
         </div>
-        <button
-          onClick={() => scan.mutate()}
-          disabled={scan.isPending}
-          className="rounded bg-blue-600 px-4 py-2 text-sm font-medium text-white hover:bg-blue-500 disabled:opacity-50"
-        >
-          {scan.isPending ? "Scanning…" : "Scan machine"}
-        </button>
+        <div className="flex items-center gap-2">
+          <input
+            value={query}
+            onChange={(e) => setQuery(e.target.value)}
+            placeholder="Search harnesses…"
+            className="w-56 rounded border border-slate-600 bg-slate-800 px-3 py-2 text-sm text-slate-200 placeholder:text-slate-500"
+          />
+          <button
+            onClick={() => scan.mutate()}
+            disabled={scan.isPending}
+            className="rounded bg-blue-600 px-4 py-2 text-sm font-medium text-white hover:bg-blue-500 disabled:opacity-50"
+          >
+            {scan.isPending ? "Scanning…" : "Scan machine"}
+          </button>
+        </div>
       </div>
       {scan.isError && (
         <p className="mt-2 text-red-400">Scan failed: {scan.error.message}</p>
@@ -56,7 +76,7 @@ export default function HarnessesScreen() {
       {isLoading && <p className="mt-4">Loading…</p>}
 
       <div className="mt-5 grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-3">
-        {(installations ?? []).map((i) => (
+        {filtered.map((i) => (
           <div
             key={i.id}
             onClick={() => navigate(`/harnesses/${i.id}`)}
@@ -107,6 +127,11 @@ export default function HarnessesScreen() {
         ))}
       </div>
 
+      {filtered.length === 0 && (installations ?? []).length > 0 && (
+        <p className="mt-6 text-sm text-slate-500">
+          No harnesses match "{query}".
+        </p>
+      )}
       {(installations ?? []).length === 0 && !isLoading && (
         <div className="mt-6 rounded border border-slate-700 bg-slate-800/50 p-6 text-center">
           <p className="text-slate-300">No harnesses found yet.</p>

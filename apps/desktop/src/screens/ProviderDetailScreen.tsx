@@ -26,6 +26,19 @@ const PROTOCOL_LABEL: Record<string, string> = Object.fromEntries(
   PROTOCOLS.map((p) => [p.value, p.label]),
 );
 
+const AUTH_TYPES = [
+  { value: "bearer-token", label: "Bearer token (Authorization header)" },
+  { value: "api-key-header", label: "API key (x-api-key header)" },
+  { value: "custom-header", label: "Custom Authorization value" },
+  { value: "none", label: "No authentication" },
+];
+
+const DISCOVERY_PRESETS = [
+  { value: "/v1/models", label: "/v1/models (standard)" },
+  { value: "/models", label: "/models" },
+  { value: "", label: "none (discovery unsupported)" },
+];
+
 export default function ProviderDetailScreen() {
   const { id } = useParams<{ id: string }>();
   const { data: providers } = useProviders();
@@ -47,6 +60,8 @@ export default function ProviderDetailScreen() {
   const [name, setName] = useState("");
   const [baseUrl, setBaseUrl] = useState("");
   const [protocol, setProtocol] = useState("anthropic-messages");
+  const [authType, setAuthType] = useState("bearer-token");
+  const [discoveryPath, setDiscoveryPath] = useState("/v1/models");
   const [credentialSource, setCredentialSource] = useState<
     "keychain" | "env" | "none"
   >("env");
@@ -91,8 +106,8 @@ export default function ProviderDetailScreen() {
           name: name.trim(),
           baseUrl: baseUrl.trim(),
           protocol,
-          discoveryPath: "/v1/models",
-          authType: credentialSource === "none" ? "none" : "bearer-token",
+          discoveryPath: discoveryPath === "" ? null : discoveryPath,
+          authType: credentialSource === "none" ? "none" : authType,
           credentialRefId,
           headers: {},
           enabled: true,
@@ -368,6 +383,28 @@ export default function ProviderDetailScreen() {
               {PROTOCOLS.map((p) => (
                 <option key={p.value} value={p.value}>
                   {p.label}
+                </option>
+              ))}
+            </select>
+            <select
+              value={authType}
+              onChange={(e) => setAuthType(e.target.value)}
+              className="rounded border border-slate-600 bg-slate-900 px-2 py-1 text-slate-200"
+            >
+              {AUTH_TYPES.map((a) => (
+                <option key={a.value} value={a.value}>
+                  {a.label}
+                </option>
+              ))}
+            </select>
+            <select
+              value={discoveryPath}
+              onChange={(e) => setDiscoveryPath(e.target.value)}
+              className="rounded border border-slate-600 bg-slate-900 px-2 py-1 text-slate-200"
+            >
+              {DISCOVERY_PRESETS.map((d) => (
+                <option key={d.value} value={d.value}>
+                  Discovery path: {d.label}
                 </option>
               ))}
             </select>

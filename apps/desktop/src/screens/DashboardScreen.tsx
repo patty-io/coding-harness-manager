@@ -1,4 +1,4 @@
-import { Link } from "react-router-dom";
+import { Link, useNavigate } from "react-router-dom";
 import { useQuery } from "@tanstack/react-query";
 import { useDashboardStats } from "../hooks/useDashboard";
 import {
@@ -19,15 +19,16 @@ export function DashboardScreen() {
       <h1 className="text-2xl font-bold">Dashboard</h1>
 
       <div className="mt-4 grid grid-cols-2 gap-4 md:grid-cols-3 xl:grid-cols-6">
-        <StatCard label="Harnesses" value={stats?.harnesses ?? "—"} />
-        <StatCard label="Providers" value={stats?.providers ?? "—"} />
-        <StatCard label="My Models" value={stats?.models ?? "—"} />
-        <StatCard label="MCP Servers" value={stats?.mcp ?? "—"} />
-        <StatCard label="Skills" value={stats?.skills ?? "—"} />
+        <StatCard label="Harnesses" value={stats?.harnesses ?? "—"} to="/harnesses" />
+        <StatCard label="Providers" value={stats?.providers ?? "—"} to="/providers" />
+        <StatCard label="My Models" value={stats?.models ?? "—"} to="/models" />
+        <StatCard label="MCP Servers" value={stats?.mcp ?? "—"} to="/mcp" />
+        <StatCard label="Skills" value={stats?.skills ?? "—"} to="/skills" />
         <StatCard
           label="Drifted"
           value={stats?.drifted ?? "—"}
           alert={(stats?.drifted ?? 0) > 0}
+          to="/harnesses"
         />
       </div>
 
@@ -82,6 +83,7 @@ function HarnessCard({
   installation: HarnessInstallation;
   onReview: () => void;
 }) {
+  const navigate = useNavigate();
   const { data: drift } = useHarnessDrift(installation.id);
   const { data: state } = useQuery({
     queryKey: ["harness-state", installation.id],
@@ -103,14 +105,14 @@ function HarnessCard({
   };
 
   return (
-    <div className="rounded-lg border border-slate-700 bg-slate-800 p-4">
+    <div
+      onClick={() => navigate(`/harnesses/${installation.id}`)}
+      className="cursor-pointer rounded-lg border border-slate-700 bg-slate-800 p-4 transition-colors hover:border-slate-500"
+    >
       <div className="flex items-center justify-between">
-        <Link
-          to={`/harnesses/${installation.id}`}
-          className="font-medium capitalize text-slate-100 hover:underline"
-        >
+        <span className="font-medium capitalize text-slate-100">
           {installation.harness_type}
-        </Link>
+        </span>
         <span
           className={`rounded border px-2 py-0.5 text-xs ${
             statusStyles[installation.status] ?? statusStyles.detected
@@ -142,14 +144,12 @@ function HarnessCard({
       </div>
 
       <div className="mt-3 flex items-center justify-between border-t border-slate-700/60 pt-3">
-        <Link
-          to={`/harnesses/${installation.id}`}
-          className="text-xs text-blue-400 hover:text-blue-300"
-        >
-          Open →
-        </Link>
+        <span className="text-xs text-blue-400">Open →</span>
         <button
-          onClick={onReview}
+          onClick={(e) => {
+            e.stopPropagation();
+            onReview();
+          }}
           className="rounded border border-blue-500/60 bg-blue-500/10 px-2 py-0.5 text-xs font-medium text-blue-300 hover:bg-blue-500/25"
         >
           Review changes
@@ -163,21 +163,24 @@ function StatCard({
   label,
   value,
   alert,
+  to,
 }: {
   label: string;
   value: string | number;
   alert?: boolean;
+  to: string;
 }) {
   return (
-    <div
-      className={`rounded border p-4 ${
+    <Link
+      to={to}
+      className={`rounded border p-4 transition-colors ${
         alert
-          ? "border-amber-500/40 bg-amber-500/10"
-          : "border-slate-700 bg-slate-800"
+          ? "border-amber-500/40 bg-amber-500/10 hover:border-amber-400"
+          : "border-slate-700 bg-slate-800 hover:border-slate-500"
       }`}
     >
       <div className="text-2xl font-bold">{value}</div>
       <div className="text-sm text-slate-300">{label}</div>
-    </div>
+    </Link>
   );
 }

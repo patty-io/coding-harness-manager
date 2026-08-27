@@ -64,7 +64,7 @@ export default function ModelsScreen() {
             active={tab === "discovered"}
             onClick={() => setTab("discovered")}
           >
-            Discovered
+            Not imported
           </TabButton>
         </div>
       </div>
@@ -190,7 +190,9 @@ export default function ModelsScreen() {
               </tr>
             </thead>
             <tbody>
-              {(catalog ?? []).map((m) => (
+              {(catalog ?? [])
+                .filter((m) => !m.in_my_models)
+                .map((m) => (
                 <tr key={m.id} className="border-b">
                   <td className="p-2">
                     <input
@@ -203,9 +205,9 @@ export default function ModelsScreen() {
                   <td className="p-2 font-mono text-xs">{m.remote_model_id}</td>
                   <td className="p-2 text-xs">
                     {m.status}
-                    {m.matchConfidence !== null && (
+                    {m.match_confidence !== null && (
                       <span className="ml-1 text-slate-400">
-                        {m.matchConfidence}% match
+                        {m.match_confidence}% match
                       </span>
                     )}
                   </td>
