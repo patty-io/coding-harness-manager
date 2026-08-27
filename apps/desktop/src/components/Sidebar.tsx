@@ -37,9 +37,9 @@ const SECTIONS: Section[] = [
 
 export default function Sidebar() {
   return (
-    <nav className="flex w-52 shrink-0 flex-col border-r border-slate-700 bg-slate-900 p-3">
+    <nav className="flex w-56 shrink-0 flex-col border-r border-slate-700 bg-slate-900 p-3">
       <div className="mb-1 px-2">
-        <div className="text-sm font-bold text-slate-100">
+        <div className="whitespace-nowrap text-[13px] font-bold tracking-tight text-slate-100">
           Coding Harness Manager
         </div>
         <div className="text-[10px] uppercase tracking-wide text-slate-500">
