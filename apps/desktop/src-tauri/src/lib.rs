@@ -97,6 +97,8 @@ pub fn run() {
             commands::history::list_history_cmd,
             commands::history::rollback_transaction_cmd,
             commands::history::purge_old_snapshots_cmd,
+            commands::doctor::run_doctor_cmd,
+            commands::doctor::export_diagnostics_cmd,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

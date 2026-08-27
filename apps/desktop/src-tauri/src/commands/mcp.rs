@@ -289,3 +289,16 @@ pub async fn run_mcp_diagnostics(
 ) -> Result<Vec<CheckResult>, String> {
     run_mcp_diagnostics_core(&state.pool, &mcp_id).await
 }
+
+/// Server list for the doctor screen (names only).
+pub async fn mcp_list_servers_for_doctor(pool: &Pool<Sqlite>) -> Result<Vec<crate::commands::doctor::CheckResult>, String> {
+    let servers = list_mcp_servers(pool).await.map_err(|e| e.to_string())?;
+    Ok(servers
+        .into_iter()
+        .map(|s| crate::commands::doctor::CheckResult {
+            check: format!("mcp registered: {}", s.name),
+            passed: s.enabled,
+            detail: if s.enabled { "enabled".into() } else { "disabled".into() },
+        })
+        .collect())
+}

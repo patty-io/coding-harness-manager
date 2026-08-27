@@ -1,4 +1,5 @@
 pub mod dashboard;
+pub mod doctor;
 pub mod endpoints;
 pub mod history;
 pub mod import;
