@@ -206,7 +206,7 @@ pub async fn list_endpoints<'e>(
                 c.type, c.reference, c.created_at, c.updated_at
          FROM provider_endpoints e
          LEFT JOIN credential_refs c ON c.id = e.credential_ref_id
-         WHERE e.provider_id = ? ORDER BY e.name",
+         WHERE LOWER(e.provider_id) = LOWER(?) ORDER BY e.name",
     )
     .bind(provider_id.to_string())
     .fetch_all(pool)
