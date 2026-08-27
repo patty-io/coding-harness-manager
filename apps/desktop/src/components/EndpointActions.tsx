@@ -4,11 +4,11 @@ import { useCatalog, useCheckHealth, useDiscover } from "../hooks/useProviders";
 const HEALTH_COLORS: Record<string, string> = {
   Healthy: "bg-green-100 text-green-700",
   AuthFailed: "bg-red-100 text-red-700",
-  Unreachable: "bg-gray-100 text-gray-600",
+  Unreachable: "bg-slate-700 text-slate-300",
   RateLimited: "bg-amber-100 text-amber-700",
-  DiscoveryUnsupported: "bg-gray-100 text-gray-600",
+  DiscoveryUnsupported: "bg-slate-700 text-slate-300",
   MalformedResponse: "bg-red-100 text-red-700",
-  Unknown: "bg-gray-100 text-gray-600",
+  Unknown: "bg-slate-700 text-slate-300",
 };
 
 export function EndpointActions({ endpointId }: { endpointId: string }) {
@@ -25,7 +25,7 @@ export function EndpointActions({ endpointId }: { endpointId: string }) {
           healthCheck.mutate(undefined, { onSuccess: setHealth })
         }
         disabled={healthCheck.isPending}
-        className="rounded border border-gray-300 px-2 py-0.5 text-xs disabled:opacity-50"
+        className="rounded border border-slate-600 px-2 py-0.5 text-xs disabled:opacity-50"
       >
         {healthCheck.isPending ? "Checking…" : "Check Health"}
       </button>
@@ -41,13 +41,13 @@ export function EndpointActions({ endpointId }: { endpointId: string }) {
           })
         }
         disabled={discover.isPending}
-        className="rounded border border-gray-300 px-2 py-0.5 text-xs disabled:opacity-50"
+        className="rounded border border-slate-600 px-2 py-0.5 text-xs disabled:opacity-50"
       >
         {discover.isPending ? "Discovering…" : "Discover Models"}
       </button>
       <button
         onClick={() => setShowCatalog((v) => !v)}
-        className="rounded border border-gray-300 px-2 py-0.5 text-xs"
+        className="rounded border border-slate-600 px-2 py-0.5 text-xs"
       >
         {showCatalog ? "Hide catalog" : "Catalog"}
       </button>
@@ -56,7 +56,7 @@ export function EndpointActions({ endpointId }: { endpointId: string }) {
       )}
       {showCatalog && (
         <ul className="w-full">
-          {catalog.isLoading && <li className="text-xs text-gray-500">Loading…</li>}
+          {catalog.isLoading && <li className="text-xs text-slate-400">Loading…</li>}
           {(catalog.data ?? []).map((m) => (
             <li key={m.id} className="flex justify-between border-t border-gray-100 py-1 text-xs">
               <span className="font-mono">{m.remote_model_id}</span>
@@ -66,7 +66,7 @@ export function EndpointActions({ endpointId }: { endpointId: string }) {
                     ? "text-blue-600"
                     : m.status === "missing"
                       ? "text-red-600"
-                      : "text-gray-500"
+                      : "text-slate-400"
                 }
               >
                 {m.status}

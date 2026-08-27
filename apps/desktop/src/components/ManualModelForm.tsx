@@ -60,13 +60,13 @@ export function ManualModelForm({
   };
 
   return (
-    <div className="mt-6 rounded border border-gray-200 bg-white p-4">
+    <div className="mt-6 rounded border border-slate-700 bg-slate-800 p-4">
       <h2 className="font-medium">Add Model Manually</h2>
       <div className="mt-2 grid grid-cols-1 gap-2 md:grid-cols-2">
         <select
           value={providerName}
           onChange={(e) => setProviderName(e.target.value)}
-          className="rounded border border-gray-300 px-2 py-1"
+          className="rounded border border-slate-600 px-2 py-1"
         >
           <option value="">provider…</option>
           {(allProviders ?? []).map((p) => (
@@ -78,7 +78,7 @@ export function ManualModelForm({
         <select
           value={endpointId}
           onChange={(e) => setEndpointId(e.target.value)}
-          className="rounded border border-gray-300 px-2 py-1"
+          className="rounded border border-slate-600 px-2 py-1"
         >
           {(endpoints ?? []).map((e) => (
             <option key={e.id} value={e.id}>
@@ -90,20 +90,20 @@ export function ManualModelForm({
           value={remoteModelId}
           onChange={(e) => setRemoteModelId(e.target.value)}
           placeholder="remote model id (required)"
-          className="rounded border border-gray-300 px-2 py-1"
+          className="rounded border border-slate-600 px-2 py-1"
         />
         <input
           value={displayName}
           onChange={(e) => setDisplayName(e.target.value)}
           placeholder="display name"
-          className="rounded border border-gray-300 px-2 py-1"
+          className="rounded border border-slate-600 px-2 py-1"
         />
         <input
           value={contextWindow}
           onChange={(e) => setContextWindow(e.target.value)}
           placeholder="context window"
           type="number"
-          className="rounded border border-gray-300 px-2 py-1"
+          className="rounded border border-slate-600 px-2 py-1"
         />
       </div>
       <div className="mt-3 flex gap-2">
@@ -116,7 +116,7 @@ export function ManualModelForm({
         </button>
         <button
           onClick={() => setOpen(false)}
-          className="rounded border border-gray-300 px-3 py-1 text-sm"
+          className="rounded border border-slate-600 px-3 py-1 text-sm"
         >
           Cancel
         </button>
@@ -125,7 +125,7 @@ export function ManualModelForm({
         <p className="mt-2 text-sm text-red-600">{create.error.message}</p>
       )}
       {providers.length === 0 && (
-        <p className="mt-2 text-xs text-gray-500">
+        <p className="mt-2 text-xs text-slate-400">
           Add a provider with an endpoint first.
         </p>
       )}

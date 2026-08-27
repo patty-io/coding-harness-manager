@@ -37,12 +37,12 @@ export default function SkillsScreen() {
           value={manualPath}
           onChange={(e) => setManualPath(e.target.value)}
           placeholder="/path/to/skill-dir"
-          className="rounded border border-gray-300 px-2 py-1 font-mono text-xs"
+          className="rounded border border-slate-600 px-2 py-1 font-mono text-xs"
         />
         <button
           onClick={importManual}
           disabled={!manualPath.trim() || importSkills.isPending}
-          className="rounded border border-gray-300 px-3 py-1 disabled:opacity-50"
+          className="rounded border border-slate-600 px-3 py-1 disabled:opacity-50"
         >
           Import path
         </button>
@@ -50,10 +50,10 @@ export default function SkillsScreen() {
       {adopt.data !== undefined && (
         <p className="mt-2 text-sm text-green-700">{adopt.data} skills adopted</p>
       )}
-      {message && <p className="mt-2 text-sm text-gray-700">{message}</p>}
+      {message && <p className="mt-2 text-sm text-slate-200">{message}</p>}
 
       {isLoading && <p className="mt-4">Loading…</p>}
-      <table className="mt-4 w-full bg-white text-sm">
+      <table className="mt-4 w-full bg-slate-800 text-sm">
         <thead>
           <tr className="border-b text-left">
             <th className="p-2">Name</th>
@@ -66,7 +66,7 @@ export default function SkillsScreen() {
           {(skills ?? []).map((s) => (
             <tr key={s.id} className="border-b">
               <td className="p-2 font-medium">{s.name}</td>
-              <td className="p-2 font-mono text-xs text-gray-600">
+              <td className="p-2 font-mono text-xs text-slate-300">
                 {s.canonicalPath}
               </td>
               <td className="p-2 font-mono text-xs">

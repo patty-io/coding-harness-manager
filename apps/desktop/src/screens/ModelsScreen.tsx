@@ -55,7 +55,7 @@ export default function ModelsScreen() {
     <div>
       <div className="flex items-center justify-between">
         <h1 className="text-2xl font-bold">Models</h1>
-        <div className="flex gap-1 rounded border border-gray-300 bg-white p-0.5 text-sm">
+        <div className="flex gap-1 rounded border border-slate-600 bg-slate-800 p-0.5 text-sm">
           <TabButton active={tab === "mine"} onClick={() => setTab("mine")}>
             My Models
           </TabButton>
@@ -76,7 +76,7 @@ export default function ModelsScreen() {
               <select
                 value={providerFilter}
                 onChange={(e) => setProviderFilter(e.target.value)}
-                className="rounded border border-gray-300 px-2 py-1"
+                className="rounded border border-slate-600 px-2 py-1"
               >
                 <option value="">all</option>
                 {providers.map((p) => (
@@ -87,7 +87,7 @@ export default function ModelsScreen() {
               </select>
             </label>
           </div>
-          <table className="mt-3 w-full bg-white text-sm">
+          <table className="mt-3 w-full bg-slate-800 text-sm">
             <thead>
               <tr className="border-b text-left">
                 <th className="p-2">Provider</th>
@@ -104,7 +104,7 @@ export default function ModelsScreen() {
                   <td className="p-2">{r.provider_name}</td>
                   <td className="p-2">
                     <div className="font-medium">{r.display_name}</div>
-                    <div className="font-mono text-xs text-gray-500">
+                    <div className="font-mono text-xs text-slate-400">
                       {r.remote_model_id}
                     </div>
                   </td>
@@ -127,7 +127,7 @@ export default function ModelsScreen() {
                       className={`rounded px-2 py-0.5 text-xs ${
                         r.enabled
                           ? "bg-green-100 text-green-700"
-                          : "bg-gray-100 text-gray-600"
+                          : "bg-slate-700 text-slate-300"
                       }`}
                     >
                       {r.enabled ? "enabled" : "disabled"}
@@ -141,7 +141,7 @@ export default function ModelsScreen() {
                         })
                       }
                       disabled={enrich.isPending}
-                      className="rounded border border-gray-300 px-2 py-0.5 text-xs disabled:opacity-50"
+                      className="rounded border border-slate-600 px-2 py-0.5 text-xs disabled:opacity-50"
                     >
                       Enrich
                     </button>
@@ -178,7 +178,7 @@ export default function ModelsScreen() {
               Add {selectedCatalog.length > 0 ? `(${selectedCatalog.length})` : ""} to My Models
             </button>
           </div>
-          <table className="mt-3 w-full bg-white text-sm">
+          <table className="mt-3 w-full bg-slate-800 text-sm">
             <thead>
               <tr className="border-b text-left">
                 <th className="p-2"></th>
@@ -202,7 +202,7 @@ export default function ModelsScreen() {
                   <td className="p-2 text-xs">
                     {m.status}
                     {m.matchConfidence !== null && (
-                      <span className="ml-1 text-gray-500">
+                      <span className="ml-1 text-slate-400">
                         {m.matchConfidence}% match
                       </span>
                     )}
@@ -249,7 +249,7 @@ function TabButton({
   return (
     <button
       onClick={onClick}
-      className={`rounded px-3 py-1 ${active ? "bg-blue-600 text-white" : "text-gray-700"}`}
+      className={`rounded px-3 py-1 ${active ? "bg-blue-600 text-white" : "text-slate-200"}`}
     >
       {children}
     </button>

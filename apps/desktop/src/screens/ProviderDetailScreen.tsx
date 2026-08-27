@@ -92,7 +92,7 @@ export default function ProviderDetailScreen() {
     <div>
       <h1 className="text-2xl font-bold">Provider</h1>
       {summary && (
-        <div className="mt-2 flex gap-4 text-sm text-gray-600">
+        <div className="mt-2 flex gap-4 text-sm text-slate-300">
           <span>{summary.endpoints} endpoints</span>
           <span>{summary.discoveredModels} discovered models</span>
           <span>{summary.myModels} My Models</span>
@@ -100,25 +100,25 @@ export default function ProviderDetailScreen() {
         </div>
       )}
 
-      <div className="mt-4 rounded border border-gray-200 bg-white p-4">
+      <div className="mt-4 rounded border border-slate-700 bg-slate-800 p-4">
         <h2 className="font-medium">Add Endpoint</h2>
         <div className="mt-2 grid grid-cols-1 gap-2 md:grid-cols-2">
           <input
             value={name}
             onChange={(e) => setName(e.target.value)}
             placeholder="endpoint name (e.g. Anthropic-compatible)"
-            className="rounded border border-gray-300 px-2 py-1"
+            className="rounded border border-slate-600 px-2 py-1"
           />
           <input
             value={baseUrl}
             onChange={(e) => setBaseUrl(e.target.value)}
             placeholder="base URL (e.g. https://api.z.ai/api/anthropic)"
-            className="rounded border border-gray-300 px-2 py-1"
+            className="rounded border border-slate-600 px-2 py-1"
           />
           <select
             value={protocol}
             onChange={(e) => setProtocol(e.target.value)}
-            className="rounded border border-gray-300 px-2 py-1"
+            className="rounded border border-slate-600 px-2 py-1"
           >
             {PROTOCOLS.map((p) => (
               <option key={p.value} value={p.value}>
@@ -157,7 +157,7 @@ export default function ProviderDetailScreen() {
               value={envVarName}
               onChange={(e) => setEnvVarName(e.target.value)}
               placeholder="env var name (e.g. ZAI_API_KEY)"
-              className="rounded border border-gray-300 px-2 py-1"
+              className="rounded border border-slate-600 px-2 py-1"
             />
           )}
           {credentialSource === "keychain" && (
@@ -166,7 +166,7 @@ export default function ProviderDetailScreen() {
               value={apiKey}
               onChange={(e) => setApiKey(e.target.value)}
               placeholder="API key (stored in Keychain, never in the DB)"
-              className="rounded border border-gray-300 px-2 py-1"
+              className="rounded border border-slate-600 px-2 py-1"
             />
           )}
         </div>
@@ -187,15 +187,15 @@ export default function ProviderDetailScreen() {
       <h2 className="mt-6 font-medium">Endpoints</h2>
       <ul className="mt-2 space-y-2">
         {(endpoints ?? []).map((e) => (
-          <li key={e.id} className="rounded border border-gray-200 bg-white p-3">
+          <li key={e.id} className="rounded border border-slate-700 bg-slate-800 p-3">
             <div className="flex items-center justify-between">
               <span className="font-medium">{e.name}</span>
-              <span className="rounded bg-gray-100 px-2 py-0.5 text-xs">
+              <span className="rounded bg-slate-700 px-2 py-0.5 text-xs">
                 {e.protocol}
               </span>
             </div>
-            <div className="mt-1 font-mono text-xs text-gray-600">{e.base_url}</div>
-            <div className="mt-1 text-xs text-gray-500">
+            <div className="mt-1 font-mono text-xs text-slate-300">{e.base_url}</div>
+            <div className="mt-1 text-xs text-slate-400">
               auth: {e.auth_type}
               {e.credential_ref && (
                 <span className="ml-2">

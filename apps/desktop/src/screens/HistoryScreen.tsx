@@ -28,15 +28,15 @@ export default function HistoryScreen() {
       {isLoading && <p className="mt-4">Loading…</p>}
       <ul className="mt-4 space-y-2">
         {(data ?? []).map((e) => (
-          <li key={e.transactionId} className="rounded border border-gray-200 bg-white p-3 text-sm">
+          <li key={e.transactionId} className="rounded border border-slate-700 bg-slate-800 p-3 text-sm">
             <div className="flex items-center justify-between">
               <div>
                 <span className="font-medium">{new Date(e.startedAt).toLocaleString()}</span>{" "}
                 <span className={statusClass(e.status)}>{e.status}</span>{" "}
-                <span className="text-gray-500">{e.summary ?? ""}</span>
+                <span className="text-slate-400">{e.summary ?? ""}</span>
               </div>
               <div className="flex gap-2">
-                <button onClick={() => setExpanded(expanded === e.transactionId ? null : e.transactionId)} className="rounded border border-gray-300 px-2 py-0.5 text-xs">
+                <button onClick={() => setExpanded(expanded === e.transactionId ? null : e.transactionId)} className="rounded border border-slate-600 px-2 py-0.5 text-xs">
                   View Diff
                 </button>
                 <button
@@ -50,8 +50,8 @@ export default function HistoryScreen() {
             </div>
             {expanded === e.transactionId && e.snapshots.map((s) => (
               <div key={s.path} className="mt-2 grid grid-cols-2 gap-2">
-                <pre className="overflow-auto rounded bg-red-50 p-2 text-xs">{s.before ?? "(none)"}</pre>
-                <pre className="overflow-auto rounded bg-green-50 p-2 text-xs">{s.after ?? "(deleted)"}</pre>
+                <pre className="overflow-auto rounded bg-red-950 p-2 text-xs">{s.before ?? "(none)"}</pre>
+                <pre className="overflow-auto rounded bg-green-950 p-2 text-xs">{s.after ?? "(deleted)"}</pre>
               </div>
             ))}
           </li>

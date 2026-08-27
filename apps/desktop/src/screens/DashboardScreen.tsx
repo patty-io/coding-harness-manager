@@ -24,7 +24,7 @@ export function DashboardScreen() {
         </Link>
         <Link
           to="/scan"
-          className="inline-block rounded border border-gray-300 bg-white px-4 py-2 text-gray-700"
+          className="inline-block rounded border border-slate-600 bg-slate-800 px-4 py-2 text-slate-200"
         >
           Scan Harnesses
         </Link>
@@ -35,9 +35,9 @@ export function DashboardScreen() {
 
 function StatCard({ label, value }: { label: string; value: string | number }) {
   return (
-    <div className="rounded border border-gray-200 bg-white p-4">
+    <div className="rounded border border-slate-700 bg-slate-800 p-4">
       <div className="text-2xl font-bold">{value}</div>
-      <div className="text-sm text-gray-600">{label}</div>
+      <div className="text-sm text-slate-300">{label}</div>
     </div>
   );
 }

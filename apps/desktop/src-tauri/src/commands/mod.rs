@@ -4,6 +4,7 @@ pub mod endpoints;
 pub mod history;
 pub mod import;
 pub mod launcher;
+pub mod logging;
 pub mod mcp;
 pub mod models;
 pub mod profiles;

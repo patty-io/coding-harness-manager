@@ -22,16 +22,16 @@ export default function ProfilesScreen() {
       {isLoading && <p className="mt-4">Loading…</p>}
       <button
         onClick={() => qc.invalidateQueries({ queryKey: ["profiles"] })}
-        className="mt-3 rounded border border-gray-300 px-3 py-1 text-sm"
+        className="mt-3 rounded border border-slate-600 px-3 py-1 text-sm"
       >
         Refresh
       </button>
       <ul className="mt-4 space-y-2">
         {(profiles ?? []).map((p) => (
-          <li key={p.id} className="flex items-center justify-between rounded border border-gray-200 bg-white p-3 text-sm">
+          <li key={p.id} className="flex items-center justify-between rounded border border-slate-700 bg-slate-800 p-3 text-sm">
             <div>
               <span className="font-medium">{p.name}</span>{" "}
-              <span className="text-gray-500">{p.harnessType}</span>
+              <span className="text-slate-400">{p.harnessType}</span>
             </div>
             <div className="flex gap-2">
               <button
@@ -57,9 +57,9 @@ export default function ProfilesScreen() {
           </li>
         ))}
       </ul>
-      {launchNote && <p className="mt-3 text-sm text-gray-700">{launchNote}</p>}
+      {launchNote && <p className="mt-3 text-sm text-slate-200">{launchNote}</p>}
       {(profiles ?? []).length === 0 && !isLoading && (
-        <p className="mt-3 text-sm text-gray-500">
+        <p className="mt-3 text-sm text-slate-400">
           No profiles yet. Create one with "create profile" in the UI.
         </p>
       )}

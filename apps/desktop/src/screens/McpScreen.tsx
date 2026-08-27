@@ -45,19 +45,19 @@ export default function McpScreen() {
     <div>
       <h1 className="text-2xl font-bold">MCP Servers</h1>
 
-      <div className="mt-4 rounded border border-gray-200 bg-white p-4">
+      <div className="mt-4 rounded border border-slate-700 bg-slate-800 p-4">
         <h2 className="font-medium">Add MCP Server</h2>
         <div className="mt-2 grid grid-cols-1 gap-2 md:grid-cols-2">
           <input
             value={name}
             onChange={(e) => setName(e.target.value)}
             placeholder="name (e.g. github)"
-            className="rounded border border-gray-300 px-2 py-1"
+            className="rounded border border-slate-600 px-2 py-1"
           />
           <select
             value={transport}
             onChange={(e) => setTransport(e.target.value)}
-            className="rounded border border-gray-300 px-2 py-1"
+            className="rounded border border-slate-600 px-2 py-1"
           >
             <option value="stdio">stdio</option>
             <option value="http">http</option>
@@ -69,14 +69,14 @@ export default function McpScreen() {
                 value={command}
                 onChange={(e) => setCommand(e.target.value)}
                 placeholder="command (e.g. npx)"
-                className="rounded border border-gray-300 px-2 py-1"
+                className="rounded border border-slate-600 px-2 py-1"
               />
               <textarea
                 value={args}
                 onChange={(e) => setArgs(e.target.value)}
                 placeholder="args (one per line)"
                 rows={2}
-                className="rounded border border-gray-300 px-2 py-1"
+                className="rounded border border-slate-600 px-2 py-1"
               />
             </>
           ) : (
@@ -84,7 +84,7 @@ export default function McpScreen() {
               value={url}
               onChange={(e) => setUrl(e.target.value)}
               placeholder="url (e.g. https://mcp.example.com/mcp)"
-              className="rounded border border-gray-300 px-2 py-1"
+              className="rounded border border-slate-600 px-2 py-1"
             />
           )}
         </div>
@@ -103,7 +103,7 @@ export default function McpScreen() {
       </div>
 
       {isLoading && <p className="mt-4">Loading…</p>}
-      <table className="mt-4 w-full bg-white text-sm">
+      <table className="mt-4 w-full bg-slate-800 text-sm">
         <thead>
           <tr className="border-b text-left">
             <th className="p-2">Name</th>
@@ -121,7 +121,7 @@ export default function McpScreen() {
               <td className="p-2 font-mono text-xs">
                 {s.command ?? s.url}
                 {s.args.length > 0 && (
-                  <div className="text-gray-500">{s.args.join(" ")}</div>
+                  <div className="text-slate-400">{s.args.join(" ")}</div>
                 )}
               </td>
               <td className="p-2">
@@ -133,7 +133,7 @@ export default function McpScreen() {
                     })
                   }
                   disabled={runDiag.isPending}
-                  className="rounded border border-gray-300 px-2 py-0.5 text-xs disabled:opacity-50"
+                  className="rounded border border-slate-600 px-2 py-0.5 text-xs disabled:opacity-50"
                 >
                   Run Diagnostics
                 </button>

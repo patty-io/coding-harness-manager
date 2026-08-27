@@ -28,7 +28,36 @@ fn db_path() -> String {
 }
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
+fn init_logging() {
+    let log_dir = std::env::var_os("CHM_DATA_DIR")
+        .map(std::path::PathBuf::from)
+        .unwrap_or_else(|| {
+            let home = std::env::var_os("HOME").unwrap_or_default();
+            std::path::PathBuf::from(home).join(".coding-harness-manager")
+        })
+        .join("logs");
+    let _ = std::fs::create_dir_all(&log_dir);
+    let file_appender = tracing_appender::rolling::daily(&log_dir, "chm.log");
+    let (writer, guard) = tracing_appender::non_blocking(file_appender);
+    // the guard must outlive the subscriber — intentionally leaked
+    std::mem::forget(guard);
+    use tracing_subscriber::EnvFilter;
+    let filter = EnvFilter::try_from_default_env().unwrap_or_else(|_| EnvFilter::new("info"));
+    tracing_subscriber::fmt()
+        .with_writer(move || writer.clone())
+        .with_env_filter(filter)
+        .init();
+    // panics land in the log too, so a crashed backend leaves evidence
+    std::panic::set_hook(Box::new(|info| {
+        tracing::error!("PANIC: {info}");
+        let default = std::panic::take_hook();
+        default(info);
+    }));
+}
+
 pub fn run() {
+    init_logging();
+    tracing::info!("starting Coding Harness Manager");
     tauri::Builder::default()
         .setup(|app| {
             let pool =
@@ -99,6 +128,7 @@ pub fn run() {
             commands::history::purge_old_snapshots_cmd,
             commands::doctor::run_doctor_cmd,
             commands::doctor::export_diagnostics_cmd,
+            commands::logging::frontend_log_cmd,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

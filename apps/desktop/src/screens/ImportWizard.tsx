@@ -75,7 +75,7 @@ export default function ImportWizard() {
 
   return (
     <div className="mx-auto max-w-2xl">
-      <ol className="flex gap-2 text-xs text-gray-500">
+      <ol className="flex gap-2 text-xs text-slate-400">
         {STEPS.map((s, idx) => (
           <li
             key={s}
@@ -89,7 +89,7 @@ export default function ImportWizard() {
       {step === "welcome" && (
         <section className="mt-6">
           <h1 className="text-2xl font-bold">Welcome</h1>
-          <p className="mt-2 text-gray-700">
+          <p className="mt-2 text-slate-200">
             Coding Harness Manager scans your machine and imports your existing
             harness configuration into a central registry.{" "}
             <strong>Nothing on disk is modified during import</strong> — you
@@ -107,7 +107,7 @@ export default function ImportWizard() {
       {step === "scan" && (
         <section className="mt-6">
           <h1 className="text-2xl font-bold">Scan your computer</h1>
-          <p className="mt-2 text-gray-700">
+          <p className="mt-2 text-slate-200">
             Detects installed coding harnesses and their configuration.
           </p>
           <button
@@ -124,7 +124,7 @@ export default function ImportWizard() {
               Scan failed: {scan.error.message}
             </p>
           )}
-          {isLoading && <p className="mt-2 text-gray-500">Loading…</p>}
+          {isLoading && <p className="mt-2 text-slate-400">Loading…</p>}
         </section>
       )}
 
@@ -133,20 +133,20 @@ export default function ImportWizard() {
           <h1 className="text-2xl font-bold">
             Found {tier1.length} supported harnesses
           </h1>
-          <p className="mt-2 text-gray-700">
+          <p className="mt-2 text-slate-200">
             Select which harnesses to import from (read-only).
           </p>
           <ul className="mt-4 space-y-2">
             {tier1.map((i) => (
               <li key={i.id}>
-                <label className="flex items-center gap-2 rounded border border-gray-200 bg-white p-3">
+                <label className="flex items-center gap-2 rounded border border-slate-700 bg-slate-800 p-3">
                   <input
                     type="checkbox"
                     checked={selected.includes(i.id)}
                     onChange={() => toggle(i.id)}
                   />
                   <span className="font-medium">{i.harness_type}</span>
-                  <span className="text-xs text-gray-500">
+                  <span className="text-xs text-slate-400">
                     v{i.version ?? "?"} · {i.status}
                   </span>
                 </label>
@@ -184,7 +184,7 @@ export default function ImportWizard() {
                 <Card label="MCP servers" value={review.data.mcp.length} />
                 <Card label="Skills" value={review.data.skills.length} />
               </div>
-              <div className="mt-4 text-xs text-gray-500">
+              <div className="mt-4 text-xs text-slate-400">
                 Import creates canonical entries in the local registry. It
                 never writes to your harness config files.
               </div>
@@ -221,7 +221,7 @@ export default function ImportWizard() {
           {total.duplicates.length > 0 && (
             <div className="mt-4">
               <h2 className="font-medium">Skipped as duplicates</h2>
-              <ul className="mt-1 list-disc pl-5 text-sm text-gray-600">
+              <ul className="mt-1 list-disc pl-5 text-sm text-slate-300">
                 {total.duplicates.map((d) => (
                   <li key={d}>{d}</li>
                 ))}
@@ -245,9 +245,9 @@ export default function ImportWizard() {
 
 function Card({ label, value }: { label: string; value: number }) {
   return (
-    <div className="rounded border border-gray-200 bg-white p-4">
+    <div className="rounded border border-slate-700 bg-slate-800 p-4">
       <div className="text-2xl font-bold">{value}</div>
-      <div className="text-sm text-gray-600">{label}</div>
+      <div className="text-sm text-slate-300">{label}</div>
     </div>
   );
 }

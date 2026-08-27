@@ -32,20 +32,20 @@ export default function ProvidersScreen() {
         <h1 className="text-2xl font-bold">Providers</h1>
       </div>
 
-      <div className="mt-4 rounded border border-gray-200 bg-white p-4">
+      <div className="mt-4 rounded border border-slate-700 bg-slate-800 p-4">
         <h2 className="font-medium">Add Provider</h2>
         <div className="mt-2 flex gap-2">
           <input
             value={name}
             onChange={(e) => setName(e.target.value)}
             placeholder="name (e.g. zai)"
-            className="rounded border border-gray-300 px-2 py-1"
+            className="rounded border border-slate-600 px-2 py-1"
           />
           <input
             value={displayName}
             onChange={(e) => setDisplayName(e.target.value)}
             placeholder="display name (e.g. Z.AI)"
-            className="rounded border border-gray-300 px-2 py-1"
+            className="rounded border border-slate-600 px-2 py-1"
           />
           <button
             onClick={submit}
@@ -67,18 +67,18 @@ export default function ProvidersScreen() {
         {(providers ?? []).map((p) => (
           <li
             key={p.id}
-            className="flex items-center justify-between rounded border border-gray-200 bg-white p-3"
+            className="flex items-center justify-between rounded border border-slate-700 bg-slate-800 p-3"
           >
             <div>
               <Link to={`/providers/${p.id}`} className="font-medium hover:underline">
                 {p.display_name}
               </Link>
-              <span className="ml-2 text-xs text-gray-500">{p.name}</span>
+              <span className="ml-2 text-xs text-slate-400">{p.name}</span>
             </div>
             <div className="flex items-center gap-3">
               <span
                 className={`rounded px-2 py-0.5 text-xs ${
-                  p.enabled ? "bg-green-100 text-green-700" : "bg-gray-100 text-gray-600"
+                  p.enabled ? "bg-green-100 text-green-700" : "bg-slate-700 text-slate-300"
                 }`}
               >
                 {p.enabled ? "enabled" : "disabled"}
@@ -93,7 +93,7 @@ export default function ProvidersScreen() {
                     del.mutate(p.id);
                   }
                 }}
-                className="rounded border border-red-200 px-2 py-0.5 text-xs text-red-600 hover:bg-red-50"
+                className="rounded border border-red-200 px-2 py-0.5 text-xs text-red-600 hover:bg-red-950"
               >
                 Delete
               </button>

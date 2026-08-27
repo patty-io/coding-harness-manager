@@ -192,8 +192,7 @@ pub async fn run_doctor_core(
     let mcp = crate::commands::mcp::mcp_list_servers_for_doctor(pool).await?;
     let total: usize = harness.iter().map(|g| g.checks.len()).sum::<usize>()
         + provider.iter().map(|g| g.checks.len()).sum::<usize>()
-        + mcp.len()
-        + 0;
+        + mcp.len();
     let failures: Vec<String> = harness
         .iter()
         .flat_map(|g| {

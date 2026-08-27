@@ -88,9 +88,9 @@ export function SyncDialog({
     update: "bg-amber-100 text-amber-700",
     remove: "bg-red-100 text-red-700",
     conflict: "bg-orange-100 text-orange-700",
-    unsupported: "bg-gray-100 text-gray-600",
-    unchanged: "bg-gray-50 text-gray-400",
-    noop: "bg-gray-50 text-gray-400",
+    unsupported: "bg-slate-700 text-slate-300",
+    unchanged: "bg-slate-900 text-gray-400",
+    noop: "bg-slate-900 text-gray-400",
   };
 
   const hasBlockers = (preview.data?.actions ?? []).some(
@@ -99,10 +99,10 @@ export function SyncDialog({
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/30">
-      <div className="flex max-h-[85vh] w-full max-w-3xl flex-col rounded bg-white shadow-xl">
+      <div className="flex max-h-[85vh] w-full max-w-3xl flex-col rounded bg-slate-800 shadow-xl">
         <div className="flex items-center justify-between border-b p-4">
           <h2 className="font-medium">Sync {harnessType}</h2>
-          <button onClick={onClose} className="text-gray-500">
+          <button onClick={onClose} className="text-slate-400">
             ✕
           </button>
         </div>
@@ -136,7 +136,7 @@ export function SyncDialog({
                 <tbody>
                   {preview.data.actions.map((a, i) => (
                     <tr key={i} className="border-b">
-                      <td className="p-1 text-xs text-gray-500">{a.kind}</td>
+                      <td className="p-1 text-xs text-slate-400">{a.kind}</td>
                       <td className="p-1 font-mono text-xs">{a.identity}</td>
                       <td className="p-1">
                         <span
@@ -164,10 +164,10 @@ export function SyncDialog({
                       </button>
                       {expandedFile === f.path && (
                         <div className="mt-1 grid grid-cols-2 gap-2">
-                          <pre className="overflow-auto rounded bg-gray-50 p-2 text-xs">
+                          <pre className="overflow-auto rounded bg-slate-900 p-2 text-xs">
                             {f.before ?? "(new file)"}
                           </pre>
-                          <pre className="overflow-auto rounded bg-green-50 p-2 text-xs">
+                          <pre className="overflow-auto rounded bg-green-950 p-2 text-xs">
                             {f.after}
                           </pre>
                         </div>
@@ -207,7 +207,7 @@ export function SyncDialog({
         <div className="flex justify-end gap-2 border-t p-4">
           <button
             onClick={onClose}
-            className="rounded border border-gray-300 px-3 py-1 text-sm"
+            className="rounded border border-slate-600 px-3 py-1 text-sm"
           >
             Close
           </button>

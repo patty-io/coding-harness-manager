@@ -20,7 +20,7 @@ export default function InventoryScreen() {
         <p className="mt-2 text-red-600">Scan failed: {scan.error.message}</p>
       )}
       {isLoading && <p className="mt-4">Loading…</p>}
-      <table className="mt-4 w-full bg-white">
+      <table className="mt-4 w-full bg-slate-800">
         <thead>
           <tr className="border-b text-left">
             <th className="p-2">Harness</th>
