@@ -1,7 +1,5 @@
 //! The stable harness adapter contract.
 
-use std::path::Path;
-
 use chm_core::domain::harness::HarnessInstallation;
 use chm_core::domain::mcp::McpServer;
 use chm_core::domain::models::ModelRoute;
@@ -122,7 +120,6 @@ pub struct ParsedState {
 
 pub trait HarnessAdapter: Send + Sync {
     fn id(&self) -> &'static str;
-    fn detect(&self, home: &Path, path_env: Option<&str>) -> Option<HarnessInstallation>;
     fn capabilities(&self) -> HarnessCapabilities;
     fn read_state(&self, install: &HarnessInstallation) -> Result<ParsedState, AdapterError>;
 }

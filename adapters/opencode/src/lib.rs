@@ -8,20 +8,12 @@ use chm_core::domain::harness::HarnessInstallation;
 use chm_harness_sdk::adapter::types::{
     AdapterError, HarnessAdapter, HarnessCapabilities, ParsedState,
 };
-use chm_harness_sdk::definition::Platform;
 
 pub struct OpenCodeAdapter;
 
 impl HarnessAdapter for OpenCodeAdapter {
     fn id(&self) -> &'static str {
         "opencode"
-    }
-
-    fn detect(&self, home: &Path, path_env: Option<&str>) -> Option<HarnessInstallation> {
-        let def = chm_harness_sdk::definition::tier1_definitions()
-            .into_iter()
-            .find(|d| d.id == "opencode")?;
-        chm_harness_sdk::adapter::helpers::detect_one(&def, home, Platform::MacOs, path_env)
     }
 
     fn capabilities(&self) -> HarnessCapabilities {

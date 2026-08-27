@@ -2,26 +2,16 @@
 
 pub mod parser;
 
-use std::path::Path;
-
 use chm_core::domain::harness::HarnessInstallation;
 use chm_harness_sdk::adapter::types::{
     AdapterError, HarnessAdapter, HarnessCapabilities, ParsedState,
 };
-use chm_harness_sdk::definition::Platform;
 
 pub struct ClaudeCodeAdapter;
 
 impl HarnessAdapter for ClaudeCodeAdapter {
     fn id(&self) -> &'static str {
         "claude-code"
-    }
-
-    fn detect(&self, home: &Path, path_env: Option<&str>) -> Option<HarnessInstallation> {
-        let def = chm_harness_sdk::definition::tier1_definitions()
-            .into_iter()
-            .find(|d| d.id == "claude-code")?;
-        chm_harness_sdk::adapter::helpers::detect_one(&def, home, Platform::MacOs, path_env)
     }
 
     fn capabilities(&self) -> HarnessCapabilities {

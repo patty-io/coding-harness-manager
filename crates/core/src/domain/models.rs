@@ -105,8 +105,3 @@ impl ModelRoute {
         }
     }
 }
-
-/// Route identity — the dedup key for the whole system.
-pub fn route_identity(endpoint_id: Uuid, remote_model_id: &str) -> (Uuid, String) {
-    (endpoint_id, remote_model_id.to_string())
-}
