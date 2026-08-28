@@ -350,7 +350,14 @@ export interface HarnessModelRow {
   libraryRouteId: string | null;
   libraryDisplayName: string | null;
   providerName: string | null;
-  providerMatch: "library" | "catalog" | null;
+  providerMatch:
+    | "harness"
+    | "library"
+    | "catalog"
+    | "library-suffix"
+    | "catalog-suffix"
+    | null;
+  providerBaseUrl: string | null;
 }
 
 export interface HarnessModelOp {

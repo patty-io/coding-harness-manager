@@ -493,10 +493,22 @@ export default function HarnessDetailScreen() {
                       <td className="p-2 text-slate-300">{m.displayName}</td>
                       <td className="p-2 text-xs text-slate-400">
                         {m.providerName ? (
-                          <span title={`matched via ${m.providerMatch}`}>
+                          <span
+                            title={
+                              (m.providerBaseUrl
+                                ? `${m.providerName} (${m.providerBaseUrl}) · `
+                                : `${m.providerName} · `) +
+                              `matched via ${m.providerMatch}`
+                            }
+                          >
                             {m.providerName}
-                            {m.providerMatch === "catalog" && (
-                              <span className="ml-1 text-slate-600">(catalog)</span>
+                            {m.providerMatch?.startsWith("catalog") && (
+                              <span className="ml-1 text-slate-600">
+                                {m.providerMatch === "catalog-suffix" ? "(catalog~)" : "(catalog)"}
+                              </span>
+                            )}
+                            {m.providerMatch === "library-suffix" && (
+                              <span className="ml-1 text-slate-600">(library~)</span>
                             )}
                           </span>
                         ) : (

@@ -22,9 +22,13 @@ pub struct HarnessModelRow {
     pub library_display_name: Option<String>,
     /// Provider serving this model, when we can attribute it.
     pub provider_name: Option<String>,
-    /// How the provider was attributed: "library" (routed My Model) or
-    /// "catalog" (exact remote id found in a provider's discovered catalog).
+    /// How the provider was attributed. Best first: "harness" (the harness
+    /// config itself groups models under a provider), then "library"
+    /// (routed My Model), then "catalog" (exact id in a discovered catalog),
+    /// with "-suffix" variants for namespaced ids like `gl/glm-5.2`.
     pub provider_match: Option<String>,
+    /// Provider base URL when the attribution came from the harness config.
+    pub provider_base_url: Option<String>,
 }
 
 #[tauri::command]
@@ -37,6 +41,15 @@ pub async fn harness_models_view_cmd(
     let providers = list_providers(&state.pool)
         .await
         .map_err(|e| e.to_string())?;
+    let inst_for_map = list_installations(&state.pool)
+        .await
+        .map_err(|e| e.to_string())?
+        .into_iter()
+        .find(|i| i.id.to_string() == installation_id);
+    let native_providers = inst_for_map
+        .as_ref()
+        .map(harness_provider_map)
+        .unwrap_or_default();
 
     // endpoint -> (provider display name, endpoint id) for attribution.
     let mut endpoint_provider: std::collections::HashMap<uuid::Uuid, String> =
@@ -61,7 +74,7 @@ pub async fn harness_models_view_cmd(
         }
     }
 
-    // Catalog attribution (exact remote id across every discovered endpoint).
+    // Catalog attribution (remote id across every discovered endpoint).
     let mut catalog_provider: std::collections::HashMap<String, String> =
         std::collections::HashMap::new();
     for p in &providers {
@@ -80,6 +93,79 @@ pub async fn harness_models_view_cmd(
         }
     }
 
+    /// Provider grouping declared by the harness config itself, e.g. Pi's
+    /// models.json: providers.<name>.models[] with `id` fields. Returns
+    /// (model id -> provider name, provider base url).
+    fn harness_provider_map(
+        inst: &chm_core::domain::harness::HarnessInstallation,
+    ) -> std::collections::HashMap<String, (String, Option<String>)> {
+        let mut map = std::collections::HashMap::new();
+        let Some(path) = &inst.config_path else {
+            return map;
+        };
+        let Ok(text) = std::fs::read_to_string(path) else {
+            return map;
+        };
+        let Ok(v) = serde_json::from_str::<serde_json::Value>(&text) else {
+            return map;
+        };
+        let Some(providers) = v.get("providers").and_then(|p| p.as_object()) else {
+            return map;
+        };
+        for (pname, p) in providers {
+            let base = p
+                .get("baseUrl")
+                .or_else(|| p.get("base_url"))
+                .or_else(|| p.get("url"))
+                .and_then(|b| b.as_str())
+                .map(|s| s.to_string());
+            let models = match p.get("models") {
+                Some(serde_json::Value::Array(arr)) => arr.clone(),
+                Some(serde_json::Value::Object(obj)) => obj
+                    .into_iter()
+                    .map(|(k, v)| {
+                        let mut m = serde_json::Map::new();
+                        m.insert("id".into(), serde_json::Value::String(k.clone()));
+                        if let Some(n) = v.get("name") {
+                            m.insert("name".into(), n.clone());
+                        }
+                        serde_json::Value::Object(m)
+                    })
+                    .collect(),
+                _ => continue,
+            };
+            for m in models {
+                let mid = m
+                    .get("id")
+                    .and_then(|i| i.as_str())
+                    .map(|s| s.to_lowercase());
+                if let Some(mid) = mid {
+                    map.entry(mid)
+                        .or_insert_with(|| (pname.clone(), base.clone()));
+                }
+            }
+        }
+        map
+    }
+
+    /// Lookup keys for a harness model id: harnesses commonly prefix gateway
+    /// or vendor namespaces onto bare model ids (`gl/glm-5.2`,
+    /// `cp/cline-pass/deepseek-v4-flash`), so after the exact id we try each
+    /// tail after successive slashes before giving up.
+    fn attribution_keys(remote_id: &str) -> Vec<String> {
+        let lower = remote_id.to_lowercase();
+        let mut keys = vec![lower.clone()];
+        let mut rest = lower.as_str();
+        while let Some(idx) = rest.find('/') {
+            rest = &rest[idx + 1..];
+            if rest.is_empty() {
+                break;
+            }
+            keys.push(rest.to_string());
+        }
+        keys
+    }
+
     Ok(parsed
         .models
         .iter()
@@ -88,14 +174,38 @@ pub async fn harness_models_view_cmd(
             let match_route = routes.iter().find(|r| {
                 r.remote_model_id.to_lowercase() == remote_lower
             });
-            let (provider_name, provider_match) =
-                if let Some(pn) = library_provider.get(&remote_lower) {
-                    (Some(pn.clone()), Some("library".to_string()))
-                } else if let Some(pn) = catalog_provider.get(&remote_lower) {
-                    (Some(pn.clone()), Some("catalog".to_string()))
+            let keys = attribution_keys(&m.route.remote_model_id);
+            let find_in = |map: &std::collections::HashMap<String, String>| {
+                keys.iter().find_map(|k| map.get(k).cloned())
+            };
+            let (provider_name, provider_match, provider_base_url) = {
+                // 1) The harness's own provider grouping is authoritative.
+                let native_lower = m.native_id.to_lowercase();
+                let native = keys
+                    .first()
+                    .and_then(|k| native_providers.get(k))
+                    .or_else(|| native_providers.get(&native_lower))
+                    .cloned();
+                if let Some((pname, base)) = native {
+                    (Some(pname), Some("harness".to_string()), base)
+                } else if let Some(pn) = keys
+                    .first()
+                    .and_then(|k| library_provider.get(k).cloned())
+                {
+                    (Some(pn), Some("library".to_string()), None)
+                } else if let Some(pn) = keys
+                    .first()
+                    .and_then(|k| catalog_provider.get(k).cloned())
+                {
+                    (Some(pn), Some("catalog".to_string()), None)
+                } else if let Some(pn) = find_in(&library_provider) {
+                    (Some(pn), Some("library-suffix".to_string()), None)
+                } else if let Some(pn) = find_in(&catalog_provider) {
+                    (Some(pn), Some("catalog-suffix".to_string()), None)
                 } else {
-                    (None, None)
-                };
+                    (None, None, None)
+                }
+            };
             HarnessModelRow {
                 native_id: m.native_id.clone(),
                 remote_model_id: m.route.remote_model_id.clone(),
@@ -106,6 +216,7 @@ pub async fn harness_models_view_cmd(
                 library_display_name: match_route.map(|r| r.display_name.clone()),
                 provider_name,
                 provider_match,
+                provider_base_url,
             }
         })
         .collect())
