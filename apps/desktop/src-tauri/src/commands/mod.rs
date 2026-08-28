@@ -3,6 +3,7 @@ pub mod detect;
 pub mod doctor;
 pub mod drift;
 pub mod endpoints;
+pub mod harness_detail;
 pub mod history;
 pub mod import;
 pub mod launcher;

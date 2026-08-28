@@ -341,6 +341,48 @@ export async function detectSkills(): Promise<DetectedSkill[]> {
   return invoke<DetectedSkill[]>("detect_skills_cmd");
 }
 
+export interface HarnessModelRow {
+  native_id: string;
+  remote_model_id: string;
+  display_name: string;
+  context_window: number | null;
+  in_library: boolean;
+  library_route_id: string | null;
+  library_display_name: string | null;
+}
+
+export async function harnessModelsView(installationId: string): Promise<HarnessModelRow[]> {
+  return invoke<HarnessModelRow[]>("harness_models_view_cmd", { installationId });
+}
+
+export interface AdoptOutcome {
+  routeId: string;
+  created: boolean;
+}
+
+export async function adoptHarnessModel(
+  installationId: string,
+  nativeId: string,
+  endpointId: string,
+): Promise<AdoptOutcome> {
+  return invoke<AdoptOutcome>("adopt_harness_model_cmd", {
+    installationId,
+    nativeId,
+    endpointId,
+  });
+}
+
+export interface EndpointOption {
+  endpoint_id: string;
+  provider_name: string;
+  endpoint_name: string;
+  protocol: string;
+}
+
+export async function listEndpointOptions(): Promise<EndpointOption[]> {
+  return invoke<EndpointOption[]>("list_endpoint_options_cmd");
+}
+
 export interface RouteUpdateInput {
   displayName?: string;
   contextWindow?: number;

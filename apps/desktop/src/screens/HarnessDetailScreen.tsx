@@ -2,9 +2,14 @@ import { useState } from "react";
 import { Link, useParams } from "react-router-dom";
 import { useQuery } from "@tanstack/react-query";
 import {
+  adoptHarnessModel,
+  harnessModelsView,
   launchProfile,
+  listEndpointOptions,
+  listRoutes,
   readHarnessRawConfig,
   readHarnessState,
+  type HarnessModelRow,
 } from "../lib/api";
 import {
   useHarnessDrift,
@@ -12,7 +17,7 @@ import {
   useRecordManualSnapshot,
 } from "../hooks/useHarnesses";
 import { SyncDialog } from "../components/SyncDialog";
-import { useQueryClient } from "@tanstack/react-query";
+import { useMutation, useQueryClient } from "@tanstack/react-query";
 
 const STATUS_STYLES: Record<string, string> = {
   installed: "bg-green-500/15 text-green-400 border border-green-500/30",
@@ -100,6 +105,47 @@ export default function HarnessDetailScreen() {
     queryFn: () => readHarnessRawConfig(id!),
     enabled: !!id && tab === "raw",
     retry: false,
+  });
+
+  const { data: modelRows } = useQuery({
+    queryKey: ["harness-models", id],
+    queryFn: () => harnessModelsView(id!),
+    enabled: !!id && tab === "models",
+  });
+
+  const { data: routes } = useQuery({
+    queryKey: ["routes"],
+    queryFn: listRoutes,
+    enabled: tab === "models",
+  });
+
+  // Library models not present on this harness (for "Add from library").
+  const missingFromLibrary = (() => {
+    const onHarness = new Set(
+      (modelRows ?? []).map((r) => r.remote_model_id.toLowerCase()),
+    );
+    return (routes ?? []).filter(
+      (r) => !onHarness.has(r.remote_model_id.toLowerCase()),
+    );
+  })();
+
+  const [addMenuOpen, setAddMenuOpen] = useState(false);
+  const [adopting, setAdopting] = useState<HarnessModelRow | null>(null);
+  const [adoptEndpoint, setAdoptEndpoint] = useState("");
+  const { data: endpointOptions } = useQuery({
+    queryKey: ["endpoint-options"],
+    queryFn: listEndpointOptions,
+    enabled: adopting !== null,
+  });
+  const adopt = useMutation({
+    mutationFn: (vars: { nativeId: string; endpointId: string }) =>
+      adoptHarnessModel(id!, vars.nativeId, vars.endpointId),
+    onSuccess: () => {
+      setAdopting(null);
+      void qc.invalidateQueries({ queryKey: ["harness-models", id] });
+      void qc.invalidateQueries({ queryKey: ["routes"] });
+      void qc.invalidateQueries({ queryKey: ["dashboard"] });
+    },
   });
 
   if (stateLoading) {
@@ -329,22 +375,73 @@ export default function HarnessDetailScreen() {
 
         {tab === "models" && (
           <div>
-            {(state?.models.length ?? 0) === 0 ? (
+            <div className="flex flex-wrap items-center justify-between gap-2">
+              <p className="text-xs text-slate-500">
+                Models configured on this harness, as they are on disk right
+                now. Rows matching your library are marked; the rest can be
+                pulled in.
+              </p>
+              {(() => {
+                const canAdd = missingFromLibrary.length > 0;
+                return (
+                  <div className="relative">
+                    <button
+                      onClick={() => setAddMenuOpen(!addMenuOpen)}
+                      disabled={!canAdd}
+                      title={
+                        canAdd
+                          ? undefined
+                          : "Everything in your library is already on this harness"
+                      }
+                      className="rounded border border-blue-500 px-3 py-1 text-sm text-blue-300 hover:bg-blue-500/10 disabled:opacity-40"
+                    >
+                      + Add from library
+                    </button>
+                    {addMenuOpen && canAdd && (
+                      <div className="absolute right-0 z-10 mt-1 max-h-72 w-72 overflow-auto rounded border border-slate-700 bg-slate-800 py-1 shadow-lg">
+                        {missingFromLibrary.map((r) => (
+                          <button
+                            key={r.id}
+                            onClick={() => {
+                              setAddMenuOpen(false);
+                              setSyncing(true);
+                            }}
+                            className="block w-full px-3 py-1.5 text-left text-sm hover:bg-slate-700"
+                          >
+                            <span className="text-slate-100">{r.display_name}</span>
+                            <span className="ml-2 font-mono text-xs text-slate-500">
+                              {r.remote_model_id}
+                            </span>
+                          </button>
+                        ))}
+                        <p className="px-3 py-2 text-xs text-slate-500">
+                          Opens the change preview — nothing is written until
+                          you press Apply.
+                        </p>
+                      </div>
+                    )}
+                  </div>
+                );
+              })()}
+            </div>
+
+            {(modelRows ?? []).length === 0 ? (
               <EmptyState>
                 No models configured in this harness yet.
               </EmptyState>
             ) : (
-              <table className="w-full bg-slate-800 text-sm">
+              <table className="mt-3 w-full bg-slate-800 text-sm">
                 <thead>
                   <tr className="border-b border-slate-700 text-left text-xs uppercase tracking-wide text-slate-400">
                     <th className="p-2">Native id</th>
                     <th className="p-2">Remote model</th>
                     <th className="p-2">Display name</th>
                     <th className="p-2 text-right">Context</th>
+                    <th className="p-2">Library</th>
                   </tr>
                 </thead>
                 <tbody>
-                  {(state?.models ?? []).map((m) => (
+                  {(modelRows ?? []).map((m) => (
                     <tr key={m.native_id} className="border-b border-slate-700/60">
                       <td className="p-2 font-mono text-xs text-slate-300">{m.native_id}</td>
                       <td className="p-2 font-mono text-xs text-slate-100">{m.remote_model_id}</td>
@@ -352,10 +449,94 @@ export default function HarnessDetailScreen() {
                       <td className="p-2 text-right text-slate-400">
                         {m.context_window ? m.context_window.toLocaleString() : "—"}
                       </td>
+                      <td className="p-2">
+                        {m.in_library ? (
+                          <span
+                            className="rounded bg-green-500/15 px-2 py-0.5 text-xs text-green-400"
+                            title={m.library_display_name ?? undefined}
+                          >
+                            in library
+                          </span>
+                        ) : (
+                          <button
+                            onClick={() => {
+                              setAdopting(m);
+                              setAdoptEndpoint("");
+                            }}
+                            className="rounded border border-blue-500 px-2 py-0.5 text-xs text-blue-300 hover:bg-blue-500/10"
+                          >
+                            Save to library
+                          </button>
+                        )}
+                      </td>
                     </tr>
                   ))}
                 </tbody>
               </table>
+            )}
+
+            {adopting && (
+              <div
+                className="fixed inset-0 z-20 flex items-center justify-center bg-black/60"
+                onClick={() => setAdopting(null)}
+              >
+                <div
+                  className="w-[28rem] rounded border border-slate-700 bg-slate-800 p-4"
+                  onClick={(e) => e.stopPropagation()}
+                >
+                  <h3 className="font-medium text-slate-100">Save to library</h3>
+                  <p className="mt-1 text-sm text-slate-400">
+                    <span className="font-mono text-xs">{adopting.remote_model_id}</span>
+                    {adopting.display_name !== adopting.remote_model_id && (
+                      <> — {adopting.display_name}</>
+                    )}
+                    {adopting.context_window
+                      ? ` · ${adopting.context_window.toLocaleString()} tokens`
+                      : ""}
+                  </p>
+                  <label className="mt-3 block text-xs text-slate-500">
+                    Which provider endpoint serves this model?
+                  </label>
+                  <select
+                    value={adoptEndpoint}
+                    onChange={(e) => setAdoptEndpoint(e.target.value)}
+                    className="mt-1 w-full rounded border border-slate-600 bg-slate-900 px-2 py-1.5 text-sm text-slate-200"
+                  >
+                    <option value="">Choose an endpoint…</option>
+                    {(endpointOptions ?? []).map((o) => (
+                      <option key={o.endpoint_id} value={o.endpoint_id}>
+                        {o.provider_name} — {o.endpoint_name} ({o.protocol})
+                      </option>
+                    ))}
+                  </select>
+                  <div className="mt-4 flex justify-end gap-2">
+                    <button
+                      onClick={() => setAdopting(null)}
+                      className="rounded px-3 py-1 text-sm text-slate-400 hover:text-slate-200"
+                    >
+                      Cancel
+                    </button>
+                    <button
+                      onClick={() =>
+                        adoptEndpoint &&
+                        adopt.mutate({
+                          nativeId: adopting.native_id,
+                          endpointId: adoptEndpoint,
+                        })
+                      }
+                      disabled={!adoptEndpoint || adopt.isPending}
+                      className="rounded bg-blue-600 px-3 py-1 text-sm text-white hover:bg-blue-500 disabled:opacity-50"
+                    >
+                      {adopt.isPending ? "Saving…" : "Save to library"}
+                    </button>
+                  </div>
+                  {adopt.isError && (
+                    <p className="mt-2 text-xs text-red-400">
+                      {adopt.error.message}
+                    </p>
+                  )}
+                </div>
+              </div>
             )}
           </div>
         )}
