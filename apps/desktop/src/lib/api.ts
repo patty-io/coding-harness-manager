@@ -84,7 +84,7 @@ export async function readHarnessRawConfig(installationId: string): Promise<stri
 
 export interface HarnessDrift {
   installationId: string;
-  config_path: string | null;
+  configPath: string | null;
   everSynced: boolean;
   drifted: boolean;
   currentContent: string | null;
@@ -324,14 +324,14 @@ export interface DetectedMcp {
   args: string[];
   url: string | null;
   env: Record<string, unknown>;
-  found_in: string[];
-  in_library: boolean;
+  foundIn: string[];
+  inLibrary: boolean;
 }
 
 export interface DetectedSkill {
   name: string;
-  found_in: string[];
-  in_library: boolean;
+  foundIn: string[];
+  inLibrary: boolean;
 }
 
 export async function detectMcp(): Promise<DetectedMcp[]> {
@@ -342,13 +342,13 @@ export async function detectSkills(): Promise<DetectedSkill[]> {
 }
 
 export interface HarnessModelRow {
-  native_id: string;
-  remote_model_id: string;
-  display_name: string;
-  context_window: number | null;
-  in_library: boolean;
-  library_route_id: string | null;
-  library_display_name: string | null;
+  nativeId: string;
+  remoteModelId: string;
+  displayName: string;
+  contextWindow: number | null;
+  inLibrary: boolean;
+  libraryRouteId: string | null;
+  libraryDisplayName: string | null;
 }
 
 export async function harnessModelsView(installationId: string): Promise<HarnessModelRow[]> {
@@ -373,9 +373,9 @@ export async function adoptHarnessModel(
 }
 
 export interface EndpointOption {
-  endpoint_id: string;
-  provider_name: string;
-  endpoint_name: string;
+  endpointId: string;
+  providerName: string;
+  endpointName: string;
   protocol: string;
 }
 

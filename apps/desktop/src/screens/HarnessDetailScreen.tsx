@@ -122,7 +122,7 @@ export default function HarnessDetailScreen() {
   // Library models not present on this harness (for "Add from library").
   const missingFromLibrary = (() => {
     const onHarness = new Set(
-      (modelRows ?? []).map((r) => r.remote_model_id.toLowerCase()),
+      (modelRows ?? []).map((r) => r.remoteModelId.toLowerCase()),
     );
     return (routes ?? []).filter(
       (r) => !onHarness.has(r.remote_model_id.toLowerCase()),
@@ -442,18 +442,18 @@ export default function HarnessDetailScreen() {
                 </thead>
                 <tbody>
                   {(modelRows ?? []).map((m) => (
-                    <tr key={m.native_id} className="border-b border-slate-700/60">
-                      <td className="p-2 font-mono text-xs text-slate-300">{m.native_id}</td>
-                      <td className="p-2 font-mono text-xs text-slate-100">{m.remote_model_id}</td>
-                      <td className="p-2 text-slate-300">{m.display_name}</td>
+                    <tr key={m.nativeId} className="border-b border-slate-700/60">
+                      <td className="p-2 font-mono text-xs text-slate-300">{m.nativeId}</td>
+                      <td className="p-2 font-mono text-xs text-slate-100">{m.remoteModelId}</td>
+                      <td className="p-2 text-slate-300">{m.displayName}</td>
                       <td className="p-2 text-right text-slate-400">
-                        {m.context_window ? m.context_window.toLocaleString() : "—"}
+                        {m.contextWindow ? m.contextWindow.toLocaleString() : "—"}
                       </td>
                       <td className="p-2">
-                        {m.in_library ? (
+                        {m.inLibrary ? (
                           <span
                             className="rounded bg-green-500/15 px-2 py-0.5 text-xs text-green-400"
-                            title={m.library_display_name ?? undefined}
+                            title={m.libraryDisplayName ?? undefined}
                           >
                             in library
                           </span>
@@ -486,12 +486,12 @@ export default function HarnessDetailScreen() {
                 >
                   <h3 className="font-medium text-slate-100">Save to library</h3>
                   <p className="mt-1 text-sm text-slate-400">
-                    <span className="font-mono text-xs">{adopting.remote_model_id}</span>
-                    {adopting.display_name !== adopting.remote_model_id && (
-                      <> — {adopting.display_name}</>
+                    <span className="font-mono text-xs">{adopting.remoteModelId}</span>
+                    {adopting.displayName !== adopting.remoteModelId && (
+                      <> — {adopting.displayName}</>
                     )}
-                    {adopting.context_window
-                      ? ` · ${adopting.context_window.toLocaleString()} tokens`
+                    {adopting.contextWindow
+                      ? ` · ${adopting.contextWindow.toLocaleString()} tokens`
                       : ""}
                   </p>
                   <label className="mt-3 block text-xs text-slate-500">
@@ -504,8 +504,8 @@ export default function HarnessDetailScreen() {
                   >
                     <option value="">Choose an endpoint…</option>
                     {(endpointOptions ?? []).map((o) => (
-                      <option key={o.endpoint_id} value={o.endpoint_id}>
-                        {o.provider_name} — {o.endpoint_name} ({o.protocol})
+                      <option key={o.endpointId} value={o.endpointId}>
+                        {o.providerName} — {o.endpointName} ({o.protocol})
                       </option>
                     ))}
                   </select>
@@ -520,7 +520,7 @@ export default function HarnessDetailScreen() {
                       onClick={() =>
                         adoptEndpoint &&
                         adopt.mutate({
-                          nativeId: adopting.native_id,
+                          nativeId: adopting.nativeId,
                           endpointId: adoptEndpoint,
                         })
                       }

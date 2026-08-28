@@ -97,7 +97,7 @@ function DetectedSkillsSection() {
     queryFn: detectSkills,
     enabled: open,
   });
-  const notInLibrary = (detected ?? []).filter((d) => !d.in_library);
+  const notInLibrary = (detected ?? []).filter((d) => !d.inLibrary);
 
   return (
     <div className="mt-4 rounded border border-slate-700 bg-slate-800/60 p-4">
@@ -130,10 +130,10 @@ function DetectedSkillsSection() {
                 <div className="min-w-0 flex-1">
                   <div className="text-slate-100">{d.name}</div>
                   <div className="text-xs text-slate-500">
-                    found in {d.found_in.join(", ")}
+                    found in {d.foundIn.join(", ")}
                   </div>
                 </div>
-                {d.in_library ? (
+                {d.inLibrary ? (
                   <span className="rounded bg-green-500/15 px-2 py-0.5 text-xs text-green-400">
                     in library
                   </span>
