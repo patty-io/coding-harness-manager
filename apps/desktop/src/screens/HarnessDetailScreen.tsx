@@ -450,7 +450,7 @@ export default function HarnessDetailScreen() {
                       }
                       className="rounded border border-blue-500 px-3 py-1 text-sm text-blue-300 hover:bg-blue-500/10 disabled:opacity-40"
                     >
-                      + Add from library
+                      Import from library…
                     </button>
                     {addMenuOpen && canAdd && (
                       <div className="absolute right-0 z-10 mt-1 max-h-72 w-72 overflow-auto rounded border border-slate-700 bg-slate-800 py-1 shadow-lg">
@@ -563,10 +563,10 @@ export default function HarnessDetailScreen() {
                                   setAdoptEndpoint("");
                                 }
                               }}
-                              title="Save this model to your My Models library"
+                              title="Save this harness model into your My Models library"
                               className="rounded border border-slate-600 px-2 py-0.5 text-xs text-slate-300 hover:bg-slate-700 disabled:opacity-50"
                             >
-                              Import
+                              To library
                             </button>
                           )}
                           <button
