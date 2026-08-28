@@ -349,6 +349,34 @@ export interface HarnessModelRow {
   inLibrary: boolean;
   libraryRouteId: string | null;
   libraryDisplayName: string | null;
+  providerName: string | null;
+  providerMatch: "library" | "catalog" | null;
+}
+
+export interface HarnessModelOp {
+  op: "update" | "remove" | "duplicate";
+  nativeId: string;
+  displayName?: string;
+  contextWindow?: number;
+  remoteModelId?: string;
+}
+
+export interface HarnessEditReport {
+  added: number;
+  updated: number;
+  removed: number;
+  unchanged: number;
+  files_written: string[];
+}
+
+export async function applyHarnessModelEdits(
+  installationId: string,
+  ops: HarnessModelOp[],
+): Promise<HarnessEditReport> {
+  return invoke<HarnessEditReport>("apply_harness_model_edits_cmd", {
+    installationId,
+    ops,
+  });
 }
 
 export async function harnessModelsView(installationId: string): Promise<HarnessModelRow[]> {

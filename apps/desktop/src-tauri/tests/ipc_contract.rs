@@ -2,7 +2,7 @@
 //! serialize as plain strings/objects the TS layer expects — an externally-
 //! tagged enum object (e.g. {"Custom":"gemini-cli"}) crashes React rendering.
 
-use chm_core::domain::credentials::{CredentialKind, CredentialRef};
+use chm_core::domain::credentials::CredentialKind;
 use chm_core::domain::harness::{HarnessInstallation, HarnessType, InstallationStatus};
 use chm_core::domain::mcp::McpTransport;
 use chm_core::domain::models::CatalogStatus;

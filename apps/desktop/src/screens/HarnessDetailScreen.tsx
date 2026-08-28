@@ -3,6 +3,7 @@ import { Link, useParams } from "react-router-dom";
 import { useQuery } from "@tanstack/react-query";
 import {
   adoptHarnessModel,
+  applyHarnessModelEdits,
   harnessModelsView,
   launchProfile,
   listEndpointOptions,
@@ -131,6 +132,12 @@ export default function HarnessDetailScreen() {
 
   const [addMenuOpen, setAddMenuOpen] = useState(false);
   const [adopting, setAdopting] = useState<HarnessModelRow | null>(null);
+  const [editing, setEditing] = useState<HarnessModelRow | null>(null);
+  const [editName, setEditName] = useState("");
+  const [editRemote, setEditRemote] = useState("");
+  const [editContext, setEditContext] = useState<string>("");
+  const [busyRow, setBusyRow] = useState<string | null>(null);
+  const [rowNote, setRowNote] = useState<string | null>(null);
   const [adoptEndpoint, setAdoptEndpoint] = useState("");
   const { data: endpointOptions } = useQuery({
     queryKey: ["endpoint-options"],
@@ -147,6 +154,34 @@ export default function HarnessDetailScreen() {
       void qc.invalidateQueries({ queryKey: ["dashboard"] });
     },
   });
+
+  const invalidateAfterEdit = () => {
+    void qc.invalidateQueries({ queryKey: ["harness-models", id] });
+    void qc.invalidateQueries({ queryKey: ["harness-state", id] });
+    void qc.invalidateQueries({ queryKey: ["drift", id] });
+    void qc.invalidateQueries({ queryKey: ["dashboard"] });
+  };
+
+  const runOp = async (ops: {
+    op: "update" | "remove" | "duplicate";
+    nativeId: string;
+    displayName?: string;
+    contextWindow?: number;
+    remoteModelId?: string;
+  }[]) => {
+    setRowNote(null);
+    try {
+      const r = await applyHarnessModelEdits(id!, ops);
+      setRowNote(
+        `Applied: ${r.added} added, ${r.updated} updated, ${r.removed} removed.`,
+      );
+      invalidateAfterEdit();
+    } catch (e) {
+      setRowNote(`Failed: ${String(e)}`);
+    } finally {
+      setBusyRow(null);
+    }
+  };
 
   if (stateLoading) {
     return <p className="text-sm text-slate-400">Reading harness config from disk…</p>;
@@ -425,6 +460,14 @@ export default function HarnessDetailScreen() {
               })()}
             </div>
 
+            {rowNote && (
+              <p
+                className={`mt-2 text-xs ${rowNote.startsWith("Failed") ? "text-red-400" : "text-green-400"}`}
+              >
+                {rowNote}
+              </p>
+            )}
+
             {(modelRows ?? []).length === 0 ? (
               <EmptyState>
                 No models configured in this harness yet.
@@ -436,8 +479,10 @@ export default function HarnessDetailScreen() {
                     <th className="p-2">Native id</th>
                     <th className="p-2">Remote model</th>
                     <th className="p-2">Display name</th>
+                    <th className="p-2">Provider</th>
                     <th className="p-2 text-right">Context</th>
                     <th className="p-2">Library</th>
+                    <th className="p-2 text-right">Actions</th>
                   </tr>
                 </thead>
                 <tbody>
@@ -446,6 +491,18 @@ export default function HarnessDetailScreen() {
                       <td className="p-2 font-mono text-xs text-slate-300">{m.nativeId}</td>
                       <td className="p-2 font-mono text-xs text-slate-100">{m.remoteModelId}</td>
                       <td className="p-2 text-slate-300">{m.displayName}</td>
+                      <td className="p-2 text-xs text-slate-400">
+                        {m.providerName ? (
+                          <span title={`matched via ${m.providerMatch}`}>
+                            {m.providerName}
+                            {m.providerMatch === "catalog" && (
+                              <span className="ml-1 text-slate-600">(catalog)</span>
+                            )}
+                          </span>
+                        ) : (
+                          "—"
+                        )}
+                      </td>
                       <td className="p-2 text-right text-slate-400">
                         {m.contextWindow ? m.contextWindow.toLocaleString() : "—"}
                       </td>
@@ -469,10 +526,128 @@ export default function HarnessDetailScreen() {
                           </button>
                         )}
                       </td>
+                      <td className="p-2">
+                        <div className="flex items-center justify-end gap-1">
+                          <button
+                            onClick={() => {
+                              setEditing(m);
+                              setEditName(m.displayName);
+                              setEditRemote(m.remoteModelId);
+                              setEditContext(
+                                m.contextWindow ? String(m.contextWindow) : "",
+                              );
+                            }}
+                            className="rounded border border-slate-600 px-1.5 py-0.5 text-xs text-slate-300 hover:bg-slate-700"
+                          >
+                            Edit
+                          </button>
+                          <button
+                            disabled={busyRow === m.nativeId}
+                            onClick={() => {
+                              setBusyRow(m.nativeId);
+                              void runOp([
+                                { op: "duplicate", nativeId: m.nativeId },
+                              ]);
+                            }}
+                            className="rounded border border-slate-600 px-1.5 py-0.5 text-xs text-slate-300 hover:bg-slate-700 disabled:opacity-50"
+                          >
+                            Duplicate
+                          </button>
+                          <button
+                            disabled={busyRow === m.nativeId}
+                            onClick={() => {
+                              if (
+                                window.confirm(
+                                  `Remove ${m.nativeId} from this harness's config? A backup is kept and this is undoable from History.`,
+                                )
+                              ) {
+                                setBusyRow(m.nativeId);
+                                void runOp([
+                                  { op: "remove", nativeId: m.nativeId },
+                                ]);
+                              }
+                            }}
+                            className="rounded border border-red-500/50 px-1.5 py-0.5 text-xs text-red-400 hover:bg-red-500/10 disabled:opacity-50"
+                          >
+                            Delete
+                          </button>
+                        </div>
+                      </td>
                     </tr>
                   ))}
                 </tbody>
               </table>
+            )}
+
+            {editing && (
+              <div
+                className="fixed inset-0 z-20 flex items-center justify-center bg-black/60"
+                onClick={() => setEditing(null)}
+              >
+                <div
+                  className="w-[26rem] rounded border border-slate-700 bg-slate-800 p-4"
+                  onClick={(e) => e.stopPropagation()}
+                >
+                  <h3 className="font-medium text-slate-100">
+                    Edit model on this harness
+                  </h3>
+                  <p className="mt-1 font-mono text-xs text-slate-500">
+                    native id: {editing.nativeId}
+                  </p>
+                  <label className="mt-3 block text-xs text-slate-500">
+                    Display name
+                  </label>
+                  <input
+                    value={editName}
+                    onChange={(e) => setEditName(e.target.value)}
+                    className="mt-1 w-full rounded border border-slate-600 bg-slate-900 px-2 py-1.5 text-sm text-slate-200"
+                  />
+                  <label className="mt-3 block text-xs text-slate-500">
+                    Remote model id (renaming removes the old entry and adds
+                    this one)
+                  </label>
+                  <input
+                    value={editRemote}
+                    onChange={(e) => setEditRemote(e.target.value)}
+                    className="mt-1 w-full rounded border border-slate-600 bg-slate-900 px-2 py-1.5 font-mono text-xs text-slate-200"
+                  />
+                  <label className="mt-3 block text-xs text-slate-500">
+                    Context window (tokens)
+                  </label>
+                  <input
+                    value={editContext}
+                    onChange={(e) => setEditContext(e.target.value)}
+                    inputMode="numeric"
+                    className="mt-1 w-full rounded border border-slate-600 bg-slate-900 px-2 py-1.5 text-sm text-slate-200"
+                  />
+                  <div className="mt-4 flex justify-end gap-2">
+                    <button
+                      onClick={() => setEditing(null)}
+                      className="rounded px-3 py-1 text-sm text-slate-400 hover:text-slate-200"
+                    >
+                      Cancel
+                    </button>
+                    <button
+                      onClick={() => {
+                        const ctx = parseInt(editContext, 10);
+                        setEditing(null);
+                        void runOp([
+                          {
+                            op: "update",
+                            nativeId: editing.nativeId,
+                            displayName: editName,
+                            remoteModelId: editRemote,
+                            ...(Number.isFinite(ctx) ? { contextWindow: ctx } : {}),
+                          },
+                        ]);
+                      }}
+                      className="rounded bg-blue-600 px-3 py-1 text-sm text-white hover:bg-blue-500"
+                    >
+                      Save changes
+                    </button>
+                  </div>
+                </div>
+              </div>
             )}
 
             {adopting && (
