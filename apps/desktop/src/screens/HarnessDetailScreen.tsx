@@ -538,7 +538,7 @@ export default function HarnessDetailScreen() {
                       <td className="p-2 text-right text-slate-400">
                         {m.contextWindow ? m.contextWindow.toLocaleString() : "—"}
                       </td>
-                      <td className="p-2">
+                      <td className="p-2 text-center">
                         {m.inLibrary ? (
                           <span
                             className="whitespace-nowrap rounded bg-green-500/15 px-2 py-0.5 text-xs text-green-400"
@@ -547,24 +547,28 @@ export default function HarnessDetailScreen() {
                             in library
                           </span>
                         ) : (
-                          <button
-                            onClick={() => {
-                              if (m.providerMatch === "harness" && m.providerBaseUrl) {
-                                void smartImport(m);
-                              } else {
-                                setAdopting(m);
-                                setAdoptEndpoint("");
-                              }
-                            }}
-                            title="Save this model to your My Models library"
-                            className="whitespace-nowrap rounded border border-blue-500 px-2 py-0.5 text-xs text-blue-300 hover:bg-blue-500/10"
-                          >
-                            + Import
-                          </button>
+                          <span className="text-xs text-slate-600">—</span>
                         )}
                       </td>
                       <td className="p-2">
                         <div className="flex items-center justify-end gap-1 whitespace-nowrap">
+                          {!m.inLibrary && (
+                            <button
+                              disabled={busyRow === m.nativeId}
+                              onClick={() => {
+                                if (m.providerMatch === "harness" && m.providerBaseUrl) {
+                                  void smartImport(m);
+                                } else {
+                                  setAdopting(m);
+                                  setAdoptEndpoint("");
+                                }
+                              }}
+                              title="Save this model to your My Models library"
+                              className="rounded border border-slate-600 px-2 py-0.5 text-xs text-slate-300 hover:bg-slate-700 disabled:opacity-50"
+                            >
+                              Import
+                            </button>
+                          )}
                           <button
                             onClick={() => {
                               setEditing(m);
