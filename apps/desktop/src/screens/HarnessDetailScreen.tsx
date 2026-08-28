@@ -481,7 +481,7 @@ export default function HarnessDetailScreen() {
                     <th className="p-2">Display name</th>
                     <th className="p-2">Provider</th>
                     <th className="p-2 text-right">Context</th>
-                    <th className="p-2">Library</th>
+                    <th className="p-2 text-center">Library</th>
                     <th className="p-2 text-right">Actions</th>
                   </tr>
                 </thead>
@@ -509,7 +509,7 @@ export default function HarnessDetailScreen() {
                       <td className="p-2">
                         {m.inLibrary ? (
                           <span
-                            className="rounded bg-green-500/15 px-2 py-0.5 text-xs text-green-400"
+                            className="whitespace-nowrap rounded bg-green-500/15 px-2 py-0.5 text-xs text-green-400"
                             title={m.libraryDisplayName ?? undefined}
                           >
                             in library
@@ -520,14 +520,15 @@ export default function HarnessDetailScreen() {
                               setAdopting(m);
                               setAdoptEndpoint("");
                             }}
-                            className="rounded border border-blue-500 px-2 py-0.5 text-xs text-blue-300 hover:bg-blue-500/10"
+                            title="Save this model to your My Models library"
+                            className="whitespace-nowrap rounded border border-blue-500 px-2 py-0.5 text-xs text-blue-300 hover:bg-blue-500/10"
                           >
-                            Save to library
+                            + Import
                           </button>
                         )}
                       </td>
                       <td className="p-2">
-                        <div className="flex items-center justify-end gap-1">
+                        <div className="flex items-center justify-end gap-1 whitespace-nowrap">
                           <button
                             onClick={() => {
                               setEditing(m);
@@ -537,7 +538,8 @@ export default function HarnessDetailScreen() {
                                 m.contextWindow ? String(m.contextWindow) : "",
                               );
                             }}
-                            className="rounded border border-slate-600 px-1.5 py-0.5 text-xs text-slate-300 hover:bg-slate-700"
+                            title="Edit this model on the harness"
+                            className="rounded border border-slate-600 px-2 py-0.5 text-xs text-slate-300 hover:bg-slate-700"
                           >
                             Edit
                           </button>
@@ -549,9 +551,10 @@ export default function HarnessDetailScreen() {
                                 { op: "duplicate", nativeId: m.nativeId },
                               ]);
                             }}
-                            className="rounded border border-slate-600 px-1.5 py-0.5 text-xs text-slate-300 hover:bg-slate-700 disabled:opacity-50"
+                            title="Duplicate this model on the harness"
+                            className="rounded border border-slate-600 px-2 py-0.5 text-xs text-slate-300 hover:bg-slate-700 disabled:opacity-50"
                           >
-                            Duplicate
+                            Copy
                           </button>
                           <button
                             disabled={busyRow === m.nativeId}
@@ -567,7 +570,8 @@ export default function HarnessDetailScreen() {
                                 ]);
                               }
                             }}
-                            className="rounded border border-red-500/50 px-1.5 py-0.5 text-xs text-red-400 hover:bg-red-500/10 disabled:opacity-50"
+                            title="Remove from this harness (undoable via History)"
+                            className="rounded border border-red-500/50 px-2 py-0.5 text-xs text-red-400 hover:bg-red-500/10 disabled:opacity-50"
                           >
                             Delete
                           </button>
