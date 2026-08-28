@@ -1,5 +1,6 @@
 import { useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
+import { useConfirm } from "../components/ConfirmDialog";
 import {
   useCreateProvider,
   useDeleteProvider,
@@ -8,6 +9,7 @@ import {
 
 export default function ProvidersScreen() {
   const navigate = useNavigate();
+  const { confirm, confirmDialog } = useConfirm();
   const { data: providers, isLoading } = useProviders();
   const create = useCreateProvider();
   const del = useDeleteProvider();
@@ -86,15 +88,14 @@ export default function ProvidersScreen() {
                 {p.enabled ? "enabled" : "disabled"}
               </span>
               <button
-                onClick={() => {
-                  if (
-                    window.confirm(
-                      "Delete provider and ALL its endpoints, models, and bindings? This cannot be undone.",
-                    )
-                  ) {
-                    del.mutate(p.id);
-                  }
-                }}
+                onClick={() =>
+                  confirm(
+                    `Delete ${p.display_name}?`,
+                    "This deletes the provider and ALL its endpoints, models, and bindings. This cannot be undone.",
+                    () => del.mutate(p.id),
+                    "Delete",
+                  )
+                }
                 className="rounded border border-red-200 px-2 py-0.5 text-xs text-red-600 hover:bg-red-950"
               >
                 Delete
@@ -103,6 +104,7 @@ export default function ProvidersScreen() {
           </li>
         ))}
       </ul>
+      {confirmDialog}
     </div>
   );
 }

@@ -10,6 +10,62 @@ use uuid::Uuid;
 use crate::AppState;
 use crate::commands::import::read_parsed_state;
 
+/// Provider grouping declared by the harness config itself, e.g. Pi's
+/// models.json: providers.<name>.models[] with `id` fields. Returns
+/// (model id -> provider name, provider base url).
+fn harness_provider_map(
+    inst: &chm_core::domain::harness::HarnessInstallation,
+) -> std::collections::HashMap<String, (String, Option<String>)> {
+    let mut map = std::collections::HashMap::new();
+    let Some(path) = &inst.config_path else {
+        return map;
+    };
+    let Ok(text) = std::fs::read_to_string(path) else {
+        return map;
+    };
+    let Ok(v) = serde_json::from_str::<serde_json::Value>(&text) else {
+        return map;
+    };
+    let Some(providers) = v.get("providers").and_then(|p| p.as_object()) else {
+        return map;
+    };
+    for (pname, p) in providers {
+        let base = p
+            .get("baseUrl")
+            .or_else(|| p.get("base_url"))
+            .or_else(|| p.get("url"))
+            .and_then(|b| b.as_str())
+            .map(|s| s.to_string());
+        let models = match p.get("models") {
+            Some(serde_json::Value::Array(arr)) => arr.clone(),
+            Some(serde_json::Value::Object(obj)) => obj
+                .into_iter()
+                .map(|(k, v)| {
+                    let mut m = serde_json::Map::new();
+                    m.insert("id".into(), serde_json::Value::String(k.clone()));
+                    if let Some(n) = v.get("name") {
+                        m.insert("name".into(), n.clone());
+                    }
+                    serde_json::Value::Object(m)
+                })
+                .collect(),
+            _ => continue,
+        };
+        for m in models {
+            let mid = m
+                .get("id")
+                .and_then(|i| i.as_str())
+                .map(|s| s.to_lowercase());
+            if let Some(mid) = mid {
+                map.entry(mid)
+                    .or_insert_with(|| (pname.clone(), base.clone()));
+            }
+        }
+    }
+    map
+}
+
+
 #[derive(Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct HarnessModelRow {
@@ -93,61 +149,6 @@ pub async fn harness_models_view_cmd(
         }
     }
 
-    /// Provider grouping declared by the harness config itself, e.g. Pi's
-    /// models.json: providers.<name>.models[] with `id` fields. Returns
-    /// (model id -> provider name, provider base url).
-    fn harness_provider_map(
-        inst: &chm_core::domain::harness::HarnessInstallation,
-    ) -> std::collections::HashMap<String, (String, Option<String>)> {
-        let mut map = std::collections::HashMap::new();
-        let Some(path) = &inst.config_path else {
-            return map;
-        };
-        let Ok(text) = std::fs::read_to_string(path) else {
-            return map;
-        };
-        let Ok(v) = serde_json::from_str::<serde_json::Value>(&text) else {
-            return map;
-        };
-        let Some(providers) = v.get("providers").and_then(|p| p.as_object()) else {
-            return map;
-        };
-        for (pname, p) in providers {
-            let base = p
-                .get("baseUrl")
-                .or_else(|| p.get("base_url"))
-                .or_else(|| p.get("url"))
-                .and_then(|b| b.as_str())
-                .map(|s| s.to_string());
-            let models = match p.get("models") {
-                Some(serde_json::Value::Array(arr)) => arr.clone(),
-                Some(serde_json::Value::Object(obj)) => obj
-                    .into_iter()
-                    .map(|(k, v)| {
-                        let mut m = serde_json::Map::new();
-                        m.insert("id".into(), serde_json::Value::String(k.clone()));
-                        if let Some(n) = v.get("name") {
-                            m.insert("name".into(), n.clone());
-                        }
-                        serde_json::Value::Object(m)
-                    })
-                    .collect(),
-                _ => continue,
-            };
-            for m in models {
-                let mid = m
-                    .get("id")
-                    .and_then(|i| i.as_str())
-                    .map(|s| s.to_lowercase());
-                if let Some(mid) = mid {
-                    map.entry(mid)
-                        .or_insert_with(|| (pname.clone(), base.clone()));
-                }
-            }
-        }
-        map
-    }
-
     /// Lookup keys for a harness model id: harnesses commonly prefix gateway
     /// or vendor namespaces onto bare model ids (`gl/glm-5.2`,
     /// `cp/cline-pass/deepseek-v4-flash`), so after the exact id we try each
@@ -229,6 +230,46 @@ pub struct AdoptOutcome {
     pub created: bool,
 }
 
+/// Shared adopt core: idempotently create a My Model route for the given
+/// harness row under the chosen endpoint.
+async fn adopt_route(
+    pool: &sqlx::Pool<sqlx::Sqlite>,
+    endpoint: Uuid,
+    remote_model_id: &str,
+    display_name: &str,
+    context_window: Option<i64>,
+    max_input: Option<i64>,
+    max_output: Option<i64>,
+) -> Result<AdoptOutcome, String> {
+    let existing = list_routes(pool).await.map_err(|e| e.to_string())?;
+    let remote_lower = remote_model_id.to_lowercase();
+    if let Some(already) = existing.iter().find(|r| {
+        r.endpoint_id == endpoint && r.remote_model_id.to_lowercase() == remote_lower
+    }) {
+        return Ok(AdoptOutcome {
+            route_id: already.id.to_string(),
+            created: false,
+        });
+    }
+    let mut route = chm_core::domain::models::ModelRoute::new(
+        remote_model_id.to_string(),
+        display_name.to_string(),
+        context_window,
+        serde_json::json!({}),
+        serde_json::json!({ "provenance": { "source": "adopted-from-harness" } }),
+    );
+    route.endpoint_id = endpoint;
+    route.max_input = max_input;
+    route.max_output = max_output;
+    let created = create_route(pool, &route)
+        .await
+        .map_err(|e| e.to_string())?;
+    Ok(AdoptOutcome {
+        route_id: created.id.to_string(),
+        created: true,
+    })
+}
+
 /// Pulls a model configured on the harness (but absent from the library)
 /// into My Models under the chosen provider endpoint. Display name and
 /// context window come from the harness row. Idempotent: if a route for
@@ -247,36 +288,16 @@ pub async fn adopt_harness_model_cmd(
         .iter()
         .find(|m| m.native_id == native_id)
         .ok_or_else(|| format!("model {native_id} not found on this harness"))?;
-
-    let existing = list_routes(&state.pool).await.map_err(|e| e.to_string())?;
-    let remote_lower = model.route.remote_model_id.to_lowercase();
-    if let Some(already) = existing
-        .iter()
-        .find(|r| r.endpoint_id == endpoint && r.remote_model_id.to_lowercase() == remote_lower)
-    {
-        return Ok(AdoptOutcome {
-            route_id: already.id.to_string(),
-            created: false,
-        });
-    }
-
-    let mut route = chm_core::domain::models::ModelRoute::new(
-        model.route.remote_model_id.clone(),
-        model.route.display_name.clone(),
+    adopt_route(
+        &state.pool,
+        endpoint,
+        &model.route.remote_model_id,
+        &model.route.display_name,
         model.route.context_window,
-        serde_json::json!({}),
-        serde_json::json!({ "provenance": { "source": "adopted-from-harness" } }),
-    );
-    route.endpoint_id = endpoint;
-    route.max_input = model.route.max_input;
-    route.max_output = model.route.max_output;
-    let created = create_route(&state.pool, &route)
-        .await
-        .map_err(|e| e.to_string())?;
-    Ok(AdoptOutcome {
-        route_id: created.id.to_string(),
-        created: true,
-    })
+        model.route.max_input,
+        model.route.max_output,
+    )
+    .await
 }
 
 /// Endpoints grouped by provider for the adopt dialog's dropdown.
@@ -588,4 +609,168 @@ fn count_kind(
             _ => false,
         })
         .count()
+}
+
+#[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct SmartAdoptOutcome {
+    pub route_id: String,
+    pub route_created: bool,
+    pub provider_created: bool,
+    pub endpoint_created: bool,
+    pub provider_name: String,
+    pub endpoint_id: String,
+}
+
+fn normalize_base(url: &str) -> String {
+    url.trim().trim_end_matches('/').to_lowercase()
+}
+
+fn slugify(name: &str) -> String {
+    let s: String = name
+        .chars()
+        .map(|c| c.is_ascii_alphanumeric().then_some(c).unwrap_or('-'))
+        .collect();
+    let trimmed = s.trim_matches('-').to_lowercase();
+    if trimmed.is_empty() {
+        "provider".into()
+    } else {
+        trimmed
+    }
+}
+
+/// One-click import for models whose harness config declares the serving
+/// provider (name + base URL). Reuses an existing endpoint with the same
+/// base URL, or creates the provider + endpoint on the fly, then routes the
+/// model. Falls back to an error when the harness config has no provider
+/// info — the UI then shows the manual endpoint picker instead.
+#[tauri::command]
+pub async fn smart_adopt_harness_model_cmd(
+    state: State<'_, AppState>,
+    installation_id: String,
+    native_id: String,
+) -> Result<SmartAdoptOutcome, String> {
+    use chm_core::domain::provider::{AuthType, Protocol, ProviderEndpoint};
+
+    let id = Uuid::parse_str(&installation_id).map_err(|e| e.to_string())?;
+    let inst = list_installations(&state.pool)
+        .await
+        .map_err(|e| e.to_string())?
+        .into_iter()
+        .find(|i| i.id == id)
+        .ok_or_else(|| format!("installation {installation_id} not found"))?;
+    let (_rid, _htype, parsed) = read_parsed_state(&state.pool, &installation_id).await?;
+    let model = parsed
+        .models
+        .iter()
+        .find(|m| m.native_id == native_id)
+        .ok_or_else(|| format!("model {native_id} not found on this harness"))?;
+
+    let provider_map = harness_provider_map(&inst);
+    let native_lower = native_id.to_lowercase();
+    let Some((provider_name, Some(base_url))) = native_providers_lookup(
+        &provider_map,
+        &model.route.remote_model_id.to_lowercase(),
+        &native_lower,
+    ) else {
+        return Err(
+            "this harness config does not declare a provider for this model; choose an endpoint manually"
+                .into(),
+        );
+    };
+
+    // Existing endpoint with the same base URL?
+    let providers = list_providers(&state.pool)
+        .await
+        .map_err(|e| e.to_string())?;
+    let target_base = normalize_base(&base_url);
+    let mut endpoint: Option<chm_core::domain::provider::ProviderEndpoint> = None;
+    let mut provider_created = false;
+    let mut endpoint_created = false;
+    for p in &providers {
+        for e in list_endpoints(&state.pool, p.id)
+            .await
+            .map_err(|e| e.to_string())?
+        {
+            if normalize_base(&e.base_url) == target_base {
+                endpoint = Some(e);
+                break;
+            }
+        }
+        if endpoint.is_some() {
+            break;
+        }
+    }
+
+    let endpoint = if let Some(e) = endpoint {
+        e
+    } else {
+        // Create the provider (reuse by slug when present) and its endpoint.
+        provider_created = true;
+        endpoint_created = true;
+        let slug = slugify(&provider_name);
+        let provider = match chm_database::repos::providers::list_providers(&state.pool)
+            .await
+            .map_err(|e| e.to_string())?
+            .into_iter()
+            .find(|p| p.name == slug)
+        {
+            Some(p) => p,
+            None => {
+                chm_database::repos::providers::create_provider(
+                    &state.pool,
+                    &slug,
+                    &provider_name,
+                )
+                .await
+                .map_err(|e| e.to_string())?
+            }
+        };
+        chm_database::repos::providers::create_endpoint(
+            &state.pool,
+            &ProviderEndpoint {
+                id: Uuid::new_v4(),
+                provider_id: provider.id,
+                name: "API".into(),
+                base_url: base_url.clone(),
+                protocol: Protocol::parse_str("openai-chat"),
+                discovery_path: Some("/v1/models".into()),
+                auth_type: AuthType::BearerToken,
+                credential_ref: None,
+                headers: Default::default(),
+                enabled: true,
+                created_at: chrono::Utc::now(),
+                updated_at: chrono::Utc::now(),
+            },
+        )
+        .await
+        .map_err(|e| e.to_string())?
+    };
+
+    let outcome = adopt_route(
+        &state.pool,
+        endpoint.id,
+        &model.route.remote_model_id,
+        &model.route.display_name,
+        model.route.context_window,
+        model.route.max_input,
+        model.route.max_output,
+    )
+    .await?;
+    Ok(SmartAdoptOutcome {
+        route_id: outcome.route_id,
+        route_created: outcome.created,
+        provider_created,
+        endpoint_created,
+        provider_name: provider_name.clone(),
+        endpoint_id: endpoint.id.to_string(),
+    })
+}
+
+fn native_providers_lookup<'m>(
+    map: &'m std::collections::HashMap<String, (String, Option<String>)>,
+    remote_lower: &str,
+    native_lower: &str,
+) -> Option<&'m (String, Option<String>)> {
+    map.get(remote_lower).or_else(|| map.get(native_lower))
 }

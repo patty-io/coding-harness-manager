@@ -395,6 +395,24 @@ export interface AdoptOutcome {
   created: boolean;
 }
 
+export interface SmartAdoptOutcome {
+  routeId: string;
+  routeCreated: boolean;
+  providerCreated: boolean;
+  endpointCreated: boolean;
+  providerName: string;
+  endpointId: string;
+}
+
+export async function smartAdoptHarnessModel(
+  installationId: string,
+  nativeId: string,
+): Promise<SmartAdoptOutcome> {
+  return invoke<SmartAdoptOutcome>("smart_adopt_harness_model_cmd", {
+    installationId,
+    nativeId,
+  });
+}
 export async function adoptHarnessModel(
   installationId: string,
   nativeId: string,

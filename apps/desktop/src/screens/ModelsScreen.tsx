@@ -1,6 +1,7 @@
 // Phase 6 My Models screen: tabs (My Models / Discovered), filters, enrichment.
 
 import { useMemo, useState } from "react";
+import { useConfirm } from "../components/ConfirmDialog";
 import { SyncToHarnessButton } from "../components/SyncToHarnessButton";
 import {
   useCatalogAll,
@@ -28,6 +29,7 @@ export default function ModelsScreen() {
   const enrich = useEnrich();
   const resolve = useResolveEnrichment();
 
+  const { confirm, confirmDialog } = useConfirm();
   const [selectedCatalog, setSelectedCatalog] = useState<string[]>([]);
   const [enrichOutcome, setEnrichOutcome] = useState<{
     routeId: string;
@@ -148,11 +150,14 @@ export default function ModelsScreen() {
                       Enrich
                     </button>
                     <button
-                      onClick={() => {
-                        if (window.confirm("Delete this model route?")) {
-                          del.mutate(r.id);
-                        }
-                      }}
+                      onClick={() =>
+                        confirm(
+                          "Delete this model route?",
+                          "It will no longer be available to sync to harnesses.",
+                          () => del.mutate(r.id),
+                          "Delete",
+                        )
+                      }
                       className="ml-1 rounded border border-red-200 px-2 py-0.5 text-xs text-red-600"
                     >
                       Delete
@@ -237,6 +242,7 @@ export default function ModelsScreen() {
         create={create}
         providers={providers}
       />
+      {confirmDialog}
     </div>
   );
 }

@@ -18,6 +18,8 @@ import {
   useRecordManualSnapshot,
 } from "../hooks/useHarnesses";
 import { SyncDialog } from "../components/SyncDialog";
+import { useConfirm } from "../components/ConfirmDialog";
+import { smartAdoptHarnessModel } from "../lib/api";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 
 const STATUS_STYLES: Record<string, string> = {
@@ -138,6 +140,7 @@ export default function HarnessDetailScreen() {
   const [editContext, setEditContext] = useState<string>("");
   const [busyRow, setBusyRow] = useState<string | null>(null);
   const [rowNote, setRowNote] = useState<string | null>(null);
+  const { confirm, confirmDialog } = useConfirm();
   const [adoptEndpoint, setAdoptEndpoint] = useState("");
   const { data: endpointOptions } = useQuery({
     queryKey: ["endpoint-options"],
@@ -160,6 +163,23 @@ export default function HarnessDetailScreen() {
     void qc.invalidateQueries({ queryKey: ["harness-state", id] });
     void qc.invalidateQueries({ queryKey: ["drift", id] });
     void qc.invalidateQueries({ queryKey: ["dashboard"] });
+  };
+
+  const smartImport = async (m: HarnessModelRow) => {
+    setRowNote(null);
+    try {
+      const r = await smartAdoptHarnessModel(id!, m.nativeId);
+      setRowNote(
+        r.routeCreated
+          ? `Imported ${m.remoteModelId} into My Models${r.providerName ? ` via ${r.providerName}` : ""}.`
+          : `${m.remoteModelId} is already in My Models.`,
+      );
+      invalidateAfterEdit();
+      void qc.invalidateQueries({ queryKey: ["routes"] });
+      void qc.invalidateQueries({ queryKey: ["providers"] });
+    } catch (e) {
+      setRowNote(`Import failed: ${String(e)}`);
+    }
   };
 
   const runOp = async (ops: {
@@ -529,8 +549,12 @@ export default function HarnessDetailScreen() {
                         ) : (
                           <button
                             onClick={() => {
-                              setAdopting(m);
-                              setAdoptEndpoint("");
+                              if (m.providerMatch === "harness" && m.providerBaseUrl) {
+                                void smartImport(m);
+                              } else {
+                                setAdopting(m);
+                                setAdoptEndpoint("");
+                              }
                             }}
                             title="Save this model to your My Models library"
                             className="whitespace-nowrap rounded border border-blue-500 px-2 py-0.5 text-xs text-blue-300 hover:bg-blue-500/10"
@@ -570,18 +594,19 @@ export default function HarnessDetailScreen() {
                           </button>
                           <button
                             disabled={busyRow === m.nativeId}
-                            onClick={() => {
-                              if (
-                                window.confirm(
-                                  `Remove ${m.nativeId} from this harness's config? A backup is kept and this is undoable from History.`,
-                                )
-                              ) {
-                                setBusyRow(m.nativeId);
-                                void runOp([
-                                  { op: "remove", nativeId: m.nativeId },
-                                ]);
-                              }
-                            }}
+                            onClick={() =>
+                              confirm(
+                                `Delete ${m.nativeId}?`,
+                                `This removes the model from this harness's config file. A backup is taken first and you can undo it from History.`,
+                                () => {
+                                  setBusyRow(m.nativeId);
+                                  void runOp([
+                                    { op: "remove", nativeId: m.nativeId },
+                                  ]);
+                                },
+                                "Delete",
+                              )
+                            }
                             title="Remove from this harness (undoable via History)"
                             className="rounded border border-red-500/50 px-2 py-0.5 text-xs text-red-400 hover:bg-red-500/10 disabled:opacity-50"
                           >
@@ -809,6 +834,7 @@ export default function HarnessDetailScreen() {
           onClose={() => setSyncing(false)}
         />
       )}
+      {confirmDialog}
     </div>
   );
 }

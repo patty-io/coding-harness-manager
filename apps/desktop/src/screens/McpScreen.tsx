@@ -1,6 +1,7 @@
 // MCP screen: registry table, add form, bindings, diagnostics.
 
 import { useState } from "react";
+import { useConfirm } from "../components/ConfirmDialog";
 import { useQuery } from "@tanstack/react-query";
 import { useCreateMcp, useDeleteMcp, useMcpServers, useRunDiagnostics } from "../hooks/useMcp";
 import { SyncToHarnessButton } from "../components/SyncToHarnessButton";
@@ -92,6 +93,7 @@ export default function McpScreen() {
   const create = useCreateMcp();
   const del = useDeleteMcp();
   const runDiag = useRunDiagnostics();
+  const { confirm, confirmDialog } = useConfirm();
   const [name, setName] = useState("");
   const [transport, setTransport] = useState("stdio");
   const [command, setCommand] = useState("");
@@ -252,11 +254,14 @@ export default function McpScreen() {
                 <div className="flex items-center gap-2">
                   <SyncToHarnessButton />
                   <button
-                    onClick={() => {
-                      if (window.confirm(`Delete MCP server "${s.name}"?`)) {
-                        del.mutate(s.id);
-                      }
-                    }}
+                    onClick={() =>
+                      confirm(
+                        `Delete ${s.name}?`,
+                        "This removes the MCP server from your library.",
+                        () => del.mutate(s.id),
+                        "Delete",
+                      )
+                    }
                     className="rounded border border-red-200 px-2 py-0.5 text-xs text-red-600"
                   >
                     Delete
@@ -267,6 +272,7 @@ export default function McpScreen() {
           ))}
         </tbody>
       </table>
+      {confirmDialog}
     </div>
   );
 }

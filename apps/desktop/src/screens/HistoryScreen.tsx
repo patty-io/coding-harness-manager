@@ -1,4 +1,5 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { useConfirm } from "../components/ConfirmDialog";
 import { invoke } from "@tauri-apps/api/core";
 import { useState } from "react";
 import type { HistoryEntry } from "../lib/api";
@@ -11,6 +12,7 @@ function rollbackTransaction(transactionId: string): Promise<{ filesRestored: st
 }
 
 export default function HistoryScreen() {
+  const { confirm, confirmDialog } = useConfirm();
   const qc = useQueryClient();
   const { data, isLoading } = useQuery({ queryKey: ["history"], queryFn: listHistory });
   const rollback = useMutation({
@@ -40,7 +42,14 @@ export default function HistoryScreen() {
                   View Diff
                 </button>
                 <button
-                  onClick={() => { if (window.confirm("Roll back this sync? Files will be restored.")) rollback.mutate(e.transactionId); }}
+                  onClick={() =>
+                  confirm(
+                    "Roll back this sync?",
+                    "Files changed by this sync will be restored from the snapshot.",
+                    () => rollback.mutate(e.transactionId),
+                    "Roll back",
+                  )
+                }
                   disabled={rollback.isPending}
                   className="rounded border border-blue-300 px-2 py-0.5 text-xs text-blue-700 disabled:opacity-50"
                 >
@@ -57,6 +66,7 @@ export default function HistoryScreen() {
           </li>
         ))}
       </ul>
+      {confirmDialog}
     </div>
   );
 }

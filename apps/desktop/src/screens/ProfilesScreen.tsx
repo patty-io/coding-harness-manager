@@ -1,10 +1,12 @@
 import { useState } from "react";
+import { useConfirm } from "../components/ConfirmDialog";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { invoke } from "@tauri-apps/api/core";
 
 import { launchProfile, type ProfileView } from "../lib/api";
 
 export default function ProfilesScreen() {
+  const { confirm, confirmDialog } = useConfirm();
   const qc = useQueryClient();
   const [launchNote, setLaunchNote] = useState<string | null>(null);
   const { data: profiles, isLoading } = useQuery({
@@ -49,7 +51,9 @@ export default function ProfilesScreen() {
                 Launch
               </button>
               <button
-                onClick={() => { if (window.confirm("Delete profile?")) del.mutate(p.id); }}
+                onClick={() =>
+                  confirm("Delete preset?", "This cannot be undone.", () => del.mutate(p.id), "Delete")
+                }
                 className="rounded border border-red-200 px-2 py-0.5 text-xs text-red-600"
               >
                 Delete
@@ -64,6 +68,7 @@ export default function ProfilesScreen() {
           No profiles yet. Create one with "create profile" in the UI.
         </p>
       )}
+      {confirmDialog}
     </div>
   );
 }
