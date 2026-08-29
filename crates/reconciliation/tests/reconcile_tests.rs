@@ -128,6 +128,46 @@ fn alias_collision_is_conflict() {
     assert!(matches!(&plan[0], PlanAction::Conflict(c) if c.reason.contains("native id")));
 }
 
+#[test]
+fn model_identity_is_scoped_to_native_provider() {
+    let endpoint = Uuid::new_v4();
+    let mut desired = route(endpoint, "same-model", Some(10));
+    desired.overrides = serde_json::json!({"native_provider_id": "provider-b"});
+    let mut provider_a = actual_model("same-model");
+    provider_a.route.overrides = serde_json::json!({"native_provider_id": "provider-a"});
+    let mut provider_b = actual_model("same-model");
+    provider_b.route.context_window = Some(5);
+    provider_b.route.overrides = serde_json::json!({"native_provider_id": "provider-b"});
+
+    let plan = reconcile_models(
+        &[desired],
+        &[provider_a, provider_b],
+        Mode::Append,
+        &managed(&[]),
+    );
+    assert_eq!(plan.len(), 1);
+    assert!(matches!(
+        &plan[0],
+        PlanAction::Update(update)
+            if update.native_provider_id.as_deref() == Some("provider-b")
+                && update.identity == "same-model"
+    ));
+}
+
+#[test]
+fn model_add_carries_native_provider_in_payload() {
+    let endpoint = Uuid::new_v4();
+    let mut desired = route(endpoint, "new-model", None);
+    desired.overrides = serde_json::json!({"native_provider_id": "provider-b"});
+    let plan = reconcile_models(&[desired], &[], Mode::Append, &managed(&[]));
+    assert!(matches!(
+        &plan[0],
+        PlanAction::Add(add)
+            if add.native_provider_id.as_deref() == Some("provider-b")
+                && add.payload["native_provider_id"] == "provider-b"
+    ));
+}
+
 fn mcp_server(name: &str) -> McpServer {
     McpServer {
         id: Uuid::new_v4(),

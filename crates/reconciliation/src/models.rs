@@ -23,12 +23,18 @@ pub fn reconcile_models(
     managed: &HashMap<String, bool>,
 ) -> Vec<PlanAction> {
     let mut actions = Vec::new();
-    let actual_by_native: HashMap<&str, &HarnessModel> =
-        actual.iter().map(|m| (m.native_id.as_str(), m)).collect();
+    // Native identity is provider-scoped for formats such as Pi. Keeping the
+    // provider in the lookup prevents one provider's `qwen` from shadowing a
+    // second provider's `qwen`.
+    let actual_by_identity: HashMap<(Option<&str>, &str), &HarnessModel> = actual
+        .iter()
+        .map(|m| (native_identity(m), m))
+        .collect();
 
     for d in desired {
         let native_id = d.remote_model_id.as_str();
-        match actual_by_native.get(native_id) {
+        let provider = route_provider(d);
+        match actual_by_identity.get(&(provider, native_id)) {
             None => {
                 let alias_hit = actual.iter().find(|a| {
                     a.route.remote_model_id == d.remote_model_id && a.native_id != native_id
@@ -46,6 +52,7 @@ pub fn reconcile_models(
                         kind: "model".into(),
                         identity: native_id.into(),
                         payload: serde_json::json!({
+                            "native_provider_id": provider,
                             "remote_model_id": d.remote_model_id,
                             "display_name": d.display_name,
                             "context_window": d.context_window,
@@ -54,6 +61,7 @@ pub fn reconcile_models(
                             "capabilities": d.capabilities,
                             "overrides": d.overrides,
                         }),
+                        native_provider_id: provider.map(str::to_string),
                     }));
                 }
             }
@@ -75,6 +83,7 @@ pub fn reconcile_models(
                         changed_fields: changed,
                         desired: serde_json::json!(d),
                         current: serde_json::json!(a.route),
+                        native_provider_id: native_identity(a).0.map(str::to_string),
                     }));
                 }
             }
@@ -93,12 +102,24 @@ pub fn reconcile_models(
                 actions.push(PlanAction::Remove(RemoveAction {
                     kind: "model".into(),
                     identity: a.native_id.clone(),
+                    native_provider_id: native_identity(a).0.map(str::to_string),
                 }));
             }
         }
     }
 
     actions
+}
+
+fn route_provider(route: &ModelRoute) -> Option<&str> {
+    route
+        .overrides
+        .get("native_provider_id")
+        .and_then(|v| v.as_str())
+}
+
+fn native_identity(model: &HarnessModel) -> (Option<&str>, &str) {
+    (route_provider(&model.route), model.native_id.as_str())
 }
 
 fn field_differs(field: &str, actual: &ModelRoute, desired: &ModelRoute) -> bool {

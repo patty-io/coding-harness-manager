@@ -343,6 +343,7 @@ export async function detectSkills(): Promise<DetectedSkill[]> {
 
 export interface HarnessModelRow {
   nativeId: string;
+  nativeProviderId: string | null;
   remoteModelId: string;
   displayName: string;
   contextWindow: number | null;
@@ -364,6 +365,8 @@ export interface HarnessModelRow {
 export interface HarnessModelOp {
   op: "update" | "remove" | "duplicate";
   nativeId: string;
+  nativeProviderId?: string;
+  destinationProviderId?: string;
   displayName?: string;
   contextWindow?: number;
   remoteModelId?: string;

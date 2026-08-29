@@ -198,3 +198,28 @@ fn validation_rejects_provider_without_required_configuration() {
         report.errors
     );
 }
+
+#[test]
+fn provider_scoped_writer_does_not_touch_sibling_provider() {
+    let raw = r#"{
+        "providers": {
+            "alpha": {"models": [{"id": "same", "name": "Alpha"}]},
+            "beta": {"models": [{"id": "same", "name": "Beta"}]}
+        }
+    }"#;
+    let mut doc = writer::parse_document(raw).unwrap();
+    assert!(writer::update_model_in_provider(
+        &mut doc,
+        Some("beta"),
+        "same",
+        "Beta edited",
+        None,
+    ));
+    assert_eq!(doc["providers"]["alpha"]["models"][0]["name"], "Alpha");
+    assert_eq!(doc["providers"]["beta"]["models"][0]["name"], "Beta edited");
+    assert_eq!(
+        writer::remove_model_in_provider(&mut doc, Some("beta"), "same"),
+        1
+    );
+    assert_eq!(doc["providers"]["alpha"]["models"].as_array().unwrap().len(), 1);
+}

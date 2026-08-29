@@ -87,6 +87,7 @@ impl HarnessAdapter for PiAdapter {
                         .payload
                         .get("native_provider_id")
                         .and_then(|v| v.as_str())
+                        .or(a.native_provider_id.as_deref())
                         .unwrap_or("custom");
                     let model_id = a
                         .payload
@@ -115,7 +116,18 @@ impl HarnessAdapter for PiAdapter {
                         .and_then(|v| v.as_str())
                         .unwrap_or(model_id);
                     let ctx = u.desired.get("context_window").and_then(|v| v.as_i64());
-                    if writer::update_model(&mut doc, model_id, display, ctx) {
+                    if writer::update_model_in_provider(
+                        &mut doc,
+                        u.native_provider_id.as_deref().or_else(|| {
+                            u.desired
+                                .get("overrides")
+                                .and_then(|v| v.get("native_provider_id"))
+                                .and_then(|v| v.as_str())
+                        }),
+                        model_id,
+                        display,
+                        ctx,
+                    ) {
                         folded = true;
                     } else {
                         warnings.push(format!(
@@ -124,7 +136,11 @@ impl HarnessAdapter for PiAdapter {
                     }
                 }
                 PlanAction::Remove(r) if r.kind == "model" => {
-                    let removed = writer::remove_model(&mut doc, &r.identity);
+                    let removed = writer::remove_model_in_provider(
+                        &mut doc,
+                        r.native_provider_id.as_deref(),
+                        &r.identity,
+                    );
                     if removed > 0 {
                         folded = true;
                     } else {

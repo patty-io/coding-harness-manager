@@ -70,6 +70,7 @@ fn harness_provider_map(
 #[serde(rename_all = "camelCase")]
 pub struct HarnessModelRow {
     pub native_id: String,
+    pub native_provider_id: Option<String>,
     pub remote_model_id: String,
     pub display_name: String,
     pub context_window: Option<i64>,
@@ -236,6 +237,12 @@ pub async fn harness_models_view_cmd(
             };
             HarnessModelRow {
                 native_id: m.native_id.clone(),
+                native_provider_id: m
+                    .route
+                    .overrides
+                    .get("native_provider_id")
+                    .and_then(|v| v.as_str())
+                    .map(str::to_string),
                 remote_model_id: m.route.remote_model_id.clone(),
                 display_name: m.route.display_name.clone(),
                 context_window: m.route.context_window,
@@ -379,6 +386,12 @@ pub struct HarnessModelOp {
     pub op: String,
     pub native_id: String,
     #[serde(default)]
+    pub native_provider_id: Option<String>,
+    /// Optional destination provider for duplicate. Omitted means preserve
+    /// the source provider.
+    #[serde(default)]
+    pub destination_provider_id: Option<String>,
+    #[serde(default)]
     pub display_name: Option<String>,
     #[serde(default)]
     pub context_window: Option<i64>,
@@ -433,15 +446,40 @@ pub async fn apply_harness_model_edits_cmd(
         managed.insert(format!("skill:{}", sk.path), false);
     }
 
-    let existing_native: std::collections::HashSet<String> =
-        parsed.models.iter().map(|m| m.native_id.clone()).collect();
-    // Ids already claimed in this batch (existing rows plus entries pushed
-    // into desired so far) — duplicates and renames must stay unique.
-    let mut used_ids = existing_native.clone();
-
+    let model_provider = |m: &chm_harness_sdk::adapter::types::HarnessModel| {
+        m.route
+            .overrides
+            .get("native_provider_id")
+            .and_then(|v| v.as_str())
+            .unwrap_or("")
+            .to_lowercase()
+    };
+    let identity = |provider: &str, id: &str| format!("{provider}\u{1f}{id}");
+    let mut used_ids: std::collections::HashSet<String> = parsed
+        .models
+        .iter()
+        .map(|m| identity(&model_provider(m), &m.native_id.to_lowercase()))
+        .collect();
     let mut desired_routes: Vec<chm_core::domain::models::ModelRoute> = Vec::new();
     for m in &parsed.models {
-        let op = ops.iter().find(|o| o.native_id == m.native_id);
+        let provider = model_provider(m);
+        let candidates: Vec<_> = ops
+            .iter()
+            .filter(|o| o.native_id == m.native_id)
+            .filter(|o| {
+                o.native_provider_id
+                    .as_deref()
+                    .map(|p| p.eq_ignore_ascii_case(&provider))
+                    .unwrap_or(true)
+            })
+            .collect();
+        if candidates.len() > 1 {
+            return Err(format!(
+                "model {} exists under multiple providers; native_provider_id is required",
+                m.native_id
+            ));
+        }
+        let op = candidates.first().copied();
         match op.map(|o| o.op.as_str()) {
             Some("remove") => {
                 // omitted from desired -> Remove
@@ -453,9 +491,18 @@ pub async fn apply_harness_model_edits_cmd(
                     .filter(|s| !s.is_empty())
                     .map(str::to_string)
                     .unwrap_or_else(|| format!("{}-copy", m.native_id));
-                if new_id != m.native_id && used_ids.contains(&new_id) {
+                let destination_provider = op
+                    .and_then(|o| o.destination_provider_id.as_deref())
+                    .unwrap_or(&provider)
+                    .to_string();
+                let new_identity = identity(
+                    &destination_provider.to_lowercase(),
+                    &new_id.to_lowercase(),
+                );
+                let source_identity = identity(&provider, &m.native_id.to_lowercase());
+                if new_identity != source_identity && used_ids.contains(&new_identity) {
                     return Err(format!(
-                        "a model named \"{new_id}\" already exists on this harness"
+                        "a model named \"{new_id}\" already exists for provider \"{destination_provider}\" on this harness"
                     ));
                 }
                 let display = op
@@ -467,7 +514,9 @@ pub async fn apply_harness_model_edits_cmd(
                 let mut copy = m.route.clone();
                 copy.remote_model_id = new_id.clone();
                 copy.display_name = display;
-                used_ids.insert(new_id);
+                copy.overrides["native_provider_id"] =
+                    serde_json::Value::String(destination_provider.clone());
+                used_ids.insert(new_identity);
                 desired_routes.push(copy);
                 let mut kept = m.route.clone();
                 kept.remote_model_id = m.native_id.clone();
@@ -486,15 +535,17 @@ pub async fn apply_harness_model_edits_cmd(
                     if let Some(rm) = &o.remote_model_id {
                         let rm = rm.trim().to_string();
                         if !rm.is_empty() && rm != m.native_id {
-                            if used_ids.contains(&rm) {
+                            let renamed_identity = identity(&provider, &rm.to_lowercase());
+                            let source_identity = identity(&provider, &m.native_id.to_lowercase());
+                            if renamed_identity != source_identity && used_ids.contains(&renamed_identity) {
                                 return Err(format!(
-                                    "a model named \"{rm}\" already exists on this harness"
+                                    "a model named \"{rm}\" already exists for provider \"{provider}\" on this harness"
                                 ));
                             }
                             // rename: add under the new id; the old native id
                             // drops out of desired -> reconciler removes it.
-                            used_ids.remove(&m.native_id.clone());
-                            used_ids.insert(rm.clone());
+                            used_ids.remove(&source_identity);
+                            used_ids.insert(renamed_identity);
                             route.remote_model_id = rm;
                         }
                     }
@@ -922,7 +973,7 @@ pub async fn ensure_provider_from_harness_cmd(
         }
     };
 
-    let endpoint_id = if let Some(e) = endpoint {
+    let _endpoint_id = if let Some(e) = endpoint {
         e.id
     } else {
         chm_database::repos::providers::create_endpoint(

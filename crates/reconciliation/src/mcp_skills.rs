@@ -25,6 +25,7 @@ pub fn reconcile_mcp(
                 kind: "mcp".into(),
                 identity: d.name.clone(),
                 payload: serde_json::json!(d),
+                native_provider_id: None,
             })),
             Some(a) => {
                 let changed: Vec<String> = ["command", "args", "url", "env", "transport"]
@@ -54,6 +55,7 @@ pub fn reconcile_mcp(
                         changed_fields: changed,
                         desired: serde_json::json!(d),
                         current: serde_json::json!(a.server),
+                        native_provider_id: None,
                     }));
                 }
             }
@@ -72,6 +74,7 @@ pub fn reconcile_mcp(
                 actions.push(PlanAction::Remove(RemoveAction {
                     kind: "mcp".into(),
                     identity: a.native_name.clone(),
+                    native_provider_id: None,
                 }));
             }
         }
@@ -135,6 +138,7 @@ pub fn reconcile_skills(
                         kind: "skill".into(),
                         identity: d.canonical_path.clone(),
                         payload: serde_json::json!(d),
+                        native_provider_id: None,
                     })),
                 }
             }
@@ -180,6 +184,7 @@ pub fn reconcile_skills(
                 actions.push(PlanAction::Remove(RemoveAction {
                     kind: "skill".into(),
                     identity: a.path.clone(),
+                    native_provider_id: None,
                 }));
             }
         }

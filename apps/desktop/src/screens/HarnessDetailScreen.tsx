@@ -212,6 +212,8 @@ export default function HarnessDetailScreen() {
   const runOp = async (ops: {
     op: "update" | "remove" | "duplicate";
     nativeId: string;
+    nativeProviderId?: string;
+    destinationProviderId?: string;
     displayName?: string;
     contextWindow?: number;
     remoteModelId?: string;
@@ -535,7 +537,10 @@ export default function HarnessDetailScreen() {
                 </thead>
                 <tbody>
                   {(modelRows ?? []).map((m) => (
-                    <tr key={m.nativeId} className="border-b border-slate-700/60">
+                    <tr
+                      key={`${m.nativeProviderId ?? "default"}:${m.nativeId}`}
+                      className="border-b border-slate-700/60"
+                    >
                       <td className="p-2 font-mono text-xs text-slate-300">{m.nativeId}</td>
                       <td className="p-2 font-mono text-xs text-slate-100">{m.remoteModelId}</td>
                       <td className="p-2 text-slate-300">{m.displayName}</td>
@@ -652,7 +657,11 @@ export default function HarnessDetailScreen() {
                                 () => {
                                   setBusyRow(m.nativeId);
                                   void runOp([
-                                    { op: "remove", nativeId: m.nativeId },
+                                    {
+                                      op: "remove",
+                                      nativeId: m.nativeId,
+                                      nativeProviderId: m.nativeProviderId ?? undefined,
+                                    },
                                   ]);
                                 },
                                 "Delete",
@@ -675,7 +684,9 @@ export default function HarnessDetailScreen() {
               const clash = (modelRows ?? []).some(
                 (r) =>
                   r.nativeId.toLowerCase() === dupId.trim().toLowerCase() &&
-                  r.nativeId !== duplicating.nativeId,
+                  r.nativeId !== duplicating.nativeId &&
+                  (r.nativeProviderId ?? "").toLowerCase() ===
+                    (duplicating.nativeProviderId ?? "").toLowerCase(),
               );
               const empty = dupId.trim().length === 0;
               const invalid = clash || empty;
@@ -746,6 +757,7 @@ export default function HarnessDetailScreen() {
                             {
                               op: "duplicate",
                               nativeId: target.nativeId,
+                              nativeProviderId: target.nativeProviderId ?? undefined,
                               remoteModelId: dupId.trim(),
                               displayName: dupName.trim(),
                             },
@@ -818,6 +830,7 @@ export default function HarnessDetailScreen() {
                           {
                             op: "update",
                             nativeId: editing.nativeId,
+                            nativeProviderId: editing.nativeProviderId ?? undefined,
                             displayName: editName,
                             remoteModelId: editRemote,
                             ...(Number.isFinite(ctx) ? { contextWindow: ctx } : {}),

@@ -42,6 +42,9 @@ pub struct AddAction {
     pub kind: String,
     pub identity: String,
     pub payload: serde_json::Value,
+    /// Harness-native provider grouping, when the target format has one.
+    #[serde(default)]
+    pub native_provider_id: Option<String>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -51,12 +54,18 @@ pub struct UpdateAction {
     pub changed_fields: Vec<String>,
     pub desired: serde_json::Value,
     pub current: serde_json::Value,
+    /// Harness-native provider grouping, when the target format has one.
+    #[serde(default)]
+    pub native_provider_id: Option<String>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct RemoveAction {
     pub kind: String,
     pub identity: String,
+    /// Harness-native provider grouping, when the target format has one.
+    #[serde(default)]
+    pub native_provider_id: Option<String>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]

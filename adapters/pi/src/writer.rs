@@ -83,6 +83,18 @@ pub fn update_model(
     display_name: &str,
     context_window: Option<i64>,
 ) -> bool {
+    update_model_in_provider(doc, None, model_id, display_name, context_window)
+}
+
+/// Update only the matching provider's model entry. `None` retains the
+/// backwards-compatible provider-agnostic behavior used by old callers.
+pub fn update_model_in_provider(
+    doc: &mut Value,
+    provider_id: Option<&str>,
+    model_id: &str,
+    display_name: &str,
+    context_window: Option<i64>,
+) -> bool {
     let Some(providers) = doc
         .as_object_mut()
         .and_then(|o| o.get_mut("providers"))
@@ -91,7 +103,10 @@ pub fn update_model(
         return false;
     };
     let mut found = false;
-    for (_pname, pv) in providers.iter_mut() {
+    for (pname, pv) in providers.iter_mut() {
+        if provider_id.is_some_and(|wanted| wanted != pname) {
+            continue;
+        }
         let Some(models) = pv.get_mut("models").and_then(|m| m.as_array_mut()) else {
             continue;
         };
@@ -118,6 +133,16 @@ pub fn update_model(
 /// Remove a model entry (matched by id) from every provider that carries it.
 /// Returns the number of entries removed.
 pub fn remove_model(doc: &mut Value, model_id: &str) -> usize {
+    remove_model_in_provider(doc, None, model_id)
+}
+
+/// Remove a model only from the provider that owns it. This is essential when
+/// two providers intentionally expose the same remote model id.
+pub fn remove_model_in_provider(
+    doc: &mut Value,
+    provider_id: Option<&str>,
+    model_id: &str,
+) -> usize {
     let Some(providers) = doc
         .as_object_mut()
         .and_then(|o| o.get_mut("providers"))
@@ -128,6 +153,9 @@ pub fn remove_model(doc: &mut Value, model_id: &str) -> usize {
     let mut removed = 0;
     let mut empty_stubs = Vec::new();
     for (pname, pv) in providers.iter_mut() {
+        if provider_id.is_some_and(|wanted| wanted != pname) {
+            continue;
+        }
         let Some(models) = pv.get_mut("models").and_then(|m| m.as_array_mut()) else {
             continue;
         };
