@@ -208,6 +208,15 @@ pub async fn apply_set_preview_cmd(
                 after: c.after.clone(),
             })
             .collect(),
+        plan_hash: crate::commands::sync::plan_hash(&plan, &native_plan)?,
+        writable_changes: native_plan.changes.len(),
+        has_blockers: plan.actions.iter().any(|a| {
+            matches!(
+                a,
+                chm_harness_sdk::adapter::plan::PlanAction::Conflict(_)
+                    | chm_harness_sdk::adapter::plan::PlanAction::Unsupported(_)
+            )
+        }),
     })
 }
 

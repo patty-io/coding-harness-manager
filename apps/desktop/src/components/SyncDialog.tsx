@@ -1,6 +1,7 @@
 import { useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { invoke } from "@tauri-apps/api/core";
+import { Link } from "react-router-dom";
 
 export interface ActionView {
   kind: string;
@@ -18,13 +19,16 @@ export interface PreviewReport {
   summary: string;
   actions: ActionView[];
   files: FilePreview[];
+  planHash: string;
+  writableChanges: number;
+  hasBlockers: boolean;
 }
 
 export interface ApplyReport {
   summary: string;
-  files_written: string[];
-  links_created: string[];
-  transaction_id: string;
+  filesWritten: string[];
+  linksCreated: string[];
+  transactionId: string;
   validation: { ok: boolean; errors: string[] };
 }
 
@@ -36,8 +40,9 @@ export function syncApply(
   installationId: string,
   mode: string,
   force: boolean,
+  planHash: string,
 ): Promise<ApplyReport> {
-  return invoke<ApplyReport>("sync_apply", { installationId, mode, force });
+  return invoke<ApplyReport>("sync_apply", { installationId, mode, force, planHash });
 }
 
 export function useSyncPreview(installationId: string, mode: string | null) {
@@ -56,11 +61,13 @@ export function useSyncApply() {
       installationId,
       mode,
       force,
+      planHash,
     }: {
       installationId: string;
       mode: string;
       force: boolean;
-    }) => syncApply(installationId, mode, force),
+      planHash: string;
+    }) => syncApply(installationId, mode, force, planHash),
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ["installations"] });
       qc.invalidateQueries({ queryKey: ["routes"] });
@@ -97,9 +104,8 @@ export function SyncDialog({
     noop: "bg-slate-900 text-gray-400",
   };
 
-  const hasBlockers = (preview.data?.actions ?? []).some(
-    (a) => a.action === "conflict" || a.action === "unsupported",
-  );
+  const hasBlockers = preview.data?.hasBlockers ?? false;
+  const noOp = (preview.data?.writableChanges ?? 0) === 0;
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/30">
@@ -135,13 +141,17 @@ export function SyncDialog({
               Replace managed
             </label>
           </div>
-          {preview.isLoading && <p className="mt-3 text-sm">Computing diff…</p>}
+          {preview.isLoading && <p className="mt-3 text-sm" role="status">Computing diff…</p>}
           {preview.isError && (
             <p className="mt-3 text-sm text-red-600">{preview.error.message}</p>
           )}
           {preview.data && (
             <>
               <p className="mt-3 text-sm font-medium">{preview.data.summary}</p>
+              <p className="mt-1 text-xs text-slate-500">
+                Reviewed plan {preview.data.planHash.slice(0, 12)} · {preview.data.writableChanges} writable file change{preview.data.writableChanges === 1 ? "" : "s"}
+              </p>
+              {noOp && <p className="mt-2 text-sm text-slate-400">No changes are available to apply.</p>}
               <table className="mt-2 w-full text-sm">
                 <tbody>
                   {preview.data.actions.map((a, i) => (
@@ -211,6 +221,7 @@ export function SyncDialog({
                   {apply.data.validation.errors.join("; ")}
                 </span>
               )}
+              <Link className="ml-2 underline" to="/history">View in History</Link>
             </p>
           )}
         </div>
@@ -223,11 +234,20 @@ export function SyncDialog({
           </button>
           <button
             onClick={() =>
-              apply.mutate({ installationId, mode, force: force || hasBlockers })
+              apply.mutate({
+                installationId,
+                mode,
+                force,
+                planHash: preview.data!.planHash,
+              })
             }
             disabled={
               apply.isPending ||
               preview.isFetching ||
+              !preview.data ||
+              preview.isError ||
+              noOp ||
+              !!apply.data ||
               (hasBlockers && !force)
             }
             className="rounded bg-blue-600 px-3 py-1 text-sm text-white disabled:opacity-50"
