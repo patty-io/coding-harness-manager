@@ -14,6 +14,7 @@ use crate::services::import::{ImportReport, run_import};
 #[derive(Debug, Clone, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct ParsedStateView {
+    pub providers: Vec<serde_json::Value>,
     pub models: Vec<serde_json::Value>,
     pub mcp: Vec<serde_json::Value>,
     pub skills: Vec<serde_json::Value>,
@@ -56,6 +57,7 @@ pub async fn read_harness_state(
 ) -> Result<ParsedStateView, String> {
     let (_id, _htype, parsed) = read_parsed_state(&state.pool, &installation_id).await?;
     Ok(ParsedStateView {
+        providers: parsed.providers.clone(),
         models: parsed
             .models
             .iter()

@@ -46,6 +46,7 @@ export async function dashboardStats(): Promise<DashboardStats> {
 // --- Import commands ---
 
 export interface ParsedStateView {
+  providers: { native_provider_id?: string; base_url?: string | null; api?: string | null }[];
   models: {
     native_id: string;
     remote_model_id: string;
