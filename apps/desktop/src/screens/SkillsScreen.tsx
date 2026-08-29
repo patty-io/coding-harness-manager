@@ -9,6 +9,7 @@ export default function SkillsScreen() {
   const importSkills = useImportSkills();
   const adopt = useAdoptCanonical();
   const [manualPath, setManualPath] = useState("");
+  const [showManual, setShowManual] = useState(false);
   const [message, setMessage] = useState<string | null>(null);
   const [selectedSkills, setSelectedSkills] = useState<string[]>([]);
 
@@ -47,19 +48,31 @@ export default function SkillsScreen() {
         >
           {adopt.isPending ? "Scanning…" : "Scan ~/.agents/skills"}
         </button>
-        <input
-          value={manualPath}
-          onChange={(e) => setManualPath(e.target.value)}
-          placeholder="/path/to/skill-dir"
-          className="rounded border border-slate-600 px-2 py-1 font-mono text-xs"
-        />
         <button
-          onClick={importManual}
-          disabled={!manualPath.trim() || importSkills.isPending}
-          className="rounded border border-slate-600 px-3 py-1 disabled:opacity-50"
+          type="button"
+          onClick={() => setShowManual((v) => !v)}
+          aria-expanded={showManual}
+          className="rounded border border-slate-600 px-3 py-1 text-slate-300 hover:bg-slate-700"
         >
-          Import path
+          {showManual ? "Hide manual entry" : "Add manually…"}
         </button>
+        {showManual && (
+          <>
+            <input
+              value={manualPath}
+              onChange={(e) => setManualPath(e.target.value)}
+              placeholder="/path/to/skill-dir"
+              className="rounded border border-slate-600 px-2 py-1 font-mono text-xs"
+            />
+            <button
+              onClick={importManual}
+              disabled={!manualPath.trim() || importSkills.isPending}
+              className="rounded border border-slate-600 px-3 py-1 disabled:opacity-50"
+            >
+              Import path
+            </button>
+          </>
+        )}
       </div>
       {adopt.data !== undefined && (
         <p className="mt-2 text-sm text-green-700">{adopt.data} skills adopted</p>
@@ -116,11 +129,12 @@ export default function SkillsScreen() {
 }
 
 function DetectedSkillsSection() {
-  const [open, setOpen] = useState(false);
+  const [open, setOpen] = useState(true);
+  const importSkills = useImportSkills();
   const { data: detected, isLoading } = useQuery({
     queryKey: ["detected-skills"],
     queryFn: detectSkills,
-    enabled: open,
+    enabled: true,
   });
   const notInLibrary = (detected ?? []).filter((d) => !d.inLibrary);
 
@@ -163,9 +177,14 @@ function DetectedSkillsSection() {
                     in library
                   </span>
                 ) : (
-                  <span className="rounded bg-slate-700 px-2 py-0.5 text-xs text-slate-400">
-                    not in library
-                  </span>
+                  <button
+                    type="button"
+                    disabled={importSkills.isPending || d.paths.length === 0}
+                    onClick={() => importSkills.mutate(d.paths)}
+                    className="rounded border border-blue-500 px-2 py-0.5 text-xs text-blue-300 hover:bg-blue-500/10 disabled:opacity-50"
+                  >
+                    Add to library
+                  </button>
                 )}
               </li>
             ))}

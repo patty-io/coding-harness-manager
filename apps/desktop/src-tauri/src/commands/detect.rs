@@ -31,6 +31,7 @@ pub struct DetectedMcp {
 pub struct DetectedSkill {
     pub name: String,
     pub found_in: Vec<String>,
+    pub paths: Vec<String>,
     pub in_library: bool,
 }
 
@@ -118,10 +119,14 @@ pub async fn detect_skills_cmd(
             let entry = found.entry(key).or_insert_with(|| DetectedSkill {
                 name: s.name.clone(),
                 found_in: Vec::new(),
+                paths: Vec::new(),
                 in_library: library_names.contains(&s.name.to_lowercase()),
             });
             if !entry.found_in.contains(&htype) {
                 entry.found_in.push(htype.clone());
+            }
+            if !entry.paths.contains(&s.path) {
+                entry.paths.push(s.path.clone());
             }
         }
     }

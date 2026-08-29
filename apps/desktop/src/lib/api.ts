@@ -333,6 +333,7 @@ export interface DetectedMcp {
 export interface DetectedSkill {
   name: string;
   foundIn: string[];
+  paths: string[];
   inLibrary: boolean;
 }
 

@@ -14,11 +14,11 @@ function DetectedMcpSection({
   onAdd: (d: DetectedMcp) => void;
   adding: boolean;
 }) {
-  const [open, setOpen] = useState(false);
+  const [open, setOpen] = useState(true);
   const { data: detected, isLoading } = useQuery({
     queryKey: ["detected-mcp"],
     queryFn: detectMcp,
-    enabled: open,
+    enabled: true,
   });
   const notInLibrary = (detected ?? []).filter((d) => !d.inLibrary);
 
@@ -101,6 +101,7 @@ export default function McpScreen() {
   const [url, setUrl] = useState("");
   const [lastResults, setLastResults] = useState<Record<string, { check: string; passed: boolean; detail: string }[]>>({});
   const [selectedServers, setSelectedServers] = useState<string[]>([]);
+  const [showManual, setShowManual] = useState(false);
 
   const submit = () => {
     if (!name.trim()) return;
@@ -142,8 +143,19 @@ export default function McpScreen() {
         </div>
       </div>
 
-      <div className="mt-4 rounded border border-slate-700 bg-slate-800 p-4">
-        <h2 className="font-medium">Add MCP Server</h2>
+      <div className="mt-4">
+        <button
+          type="button"
+          onClick={() => setShowManual((v) => !v)}
+          aria-expanded={showManual}
+          className="rounded border border-slate-600 px-3 py-1 text-sm text-slate-300 hover:bg-slate-700"
+        >
+          {showManual ? "Hide manual entry" : "Add manually…"}
+        </button>
+      </div>
+
+      {showManual && <div className="mt-3 rounded border border-slate-700 bg-slate-800 p-4">
+        <h2 className="font-medium">Add MCP server manually</h2>
         <div className="mt-2 grid grid-cols-1 gap-2 md:grid-cols-2">
           <input
             value={name}
@@ -197,7 +209,7 @@ export default function McpScreen() {
             {create.error.message} (name must be unique)
           </p>
         )}
-      </div>
+      </div>}
 
       <DetectedMcpSection
         onAdd={(d) =>
