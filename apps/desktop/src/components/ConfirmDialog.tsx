@@ -122,8 +122,8 @@ type ConfirmState = {
 };
 
 /**
- * window.confirm() does not render inside the Tauri webview, so every
- * destructive action routes through this in-app dialog instead.
+ * Native browser confirmation prompts do not render reliably inside the
+ * Tauri webview, so destructive actions route through this in-app dialog.
  */
 export function useConfirm() {
   const [state, setState] = useState<ConfirmState | null>(null);

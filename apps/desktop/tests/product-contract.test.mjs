@@ -1,0 +1,36 @@
+import assert from "node:assert/strict";
+import { readFileSync } from "node:fs";
+import { dirname, resolve } from "node:path";
+import { fileURLToPath } from "node:url";
+import { describe, it } from "vitest";
+
+const root = resolve(dirname(fileURLToPath(import.meta.url)), "..");
+const read = (path) => readFileSync(resolve(root, path), "utf8");
+
+const harness = read("src/screens/HarnessDetailScreen.tsx");
+const sync = read("src/components/SyncDialog.tsx");
+const html = read("index.html");
+
+const sourceFiles = [
+  "src/components/ConfirmDialog.tsx",
+  "src/screens/HarnessDetailScreen.tsx",
+  "src/screens/ProvidersScreen.tsx",
+  "src/screens/ModelsScreen.tsx",
+  "src/screens/McpScreen.tsx",
+  "src/screens/ProfilesScreen.tsx",
+  "src/screens/HistoryScreen.tsx",
+];
+
+describe("product contracts", () => {
+  it("keeps UI scope and safety invariants explicit", () => {
+    assert.equal((html.match(/<body\b/g) ?? []).length, 1, "HTML must contain one body");
+    assert.equal((html.match(/id=\"root\"/g) ?? []).length, 1, "HTML must contain one root");
+    assert.ok(harness.includes('role="tablist"'), "harness tabs must expose a tablist");
+    assert.ok(harness.includes('role="tabpanel"'), "harness content must expose a tabpanel");
+    assert.ok(harness.includes("Sync from library…"), "sync action must state its direction");
+    assert.ok(harness.includes('title="Save this harness model into your My Models library"'), "row action must state its direction");
+    assert.ok(sync.includes("planHash"), "sync apply must carry the validated plan hash");
+    assert.ok(sync.includes("selection"), "sync apply must carry explicit selection");
+    assert.ok(!sourceFiles.some((file) => read(file).includes("window.confirm")), "native confirm must not be used in the webview");
+  });
+});
