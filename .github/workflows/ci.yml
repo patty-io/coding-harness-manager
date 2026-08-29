@@ -33,3 +33,9 @@ jobs:
         working-directory: apps/desktop
       - run: npm run build
         working-directory: apps/desktop
+      - name: Reject generated artifacts
+        run: |
+          if git ls-files | rg '(^|/)(target|dist|build|node_modules)/|\.tsbuildinfo$|\.opencode/goals/state\.json\.lock/'; then
+            echo "Generated build output or transient agent state is tracked." >&2
+            exit 1
+          fi

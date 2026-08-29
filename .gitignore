@@ -1,6 +1,13 @@
-/target
-node_modules/
-dist/
+# Build products and local dependency trees, at any workspace depth.
+**/target/
+**/node_modules/
+**/dist/
+**/build/
+*.tsbuildinfo
+
+# Local agent/runtime state must never be committed.
+.opencode/goals/state.json.lock/
+
 *.log
 .DS_Store
 .env

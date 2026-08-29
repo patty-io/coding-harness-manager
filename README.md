@@ -102,6 +102,7 @@ cargo clippy --workspace --all-targets -- -D warnings
 
 npm install --prefix apps/desktop
 npm run lint --prefix apps/desktop
+npm test --prefix apps/desktop
 npm run build --prefix apps/desktop
 ```
 
@@ -124,6 +125,7 @@ models → preview a sync before applying anything.
 | `cargo fmt --all --check` | Formatting gate (CI) |
 | `cargo clippy --workspace --all-targets -- -D warnings` | Lint gate (CI) |
 | `npm run lint --prefix apps/desktop` | TypeScript checks |
+| `npm test --prefix apps/desktop` | Frontend UI and product-contract regression tests |
 | `npm run tauri dev --prefix apps/desktop` | Dev app window |
 | `harnessctl scan` / `list` / `status` | Companion CLI (same core library) |
 
@@ -171,8 +173,14 @@ coding-harness-manager/
 cargo fmt --all --check
 cargo clippy --workspace --all-targets -- -D warnings
 cargo test --workspace
-npm run lint --prefix apps/desktop && npm run build --prefix apps/desktop
+npm run lint --prefix apps/desktop
+npm test --prefix apps/desktop
+npm run build --prefix apps/desktop
 ```
+
+Build caches (`target/`, `apps/desktop/dist/`, `node_modules/`, and
+`*.tsbuildinfo`) are intentionally ignored and can be recreated by the
+commands above. Never commit them or local agent state under `.opencode/`.
 
 ## Troubleshooting
 
