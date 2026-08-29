@@ -147,3 +147,54 @@ fn writer_updates_and_removes_models() {
     // removing a nonexistent id reports zero
     assert_eq!(writer::remove_model(&mut doc, "mm/minimax-m3"), 0);
 }
+
+#[test]
+fn removing_a_providers_last_model_prunes_only_an_empty_stub() {
+    let raw = r#"{
+        "providers": {
+            "custom": {
+                "models": [{"id": "copied-model", "name": "Copied model"}]
+            },
+            "configured": {
+                "baseUrl": "https://configured.example/v1",
+                "models": [{"id": "only-model", "name": "Only model"}]
+            }
+        }
+    }"#;
+    let mut doc = writer::parse_document(raw).unwrap();
+
+    assert_eq!(writer::remove_model(&mut doc, "copied-model"), 1);
+    assert!(doc["providers"].get("custom").is_none());
+
+    assert_eq!(writer::remove_model(&mut doc, "only-model"), 1);
+    assert_eq!(
+        doc["providers"]["configured"]["baseUrl"],
+        "https://configured.example/v1"
+    );
+    assert_eq!(
+        doc["providers"]["configured"]["models"]
+            .as_array()
+            .unwrap()
+            .len(),
+        0
+    );
+}
+
+#[test]
+fn validation_rejects_provider_without_required_configuration() {
+    let path = std::env::temp_dir().join(format!(
+        "pi-invalid-empty-provider-{}.json",
+        uuid::Uuid::new_v4()
+    ));
+    std::fs::write(&path, r#"{"providers":{"custom":{"models":[]}}}"#).unwrap();
+
+    let report = writer::validate_config(path.to_str().unwrap());
+    let _ = std::fs::remove_file(path);
+
+    assert!(!report.ok);
+    assert!(
+        report.errors.iter().any(|error| error.contains("custom")),
+        "errors: {:?}",
+        report.errors
+    );
+}

@@ -3,6 +3,18 @@
 use chm_harness_sdk::adapter::types::ValidationReport;
 use serde_json::{Map, Value};
 
+const PROVIDER_CONFIGURATION_KEYS: [&str; 4] = ["baseUrl", "headers", "compat", "modelOverrides"];
+
+fn provider_has_configuration(provider: &Value) -> bool {
+    provider
+        .get("models")
+        .and_then(Value::as_array)
+        .is_some_and(|models| !models.is_empty())
+        || PROVIDER_CONFIGURATION_KEYS
+            .iter()
+            .any(|key| provider.get(*key).is_some_and(|value| !value.is_null()))
+}
+
 /// Parses models.json into a document (providers always present).
 pub fn parse_document(raw: &str) -> Result<Value, String> {
     let mut doc: Value =
@@ -114,13 +126,21 @@ pub fn remove_model(doc: &mut Value, model_id: &str) -> usize {
         return 0;
     };
     let mut removed = 0;
-    for (_pname, pv) in providers.iter_mut() {
+    let mut empty_stubs = Vec::new();
+    for (pname, pv) in providers.iter_mut() {
         let Some(models) = pv.get_mut("models").and_then(|m| m.as_array_mut()) else {
             continue;
         };
         let before = models.len();
         models.retain(|m| m.get("id").and_then(|v| v.as_str()) != Some(model_id));
-        removed += before - models.len();
+        let removed_here = before - models.len();
+        removed += removed_here;
+        if removed_here > 0 && models.is_empty() && !provider_has_configuration(pv) {
+            empty_stubs.push(pname.clone());
+        }
+    }
+    for name in empty_stubs {
+        providers.remove(&name);
     }
     removed
 }
@@ -131,8 +151,21 @@ pub fn serialize(doc: &Value) -> String {
 
 pub fn validate_config(file_path: &str) -> ValidationReport {
     match std::fs::read_to_string(file_path) {
-        Ok(raw) => match parse_document(&raw) {
-            Ok(_) => ValidationReport {
+        Ok(raw) => match parse_document(&raw).and_then(|doc| {
+            let providers = doc
+                .get("providers")
+                .and_then(Value::as_object)
+                .ok_or("models.json providers must be an object")?;
+            for (name, provider) in providers {
+                if !provider_has_configuration(provider) {
+                    return Err(format!(
+                        "provider {name} must specify baseUrl, headers, compat, modelOverrides, or at least one model"
+                    ));
+                }
+            }
+            Ok(())
+        }) {
+            Ok(()) => ValidationReport {
                 ok: true,
                 errors: vec![],
             },
