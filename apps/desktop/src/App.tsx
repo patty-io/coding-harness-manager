@@ -11,6 +11,7 @@ import McpScreen from "./screens/McpScreen";
 import SkillsScreen from "./screens/SkillsScreen";
 import HistoryScreen from "./screens/HistoryScreen";
 import ProfilesScreen from "./screens/ProfilesScreen";
+import SetsScreen from "./screens/SetsScreen";
 import { DashboardScreen } from "./screens/DashboardScreen";
 import SettingsScreen from "./screens/SettingsScreen";
 import HarnessProviderDetailScreen from "./screens/HarnessProviderDetailScreen";
@@ -42,6 +43,7 @@ export default function App() {
           <Route path="/mcp" element={<McpScreen />} />
           <Route path="/skills" element={<SkillsScreen />} />
           <Route path="/profiles" element={<ProfilesScreen />} />
+          <Route path="/sets" element={<SetsScreen />} />
           <Route path="/history" element={<HistoryScreen />} />
           <Route path="/settings" element={<SettingsScreen />} />
           <Route path="/pending" element={<Navigate to="/history" replace />} />

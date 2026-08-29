@@ -3,12 +3,21 @@ import { useConfirm } from "../components/ConfirmDialog";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { invoke } from "@tauri-apps/api/core";
 
-import { launchProfile, type ProfileView } from "../lib/api";
+import { createProfile, launchProfile, type ProfileInput, type ProfileView } from "../lib/api";
+import { useInstallations } from "../hooks/useHarnesses";
+import { useRoutes } from "../hooks/useModels";
 
 export default function ProfilesScreen() {
   const { confirm, confirmDialog } = useConfirm();
   const qc = useQueryClient();
   const [launchNote, setLaunchNote] = useState<string | null>(null);
+  const [showCreate, setShowCreate] = useState(false);
+  const [name, setName] = useState("");
+  const [harnessType, setHarnessType] = useState("");
+  const [modelRouteId, setModelRouteId] = useState("");
+  const [createError, setCreateError] = useState<string | null>(null);
+  const { data: installations } = useInstallations();
+  const { data: routes } = useRoutes();
   const { data: profiles, isLoading } = useQuery({
     queryKey: ["profiles"],
     queryFn: () => invoke<ProfileView[]>("list_profiles_cmd"),
@@ -17,11 +26,90 @@ export default function ProfilesScreen() {
     mutationFn: (id: string) => invoke<void>("delete_profile_cmd", { id }),
     onSuccess: () => qc.invalidateQueries({ queryKey: ["profiles"] }),
   });
+  const create = useMutation({
+    mutationFn: (input: ProfileInput) => createProfile(input),
+    onSuccess: () => {
+      setName("");
+      setModelRouteId("");
+      setCreateError(null);
+      setShowCreate(false);
+      void qc.invalidateQueries({ queryKey: ["profiles"] });
+    },
+    onError: (e) => setCreateError(e instanceof Error ? e.message : String(e)),
+  });
 
   return (
     <div>
       <h1 className="text-2xl font-bold">Presets</h1>
       <p className="mt-1 text-sm text-slate-400">Launch bundles: a model choice plus environment for one harness. Launch them from a harness page or from here.</p>
+      <button
+        type="button"
+        onClick={() => setShowCreate((v) => !v)}
+        className="mt-3 rounded bg-blue-600 px-3 py-1 text-sm text-white hover:bg-blue-500"
+      >
+        {showCreate ? "Cancel" : "Create preset"}
+      </button>
+      {showCreate && (
+        <form
+          className="mt-3 rounded border border-slate-700 bg-slate-800 p-4"
+          onSubmit={(event) => {
+            event.preventDefault();
+            if (!name.trim() || !harnessType) return;
+            create.mutate({
+              name: name.trim(),
+              harnessType,
+              modelRouteId: modelRouteId || null,
+              providerEndpointId: null,
+              env: {},
+              roleMappings: [],
+            });
+          }}
+        >
+          <div className="grid grid-cols-1 gap-2 md:grid-cols-3">
+            <input
+              required
+              value={name}
+              onChange={(e) => setName(e.target.value)}
+              placeholder="preset name"
+              className="rounded border border-slate-600 bg-slate-900 px-2 py-1 text-sm"
+            />
+            <select
+              required
+              value={harnessType}
+              onChange={(e) => setHarnessType(e.target.value)}
+              className="rounded border border-slate-600 bg-slate-900 px-2 py-1 text-sm"
+            >
+              <option value="">Choose harness…</option>
+              {[...new Set((installations ?? []).map((i) => i.harness_type))].map((type) => (
+                <option key={type} value={type}>{type}</option>
+              ))}
+            </select>
+            <select
+              value={modelRouteId}
+              onChange={(e) => setModelRouteId(e.target.value)}
+              className="rounded border border-slate-600 bg-slate-900 px-2 py-1 text-sm"
+            >
+              <option value="">No default model</option>
+              {(routes ?? []).filter((route) => route.enabled).map((route) => (
+                <option key={route.id} value={route.id}>
+                  {route.display_name} · {route.provider_name}
+                </option>
+              ))}
+            </select>
+          </div>
+          <p className="mt-2 text-xs text-slate-500">
+            Environment variables and role mappings can be added after the preset is created.
+          </p>
+          <button
+            type="submit"
+            disabled={create.isPending || !name.trim() || !harnessType}
+            className="mt-3 rounded bg-blue-600 px-3 py-1 text-sm text-white disabled:opacity-50"
+          >
+            {create.isPending ? "Creating…" : "Create preset"}
+          </button>
+          {createError && <p className="mt-2 text-xs text-red-400">Create failed: {createError}</p>}
+        </form>
+      )}
       {isLoading && <p className="mt-4">Loading…</p>}
       <button
         onClick={() => qc.invalidateQueries({ queryKey: ["profiles"] })}

@@ -666,6 +666,73 @@ export async function deleteProfile(id: string): Promise<void> {
   return invoke<void>("delete_profile_cmd", { id });
 }
 
+export interface SetItemView {
+  itemType: string;
+  itemId: string;
+}
+
+export interface SetView {
+  id: string;
+  name: string;
+  description: string | null;
+  items: SetItemView[];
+}
+
+export async function listSets(): Promise<SetView[]> {
+  return invoke<SetView[]>("list_sets_cmd");
+}
+export async function createSet(name: string, description: string | null): Promise<string> {
+  return invoke<string>("create_set_cmd", { name, description });
+}
+export async function deleteSet(setId: string): Promise<void> {
+  return invoke<void>("delete_set_cmd", { setId });
+}
+export async function addSetItem(
+  setId: string,
+  itemType: string,
+  itemId: string,
+): Promise<void> {
+  return invoke<void>("add_set_item_cmd", { setId, itemType, itemId });
+}
+export async function removeSetItem(
+  setId: string,
+  itemType: string,
+  itemId: string,
+): Promise<void> {
+  return invoke<void>("remove_set_item_cmd", { setId, itemType, itemId });
+}
+
+export interface SetPreviewReport {
+  summary: string;
+  actions: { kind: string; identity: string; action: string }[];
+  files: { path: string; before: string | null; after: string | null }[];
+  planHash: string;
+  writableChanges: number;
+  hasBlockers: boolean;
+}
+
+export interface SetApplyReport {
+  summary: string;
+  filesWritten: string[];
+  linksCreated: string[];
+  transactionId: string;
+  validation: { ok: boolean; errors: string[] };
+}
+
+export async function applySetPreview(
+  setId: string,
+  installationId: string,
+): Promise<SetPreviewReport> {
+  return invoke<SetPreviewReport>("apply_set_preview_cmd", { setId, installationId });
+}
+export async function applySet(
+  setId: string,
+  installationId: string,
+  mode: string,
+): Promise<SetApplyReport> {
+  return invoke<SetApplyReport>("apply_set_cmd", { setId, installationId, mode });
+}
+
 
 // --- History / rollback ---
 

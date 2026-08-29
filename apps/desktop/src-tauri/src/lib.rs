@@ -134,6 +134,7 @@ pub fn run() {
             commands::profiles::launch_profile_cmd,
             commands::sets::list_sets_cmd,
             commands::sets::create_set_cmd,
+            commands::sets::delete_set_cmd,
             commands::sets::add_set_item_cmd,
             commands::sets::remove_set_item_cmd,
             commands::sets::apply_set_preview_cmd,

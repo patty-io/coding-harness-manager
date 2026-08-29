@@ -64,6 +64,17 @@ pub async fn create_set_cmd(
 }
 
 #[tauri::command]
+pub async fn delete_set_cmd(state: State<'_, AppState>, set_id: String) -> Result<(), String> {
+    let set_id = Uuid::parse_str(&set_id).map_err(|e| e.to_string())?;
+    sqlx::query("DELETE FROM configuration_sets WHERE id = ?")
+        .bind(set_id.to_string())
+        .execute(&state.pool)
+        .await
+        .map_err(|e| e.to_string())?;
+    Ok(())
+}
+
+#[tauri::command]
 pub async fn add_set_item_cmd(
     state: State<'_, AppState>,
     set_id: String,
