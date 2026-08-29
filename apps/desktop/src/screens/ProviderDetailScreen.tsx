@@ -10,6 +10,7 @@ import {
   useDiscoverProvider,
   useSaveApiKey,
   useEnvVarSet,
+  useUpdateProvider,
 } from "../hooks/useProviders";
 import { EndpointActions } from "../components/EndpointActions";
 import type { ProviderDiscoverReport } from "../lib/api";
@@ -47,6 +48,7 @@ export default function ProviderDetailScreen() {
   const create = useCreateEndpoint();
   const saveKey = useSaveApiKey();
   const envSet = useEnvVarSet();
+  const updateProvider = useUpdateProvider();
 
   const provider = (providers ?? []).find((p) => p.id === id);
 
@@ -69,6 +71,18 @@ export default function ProviderDetailScreen() {
   const [apiKey, setApiKey] = useState("");
   const [envWarning, setEnvWarning] = useState<string | null>(null);
   const [savedNote, setSavedNote] = useState<string | null>(null);
+  const [editingProvider, setEditingProvider] = useState(false);
+  const [providerDisplayName, setProviderDisplayName] = useState("");
+  const [providerNotes, setProviderNotes] = useState("");
+  const [providerEnabled, setProviderEnabled] = useState(true);
+
+  const startProviderEdit = () => {
+    if (!provider) return;
+    setProviderDisplayName(provider.display_name);
+    setProviderNotes(provider.notes ?? "");
+    setProviderEnabled(provider.enabled);
+    setEditingProvider(true);
+  };
 
   const submitEndpoint = async () => {
     if (!name.trim() || !baseUrl.trim()) return;
@@ -146,17 +160,89 @@ export default function ProviderDetailScreen() {
           </p>
         </div>
         {provider && (
-          <span
-            className={`rounded px-2 py-0.5 text-xs ${
-              provider.enabled
-                ? "bg-green-500/15 text-green-400"
-                : "bg-slate-700 text-slate-400"
-            }`}
-          >
-            {provider.enabled ? "enabled" : "disabled"}
-          </span>
+          <div className="flex items-center gap-2">
+            <span
+              className={`rounded px-2 py-0.5 text-xs ${
+                provider.enabled
+                  ? "bg-green-500/15 text-green-400"
+                  : "bg-slate-700 text-slate-400"
+              }`}
+            >
+              {provider.enabled ? "enabled" : "disabled"}
+            </span>
+            <button
+              type="button"
+              onClick={startProviderEdit}
+              className="rounded border border-slate-600 px-2 py-0.5 text-xs text-slate-300 hover:bg-slate-700"
+            >
+              Edit provider
+            </button>
+          </div>
         )}
       </div>
+
+      {editingProvider && (
+        <div className="mt-3 rounded border border-slate-700 bg-slate-800 p-3">
+          <div className="grid grid-cols-1 gap-2 md:grid-cols-2">
+            <label className="text-xs text-slate-500">
+              Display name
+              <input
+                value={providerDisplayName}
+                onChange={(e) => setProviderDisplayName(e.target.value)}
+                className="mt-1 block w-full rounded border border-slate-600 bg-slate-900 px-2 py-1 text-sm text-slate-200"
+              />
+            </label>
+            <label className="text-xs text-slate-500">
+              Notes
+              <input
+                value={providerNotes}
+                onChange={(e) => setProviderNotes(e.target.value)}
+                className="mt-1 block w-full rounded border border-slate-600 bg-slate-900 px-2 py-1 text-sm text-slate-200"
+              />
+            </label>
+          </div>
+          <label className="mt-2 flex items-center gap-2 text-sm text-slate-300">
+            <input
+              type="checkbox"
+              checked={providerEnabled}
+              onChange={(e) => setProviderEnabled(e.target.checked)}
+            />
+            Enabled for discovery and sync
+          </label>
+          <div className="mt-3 flex gap-2">
+            <button
+              type="button"
+              onClick={() => setEditingProvider(false)}
+              className="rounded border border-slate-600 px-3 py-1 text-sm text-slate-300 hover:bg-slate-700"
+            >
+              Cancel
+            </button>
+            <button
+              type="button"
+              disabled={!providerDisplayName.trim() || updateProvider.isPending}
+              onClick={() =>
+                updateProvider.mutate(
+                  {
+                    id: id!,
+                    displayName: providerDisplayName.trim(),
+                    enabled: providerEnabled,
+                    notes: providerNotes.trim() || null,
+                  },
+                  { onSuccess: () => setEditingProvider(false) },
+                )
+              }
+              className="rounded bg-blue-600 px-3 py-1 text-sm text-white hover:bg-blue-500 disabled:opacity-50"
+            >
+              {updateProvider.isPending ? "Saving…" : "Save provider"}
+            </button>
+          </div>
+          {updateProvider.isError && (
+            <p className="mt-2 text-xs text-red-400">
+              Save failed: {updateProvider.error.message}
+            </p>
+          )}
+        </div>
+      )}
 
       {summary && (
         <div className="mt-3 flex gap-4 text-sm text-slate-400">

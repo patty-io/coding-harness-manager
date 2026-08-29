@@ -2,6 +2,7 @@ import {
   useMutation,
   useQuery,
   useQueryClient,
+  useQueries,
 } from "@tanstack/react-query";
 import {
   addDiscoveredToMyModels,
@@ -24,6 +25,18 @@ import {
 
 export function useProviders() {
   return useQuery({ queryKey: ["providers"], queryFn: listProviders });
+}
+
+export function useProviderSummaries(
+  providers: { id: string }[] | undefined,
+) {
+  return useQueries({
+    queries: (providers ?? []).map((provider) => ({
+      queryKey: ["provider-summary", provider.id],
+      queryFn: () => providerSummary(provider.id),
+      staleTime: 15_000,
+    })),
+  });
 }
 
 export function useCreateProvider() {

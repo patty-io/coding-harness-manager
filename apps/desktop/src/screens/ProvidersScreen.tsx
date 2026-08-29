@@ -4,6 +4,7 @@ import { useConfirm } from "../components/ConfirmDialog";
 import {
   useCreateProvider,
   useDeleteProvider,
+  useProviderSummaries,
   useProviders,
 } from "../hooks/useProviders";
 
@@ -11,10 +12,12 @@ export default function ProvidersScreen() {
   const navigate = useNavigate();
   const { confirm, confirmDialog } = useConfirm();
   const { data: providers, isLoading } = useProviders();
+  const summaries = useProviderSummaries(providers);
   const create = useCreateProvider();
   const del = useDeleteProvider();
   const [name, setName] = useState("");
   const [displayName, setDisplayName] = useState("");
+  const [showCreate, setShowCreate] = useState(false);
 
   const submit = () => {
     if (!name.trim()) return;
@@ -35,8 +38,25 @@ export default function ProvidersScreen() {
         <h1 className="text-2xl font-bold">Providers</h1>
       </div>
 
-      <div className="mt-4 rounded border border-slate-700 bg-slate-800 p-4">
-        <h2 className="font-medium">Add Provider</h2>
+      <div className="mt-4 flex items-center justify-between rounded border border-slate-700 bg-slate-800/60 p-3">
+        <div>
+          <h2 className="font-medium text-slate-200">Provider registry</h2>
+          <p className="mt-0.5 text-xs text-slate-500">
+            Endpoints are the operational connections; health and catalog counts
+            below come from the registry.
+          </p>
+        </div>
+        <button
+          type="button"
+          onClick={() => setShowCreate((v) => !v)}
+          className="rounded bg-blue-600 px-3 py-1 text-sm text-white hover:bg-blue-500"
+        >
+          {showCreate ? "Cancel" : "+ Add provider"}
+        </button>
+      </div>
+
+      {showCreate && <div className="mt-3 rounded border border-slate-700 bg-slate-800 p-4">
+        <h2 className="font-medium">Add provider</h2>
         <div className="mt-2 flex gap-2">
           <input
             value={name}
@@ -63,11 +83,13 @@ export default function ProvidersScreen() {
             Failed: {create.error.message} (name must be unique)
           </p>
         )}
-      </div>
+      </div>}
 
       {isLoading && <p className="mt-4">Loading…</p>}
       <ul className="mt-4 space-y-2">
-        {(providers ?? []).map((p) => (
+        {(providers ?? []).map((p, index) => {
+          const summary = summaries[index]?.data;
+          return (
           <li
             key={p.id}
             onClick={() => navigate(`/providers/${p.id}`)}
@@ -80,6 +102,21 @@ export default function ProvidersScreen() {
               <span className="ml-2 text-xs text-slate-400">{p.name}</span>
             </div>
             <div className="flex items-center gap-3" onClick={(e) => e.stopPropagation()}>
+              <div className="hidden text-right text-xs text-slate-500 sm:block">
+                <div>{summary?.endpoints ?? "—"} endpoints</div>
+                <div>{summary?.myModels ?? "—"} in My Models · {summary?.discoveredModels ?? "—"} discovered</div>
+              </div>
+              <span
+                className={`rounded px-2 py-0.5 text-xs ${
+                  summary?.health === "healthy"
+                    ? "bg-green-500/15 text-green-400"
+                    : summary?.health === "unknown"
+                      ? "bg-slate-700 text-slate-400"
+                      : "bg-amber-500/15 text-amber-300"
+                }`}
+              >
+                {summary?.health ?? "checking"}
+              </span>
               <span
                 className={`rounded px-2 py-0.5 text-xs ${
                   p.enabled ? "bg-green-100 text-green-700" : "bg-slate-700 text-slate-300"
@@ -102,7 +139,8 @@ export default function ProvidersScreen() {
               </button>
             </div>
           </li>
-        ))}
+          );
+        })}
       </ul>
       {confirmDialog}
     </div>
