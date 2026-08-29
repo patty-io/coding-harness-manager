@@ -895,6 +895,63 @@ pub struct EnsureProviderOutcome {
     pub endpoint_created: bool,
 }
 
+#[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct HarnessProviderDetail {
+    pub installation_id: String,
+    pub harness_type: String,
+    pub provider_name: String,
+    pub base_url: Option<String>,
+    pub models: Vec<String>,
+    pub attribution_confidence: String,
+}
+
+/// Read-only provider detail for a provider that exists in a harness config
+/// but has not yet been added to CHM's canonical provider registry. This
+/// command deliberately performs no database writes.
+#[tauri::command]
+pub async fn harness_provider_detail_cmd(
+    state: State<'_, AppState>,
+    installation_id: String,
+    provider_name: String,
+) -> Result<HarnessProviderDetail, String> {
+    let id = Uuid::parse_str(&installation_id).map_err(|e| e.to_string())?;
+    let inst = list_installations(&state.pool)
+        .await
+        .map_err(|e| e.to_string())?
+        .into_iter()
+        .find(|i| i.id == id)
+        .ok_or_else(|| format!("installation {installation_id} not found"))?;
+    let provider_map = harness_provider_map(&inst);
+    let base_url = provider_map
+        .values()
+        .find(|(name, _)| name == &provider_name)
+        .and_then(|(_, base)| base.clone());
+    if !provider_map.values().any(|(name, _)| name == &provider_name) {
+        return Err(format!("provider {provider_name} not declared in this harness config"));
+    }
+    let (_, _, parsed) = read_parsed_state(&state.pool, &installation_id).await?;
+    let models = parsed
+        .models
+        .iter()
+        .filter(|m| {
+            provider_map
+                .get(&m.route.remote_model_id.to_lowercase())
+                .or_else(|| provider_map.get(&m.native_id.to_lowercase()))
+                .is_some_and(|(name, _)| name == &provider_name)
+        })
+        .map(|m| m.route.remote_model_id.clone())
+        .collect();
+    Ok(HarnessProviderDetail {
+        installation_id,
+        harness_type: inst.harness_type.as_str().to_string(),
+        provider_name,
+        base_url,
+        models,
+        attribution_confidence: "declared by harness config".into(),
+    })
+}
+
 /// Materialize a harness-declared provider (name + base URL from the
 /// harness's own config) into the registry so it has a detail page.
 /// Reuses the provider by slug and the endpoint by base URL when present.

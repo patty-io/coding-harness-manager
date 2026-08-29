@@ -14,6 +14,7 @@ import ProfilesScreen from "./screens/ProfilesScreen";
 import { DashboardScreen } from "./screens/DashboardScreen";
 import { PlaceholderScreen } from "./screens/PlaceholderScreen";
 import SettingsScreen from "./screens/SettingsScreen";
+import HarnessProviderDetailScreen from "./screens/HarnessProviderDetailScreen";
 
 const PLACEHOLDERS = [
   "pending",
@@ -30,6 +31,7 @@ export default function App() {
           <Route path="/" element={<DashboardScreen />} />
           <Route path="/harnesses" element={<HarnessesScreen />} />
           <Route path="/harnesses/:id" element={<HarnessDetailScreen />} />
+          <Route path="/harnesses/:id/providers/:providerName" element={<HarnessProviderDetailScreen />} />
           <Route path="/scan" element={<Navigate to="/harnesses" replace />} />
           <Route path="/import" element={<ImportWizard />} />
           <Route path="/providers" element={<ProvidersScreen />} />

@@ -432,6 +432,25 @@ export async function ensureProviderFromHarness(
     providerName,
   });
 }
+
+export interface HarnessProviderDetail {
+  installationId: string;
+  harnessType: string;
+  providerName: string;
+  baseUrl: string | null;
+  models: string[];
+  attributionConfidence: string;
+}
+
+export async function harnessProviderDetail(
+  installationId: string,
+  providerName: string,
+): Promise<HarnessProviderDetail> {
+  return invoke<HarnessProviderDetail>("harness_provider_detail_cmd", {
+    installationId,
+    providerName,
+  });
+}
 export async function adoptHarnessModel(
   installationId: string,
   nativeId: string,

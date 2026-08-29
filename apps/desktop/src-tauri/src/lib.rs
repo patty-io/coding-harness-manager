@@ -87,6 +87,7 @@ pub fn run() {
             commands::harness_detail::apply_harness_model_edits_cmd,
             commands::harness_detail::smart_adopt_harness_model_cmd,
             commands::harness_detail::ensure_provider_from_harness_cmd,
+            commands::harness_detail::harness_provider_detail_cmd,
             commands::import::import_harness_state,
             commands::dashboard::dashboard_stats,
             commands::providers::create_provider_cmd,
