@@ -84,19 +84,19 @@ pub fn update_model(
             continue;
         };
         for m in models.iter_mut() {
-            if m.get("id").and_then(|v| v.as_str()) == Some(model_id) {
-                if let Some(obj) = m.as_object_mut() {
-                    obj.insert("name".into(), Value::String(display_name.into()));
-                    match context_window {
-                        Some(ctx) => {
-                            obj.insert("contextWindow".into(), Value::Number(ctx.into()));
-                        }
-                        None => {
-                            obj.remove("contextWindow");
-                        }
+            if m.get("id").and_then(|v| v.as_str()) == Some(model_id)
+                && let Some(obj) = m.as_object_mut()
+            {
+                obj.insert("name".into(), Value::String(display_name.into()));
+                match context_window {
+                    Some(ctx) => {
+                        obj.insert("contextWindow".into(), Value::Number(ctx.into()));
                     }
-                    found = true;
+                    None => {
+                        obj.remove("contextWindow");
+                    }
                 }
+                found = true;
             }
         }
     }
