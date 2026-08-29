@@ -5,13 +5,18 @@ import {
   useInstallations,
   useHarnessDrift,
 } from "../hooks/useHarnesses";
-import { readHarnessState, type HarnessInstallation } from "../lib/api";
+import { listHistory, readHarnessState, type HarnessInstallation } from "../lib/api";
 import { useState } from "react";
 import { SyncDialog } from "../components/SyncDialog";
 
 export function DashboardScreen() {
   const { data: stats } = useDashboardStats();
   const { data: installations, isLoading } = useInstallations();
+  const { data: recentHistory } = useQuery({
+    queryKey: ["history", "recent"],
+    queryFn: () => listHistory(6),
+    staleTime: 10_000,
+  });
   const [syncing, setSyncing] = useState<HarnessInstallation | null>(null);
 
   return (
@@ -37,6 +42,30 @@ export function DashboardScreen() {
         <Link to="/harnesses" className="text-sm text-blue-400 hover:text-blue-300">
           All harnesses →
         </Link>
+      </div>
+
+      <div className="mt-6 rounded border border-slate-700 bg-slate-800/60 p-4">
+        <div className="flex items-center justify-between">
+          <h2 className="font-medium text-slate-200">Recent activity</h2>
+          <Link to="/history" className="text-xs text-blue-400 hover:underline">
+            View history →
+          </Link>
+        </div>
+        {(recentHistory ?? []).length === 0 ? (
+          <p className="mt-2 text-sm text-slate-500">No sync or import activity yet.</p>
+        ) : (
+          <ul className="mt-2 space-y-1 text-xs">
+            {(recentHistory ?? []).map((entry) => (
+              <li key={entry.transactionId} className="flex items-center gap-2">
+                <span className={entry.status === "succeeded" ? "text-green-400" : entry.status === "failed" ? "text-red-400" : "text-amber-300"}>
+                  {entry.status}
+                </span>
+                <span className="text-slate-500">{new Date(entry.startedAt).toLocaleString()}</span>
+                <span className="truncate text-slate-300">{entry.summary ?? entry.transactionType}</span>
+              </li>
+            ))}
+          </ul>
+        )}
       </div>
 
       {isLoading && <p className="mt-3 text-sm text-slate-400">Loading…</p>}
@@ -140,6 +169,21 @@ function HarnessCard({
         <span>
           <strong className="text-slate-200">{state?.skills.length ?? "…"}</strong>{" "}
           skills
+        </span>
+      </div>
+
+      <div className="mt-3 flex flex-wrap items-center gap-2 text-xs">
+        <span className="text-slate-500">Last scan:</span>
+        <span className="text-slate-300">
+          {installation.last_scanned_at
+            ? new Date(installation.last_scanned_at).toLocaleString()
+            : "not scanned"}
+        </span>
+        <span className="text-slate-500">·</span>
+        <span className={installation.harness_type === "pi" || installation.harness_type === "opencode" ? "text-green-400" : "text-slate-400"}>
+          {installation.harness_type === "pi" || installation.harness_type === "opencode"
+            ? "config writes supported"
+            : "read-only adapter"}
         </span>
       </div>
 

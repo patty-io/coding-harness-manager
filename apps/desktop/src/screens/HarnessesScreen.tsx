@@ -107,6 +107,9 @@ export default function HarnessesScreen() {
               <div className="truncate font-mono" title={i.config_path ?? ""}>
                 {i.config_path ?? "no config file"}
               </div>
+              <div>
+                last scan {i.last_scanned_at ? new Date(i.last_scanned_at).toLocaleString() : "—"}
+              </div>
             </div>
             <div className="mt-3 flex items-center justify-between border-t border-slate-700/60 pt-3">
               <span className="text-xs text-blue-400">Open →</span>
