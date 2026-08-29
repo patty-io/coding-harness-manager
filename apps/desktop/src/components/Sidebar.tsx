@@ -24,7 +24,6 @@ const SECTIONS: Section[] = [
   {
     heading: "Changes",
     items: [
-      { to: "/pending", label: "Pending" },
       { to: "/history", label: "History" },
     ],
   },
@@ -52,6 +51,7 @@ export default function Sidebar() {
                 key={item.to}
                 to={item.to}
                 end={item.to === "/"}
+                aria-label={item.label}
                 className={({ isActive }) =>
                   `mb-0.5 block rounded px-2 py-1.5 text-sm ${
                     isActive
@@ -69,6 +69,7 @@ export default function Sidebar() {
       <div className="space-y-0.5 border-t border-slate-700 pt-3">
         <NavLink
           to="/settings"
+          aria-label="Settings"
           className={({ isActive }) =>
             `block rounded px-2 py-1.5 text-sm ${
               isActive
@@ -81,6 +82,7 @@ export default function Sidebar() {
         </NavLink>
         <NavLink
           to="/import"
+          aria-label="Import existing setup"
           className={({ isActive }) =>
             `block rounded px-2 py-1.5 text-sm ${
               isActive
