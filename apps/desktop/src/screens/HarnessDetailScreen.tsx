@@ -137,6 +137,9 @@ export default function HarnessDetailScreen() {
   const [addMenuOpen, setAddMenuOpen] = useState(false);
   const [adopting, setAdopting] = useState<HarnessModelRow | null>(null);
   const [editing, setEditing] = useState<HarnessModelRow | null>(null);
+  const [duplicating, setDuplicating] = useState<HarnessModelRow | null>(null);
+  const [dupId, setDupId] = useState("");
+  const [dupName, setDupName] = useState("");
   const [editName, setEditName] = useState("");
   const [editRemote, setEditRemote] = useState("");
   const [editContext, setEditContext] = useState<string>("");
@@ -631,15 +634,14 @@ export default function HarnessDetailScreen() {
                           <button
                             disabled={busyRow === m.nativeId}
                             onClick={() => {
-                              setBusyRow(m.nativeId);
-                              void runOp([
-                                { op: "duplicate", nativeId: m.nativeId },
-                              ]);
+                              setDuplicating(m);
+                              setDupId(`${m.nativeId}-copy`);
+                              setDupName(`${m.displayName} (copy)`);
                             }}
                             title="Duplicate this model on the harness"
                             className="rounded border border-slate-600 px-2 py-0.5 text-xs text-slate-300 hover:bg-slate-700 disabled:opacity-50"
                           >
-                            Copy
+                            Duplicate
                           </button>
                           <button
                             disabled={busyRow === m.nativeId}
@@ -668,6 +670,97 @@ export default function HarnessDetailScreen() {
                 </tbody>
               </table>
             )}
+
+            {duplicating && (() => {
+              const clash = (modelRows ?? []).some(
+                (r) =>
+                  r.nativeId.toLowerCase() === dupId.trim().toLowerCase() &&
+                  r.nativeId !== duplicating.nativeId,
+              );
+              const empty = dupId.trim().length === 0;
+              const invalid = clash || empty;
+              return (
+                <div
+                  className="fixed inset-0 z-20 flex items-center justify-center bg-black/60"
+                  onClick={() => setDuplicating(null)}
+                >
+                  <div
+                    className="w-[28rem] rounded border border-slate-700 bg-slate-800 p-4"
+                    onClick={(e) => e.stopPropagation()}
+                  >
+                    <h3 className="font-medium text-slate-100">
+                      Duplicate model
+                    </h3>
+                    <p className="mt-1 text-sm text-slate-400">
+                      Clone{" "}
+                      <span className="text-slate-200">
+                        {duplicating.displayName}
+                      </span>{" "}
+                      <span className="font-mono text-xs">
+                        ({duplicating.nativeId})
+                      </span>
+                      {duplicating.providerName
+                        ? ` from ${duplicating.providerName}`
+                        : ""}{" "}
+                      on this harness.
+                    </p>
+                    <label className="mt-3 block text-xs text-slate-500">
+                      New model id (must be unique on this harness)
+                    </label>
+                    <input
+                      value={dupId}
+                      onChange={(e) => setDupId(e.target.value)}
+                      className="mt-1 w-full rounded border border-slate-600 bg-slate-900 px-2 py-1.5 font-mono text-xs text-slate-200"
+                    />
+                    <label className="mt-3 block text-xs text-slate-500">
+                      Display name
+                    </label>
+                    <input
+                      value={dupName}
+                      onChange={(e) => setDupName(e.target.value)}
+                      className="mt-1 w-full rounded border border-slate-600 bg-slate-900 px-2 py-1.5 text-sm text-slate-200"
+                    />
+                    {clash && (
+                      <p className="mt-2 text-xs text-red-400">
+                        A model named "{dupId.trim()}" already exists on this
+                        harness.
+                      </p>
+                    )}
+                    {empty && (
+                      <p className="mt-2 text-xs text-red-400">
+                        The model id cannot be empty.
+                      </p>
+                    )}
+                    <div className="mt-4 flex justify-end gap-2">
+                      <button
+                        onClick={() => setDuplicating(null)}
+                        className="rounded px-3 py-1 text-sm text-slate-400 hover:text-slate-200"
+                      >
+                        Cancel
+                      </button>
+                      <button
+                        onClick={() => {
+                          const target = duplicating;
+                          setDuplicating(null);
+                          void runOp([
+                            {
+                              op: "duplicate",
+                              nativeId: target.nativeId,
+                              remoteModelId: dupId.trim(),
+                              displayName: dupName.trim(),
+                            },
+                          ]);
+                        }}
+                        disabled={invalid}
+                        className="rounded bg-blue-600 px-3 py-1 text-sm text-white hover:bg-blue-500 disabled:opacity-50"
+                      >
+                        Duplicate
+                      </button>
+                    </div>
+                  </div>
+                </div>
+              );
+            })()}
 
             {editing && (
               <div

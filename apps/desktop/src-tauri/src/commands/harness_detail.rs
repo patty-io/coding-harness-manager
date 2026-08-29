@@ -435,6 +435,9 @@ pub async fn apply_harness_model_edits_cmd(
 
     let existing_native: std::collections::HashSet<String> =
         parsed.models.iter().map(|m| m.native_id.clone()).collect();
+    // Ids already claimed in this batch (existing rows plus entries pushed
+    // into desired so far) — duplicates and renames must stay unique.
+    let mut used_ids = existing_native.clone();
 
     let mut desired_routes: Vec<chm_core::domain::models::ModelRoute> = Vec::new();
     for m in &parsed.models {
@@ -444,16 +447,27 @@ pub async fn apply_harness_model_edits_cmd(
                 // omitted from desired -> Remove
             }
             Some("duplicate") => {
-                // keep the original, plus a "-copy" twin
-                let mut copy = m.route.clone();
-                let mut candidate = format!("{}-copy", m.native_id);
-                let mut n = 2;
-                while existing_native.contains(&candidate) {
-                    candidate = format!("{}-copy-{n}", m.native_id);
-                    n += 1;
+                let new_id = op
+                    .and_then(|o| o.remote_model_id.as_deref())
+                    .map(str::trim)
+                    .filter(|s| !s.is_empty())
+                    .map(str::to_string)
+                    .unwrap_or_else(|| format!("{}-copy", m.native_id));
+                if new_id != m.native_id && used_ids.contains(&new_id) {
+                    return Err(format!(
+                        "a model named \"{new_id}\" already exists on this harness"
+                    ));
                 }
-                copy.remote_model_id = candidate.clone();
-                copy.display_name = format!("{} (copy)", m.route.display_name);
+                let display = op
+                    .and_then(|o| o.display_name.as_deref())
+                    .map(str::trim)
+                    .filter(|s| !s.is_empty())
+                    .map(str::to_string)
+                    .unwrap_or_else(|| format!("{} (copy)", m.route.display_name));
+                let mut copy = m.route.clone();
+                copy.remote_model_id = new_id.clone();
+                copy.display_name = display;
+                used_ids.insert(new_id);
                 desired_routes.push(copy);
                 let mut kept = m.route.clone();
                 kept.remote_model_id = m.native_id.clone();
@@ -472,8 +486,15 @@ pub async fn apply_harness_model_edits_cmd(
                     if let Some(rm) = &o.remote_model_id {
                         let rm = rm.trim().to_string();
                         if !rm.is_empty() && rm != m.native_id {
+                            if used_ids.contains(&rm) {
+                                return Err(format!(
+                                    "a model named \"{rm}\" already exists on this harness"
+                                ));
+                            }
                             // rename: add under the new id; the old native id
                             // drops out of desired -> reconciler removes it.
+                            used_ids.remove(&m.native_id.clone());
+                            used_ids.insert(rm.clone());
                             route.remote_model_id = rm;
                         }
                     }
