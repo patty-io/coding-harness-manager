@@ -100,6 +100,7 @@ export default function McpScreen() {
   const [args, setArgs] = useState("");
   const [url, setUrl] = useState("");
   const [lastResults, setLastResults] = useState<Record<string, { check: string; passed: boolean; detail: string }[]>>({});
+  const [selectedServers, setSelectedServers] = useState<string[]>([]);
 
   const submit = () => {
     if (!name.trim()) return;
@@ -129,7 +130,17 @@ export default function McpScreen() {
 
   return (
     <div>
-      <h1 className="text-2xl font-bold">MCP Servers</h1>
+      <div className="flex flex-wrap items-center justify-between gap-2">
+        <h1 className="text-2xl font-bold">MCP Servers</h1>
+        <div className="flex gap-2">
+          <SyncToHarnessButton
+            selection={{ mcpIds: selectedServers }}
+            disabled={selectedServers.length === 0}
+            label={selectedServers.length ? `Push selected (${selectedServers.length})…` : "Push selected…"}
+          />
+          <SyncToHarnessButton label="Sync entire library…" />
+        </div>
+      </div>
 
       <div className="mt-4 rounded border border-slate-700 bg-slate-800 p-4">
         <h2 className="font-medium">Add MCP Server</h2>
@@ -206,6 +217,7 @@ export default function McpScreen() {
       <table className="mt-4 w-full bg-slate-800 text-sm">
         <thead>
           <tr className="border-b text-left">
+            <th className="p-2"><span className="sr-only">Select</span></th>
             <th className="p-2">Name</th>
             <th className="p-2">Transport</th>
             <th className="p-2">Command / URL</th>
@@ -216,6 +228,20 @@ export default function McpScreen() {
         <tbody>
           {(servers ?? []).map((s) => (
             <tr key={s.id} className="border-b">
+              <td className="p-2">
+                <input
+                  type="checkbox"
+                  aria-label={`Select ${s.name}`}
+                  checked={selectedServers.includes(s.id)}
+                  onChange={() =>
+                    setSelectedServers((previous) =>
+                      previous.includes(s.id)
+                        ? previous.filter((id) => id !== s.id)
+                        : [...previous, s.id],
+                    )
+                  }
+                />
+              </td>
               <td className="p-2 font-medium">{s.name}</td>
               <td className="p-2">{s.transport}</td>
               <td className="p-2 font-mono text-xs">
@@ -252,7 +278,6 @@ export default function McpScreen() {
               </td>
               <td className="p-2">
                 <div className="flex items-center gap-2">
-                  <SyncToHarnessButton />
                   <button
                     onClick={() =>
                       confirm(

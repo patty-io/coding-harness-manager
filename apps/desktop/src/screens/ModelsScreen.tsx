@@ -31,6 +31,7 @@ export default function ModelsScreen() {
 
   const { confirm, confirmDialog } = useConfirm();
   const [selectedCatalog, setSelectedCatalog] = useState<string[]>([]);
+  const [selectedModels, setSelectedModels] = useState<string[]>([]);
   const [enrichOutcome, setEnrichOutcome] = useState<{
     routeId: string;
     outcome: EnrichOutcome;
@@ -73,7 +74,13 @@ export default function ModelsScreen() {
 
       {tab === "mine" && (
         <>
-          <div className="mt-3 flex items-center gap-2 text-sm">
+          <div className="mt-3 flex flex-wrap items-center gap-2 text-sm">
+            <SyncToHarnessButton
+              selection={{ modelIds: selectedModels }}
+              disabled={selectedModels.length === 0}
+              label={selectedModels.length ? `Push selected (${selectedModels.length})…` : "Push selected…"}
+            />
+            <SyncToHarnessButton label="Sync entire library…" />
             <label>
               Provider:{" "}
               <select
@@ -93,6 +100,7 @@ export default function ModelsScreen() {
           <table className="mt-3 w-full bg-slate-800 text-sm">
             <thead>
               <tr className="border-b text-left">
+                <th className="p-2"><span className="sr-only">Select</span></th>
                 <th className="p-2">Provider</th>
                 <th className="p-2">Model</th>
                 <th className="p-2">Context</th>
@@ -104,6 +112,20 @@ export default function ModelsScreen() {
             <tbody>
               {filteredRoutes.map((r) => (
                 <tr key={r.id} className="border-b">
+                  <td className="p-2">
+                    <input
+                      type="checkbox"
+                      aria-label={`Select ${r.display_name}`}
+                      checked={selectedModels.includes(r.id)}
+                      onChange={() =>
+                        setSelectedModels((previous) =>
+                          previous.includes(r.id)
+                            ? previous.filter((id) => id !== r.id)
+                            : [...previous, r.id],
+                        )
+                      }
+                    />
+                  </td>
                   <td className="p-2">{r.provider_name}</td>
                   <td className="p-2">
                     <div className="font-medium">{r.display_name}</div>
@@ -137,7 +159,6 @@ export default function ModelsScreen() {
                     </button>
                   </td>
                   <td className="p-2">
-                    <SyncToHarnessButton />
                     <button
                       onClick={() =>
                         enrich.mutate(r.id, {

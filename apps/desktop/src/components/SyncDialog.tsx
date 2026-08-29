@@ -24,6 +24,12 @@ export interface PreviewReport {
   hasBlockers: boolean;
 }
 
+export interface SyncSelection {
+  modelIds?: string[];
+  mcpIds?: string[];
+  skillIds?: string[];
+}
+
 export interface ApplyReport {
   summary: string;
   filesWritten: string[];
@@ -32,8 +38,12 @@ export interface ApplyReport {
   validation: { ok: boolean; errors: string[] };
 }
 
-export function syncPreview(installationId: string, mode: string): Promise<PreviewReport> {
-  return invoke<PreviewReport>("sync_preview", { installationId, mode });
+export function syncPreview(
+  installationId: string,
+  mode: string,
+  selection?: SyncSelection,
+): Promise<PreviewReport> {
+  return invoke<PreviewReport>("sync_preview", { installationId, mode, selection });
 }
 
 export function syncApply(
@@ -41,14 +51,20 @@ export function syncApply(
   mode: string,
   force: boolean,
   planHash: string,
+  selection?: SyncSelection,
 ): Promise<ApplyReport> {
-  return invoke<ApplyReport>("sync_apply", { installationId, mode, force, planHash });
+  return invoke<ApplyReport>("sync_apply", { installationId, mode, force, planHash, selection });
 }
 
-export function useSyncPreview(installationId: string, mode: string | null) {
+export function useSyncPreview(
+  installationId: string,
+  mode: string | null,
+  selection?: SyncSelection,
+) {
+  const selectionKey = JSON.stringify(selection ?? null);
   return useQuery({
-    queryKey: ["sync-preview", installationId, mode],
-    queryFn: () => syncPreview(installationId, mode!),
+    queryKey: ["sync-preview", installationId, mode, selectionKey],
+    queryFn: () => syncPreview(installationId, mode!, selection),
     enabled: !!mode && mode !== "none",
     staleTime: 30_000,
   });
@@ -62,12 +78,14 @@ export function useSyncApply() {
       mode,
       force,
       planHash,
+      selection,
     }: {
       installationId: string;
       mode: string;
       force: boolean;
       planHash: string;
-    }) => syncApply(installationId, mode, force, planHash),
+      selection?: SyncSelection;
+    }) => syncApply(installationId, mode, force, planHash, selection),
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ["installations"] });
       qc.invalidateQueries({ queryKey: ["routes"] });
@@ -82,16 +100,18 @@ export function useSyncApply() {
 export function SyncDialog({
   installationId,
   harnessType,
+  selection,
   onClose,
 }: {
   installationId: string;
   harnessType: string;
+  selection?: SyncSelection;
   onClose: () => void;
 }) {
   const [mode, setMode] = useState<string>("append");
   const [force, setForce] = useState(false);
   const [expandedFile, setExpandedFile] = useState<string | null>(null);
-  const preview = useSyncPreview(installationId, mode);
+  const preview = useSyncPreview(installationId, mode, selection);
   const apply = useSyncApply();
 
   const ACTION_COLORS: Record<string, string> = {
@@ -239,6 +259,7 @@ export function SyncDialog({
                 mode,
                 force,
                 planHash: preview.data!.planHash,
+                selection,
               })
             }
             disabled={

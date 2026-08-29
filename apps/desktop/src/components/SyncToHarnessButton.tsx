@@ -1,13 +1,20 @@
 import { useState } from "react";
 import { useInstallations } from "../hooks/useHarnesses";
 import { SyncDialog } from "./SyncDialog";
+import type { SyncSelection } from "./SyncDialog";
 
-/**
- * "Sync to harness…" action for library rows. Opens a harness picker, then
- * the sync dialog for the chosen harness — the sync engine carries the whole
- * registry diff for that harness, including the row you invoked it from.
+/** Opens a harness picker for either an explicit resource selection or the
+ * complete enabled library. The selected scope is carried into preview/apply.
  */
-export function SyncToHarnessButton({ label }: { label?: string }) {
+export function SyncToHarnessButton({
+  label,
+  selection,
+  disabled,
+}: {
+  label?: string;
+  selection?: SyncSelection;
+  disabled?: boolean;
+}) {
   const [open, setOpen] = useState(false);
   const [syncing, setSyncing] = useState<{ id: string; type: string } | null>(null);
   const { data: installations } = useInstallations();
@@ -19,9 +26,10 @@ export function SyncToHarnessButton({ label }: { label?: string }) {
           e.stopPropagation();
           setOpen(true);
         }}
+        disabled={disabled}
         className="rounded border border-slate-600 px-2 py-0.5 text-xs text-slate-300 hover:bg-slate-700"
       >
-        {label ?? "Sync to harness…"}
+        {label ?? (selection ? "Push selected…" : "Sync entire library…")}
       </button>
 
       {open && (
@@ -35,8 +43,9 @@ export function SyncToHarnessButton({ label }: { label?: string }) {
           >
             <h3 className="font-medium text-slate-100">Sync to which harness?</h3>
             <p className="mt-1 text-xs text-slate-400">
-              Opens the change preview for that harness. Nothing is written
-              until you press Apply.
+              {selection
+                ? "Preview only the selected library resources for that harness. Nothing is written until you press Apply."
+                : "Preview the complete enabled library for that harness. Nothing is written until you press Apply."}
             </p>
             <ul className="mt-3 max-h-72 space-y-1 overflow-auto">
               {(installations ?? [])
@@ -80,6 +89,7 @@ export function SyncToHarnessButton({ label }: { label?: string }) {
         <SyncDialog
           installationId={syncing.id}
           harnessType={syncing.type}
+          selection={selection}
           onClose={() => setSyncing(null)}
         />
       )}

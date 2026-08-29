@@ -10,6 +10,7 @@ export default function SkillsScreen() {
   const adopt = useAdoptCanonical();
   const [manualPath, setManualPath] = useState("");
   const [message, setMessage] = useState<string | null>(null);
+  const [selectedSkills, setSelectedSkills] = useState<string[]>([]);
 
   const importManual = () => {
     if (!manualPath.trim()) return;
@@ -26,7 +27,17 @@ export default function SkillsScreen() {
 
   return (
     <div>
-      <h1 className="text-2xl font-bold">Skills</h1>
+      <div className="flex flex-wrap items-center justify-between gap-2">
+        <h1 className="text-2xl font-bold">Skills</h1>
+        <div className="flex gap-2">
+          <SyncToHarnessButton
+            selection={{ skillIds: selectedSkills }}
+            disabled={selectedSkills.length === 0}
+            label={selectedSkills.length ? `Push selected (${selectedSkills.length})…` : "Push selected…"}
+          />
+          <SyncToHarnessButton label="Sync entire library…" />
+        </div>
+      </div>
 
       <div className="mt-4 flex flex-wrap items-center gap-2 text-sm">
         <button
@@ -61,6 +72,7 @@ export default function SkillsScreen() {
       <table className="mt-4 w-full bg-slate-800 text-sm">
         <thead>
           <tr className="border-b text-left">
+            <th className="p-2"><span className="sr-only">Select</span></th>
             <th className="p-2">Name</th>
             <th className="p-2">Canonical path</th>
             <th className="p-2">Hash</th>
@@ -71,6 +83,20 @@ export default function SkillsScreen() {
         <tbody>
           {(skills ?? []).map((s) => (
             <tr key={s.id} className="border-b">
+              <td className="p-2">
+                <input
+                  type="checkbox"
+                  aria-label={`Select ${s.name}`}
+                  checked={selectedSkills.includes(s.id)}
+                  onChange={() =>
+                    setSelectedSkills((previous) =>
+                      previous.includes(s.id)
+                        ? previous.filter((id) => id !== s.id)
+                        : [...previous, s.id],
+                    )
+                  }
+                />
+              </td>
               <td className="p-2 font-medium">{s.name}</td>
               <td className="p-2 font-mono text-xs text-slate-300">
                 {s.canonicalPath}
@@ -80,7 +106,6 @@ export default function SkillsScreen() {
               </td>
               <td className="p-2 text-xs">{s.sourceType}</td>
               <td className="p-2">
-                <SyncToHarnessButton />
               </td>
             </tr>
           ))}

@@ -14,7 +14,7 @@ use chm_harness_sdk::adapter::plan::{
 };
 use chm_harness_sdk::adapter::types::{ApplyResult, HarnessAdapter, NativePlan, ValidationReport};
 use chm_reconciliation::engine::{filter_unsupported, reconcile};
-use serde::Serialize;
+use serde::{Deserialize, Serialize};
 use sha2::Digest;
 use sqlx::{Pool, Sqlite};
 use tauri::State;
@@ -49,6 +49,17 @@ pub struct PreviewReport {
     pub has_blockers: bool,
 }
 
+#[derive(Debug, Clone, Deserialize, Default)]
+#[serde(rename_all = "camelCase")]
+pub struct SyncSelection {
+    #[serde(default)]
+    pub model_ids: Vec<String>,
+    #[serde(default)]
+    pub mcp_ids: Vec<String>,
+    #[serde(default)]
+    pub skill_ids: Vec<String>,
+}
+
 #[derive(Debug, Clone, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct ApplyReport {
@@ -70,25 +81,34 @@ pub fn parse_mode(s: &str) -> Mode {
     }
 }
 
-async fn desired_state(pool: &Pool<Sqlite>) -> Result<DesiredState, String> {
+async fn desired_state(
+    pool: &Pool<Sqlite>,
+    selection: Option<&SyncSelection>,
+) -> Result<DesiredState, String> {
+    let route_ids = selection.map(|s| s.model_ids.iter().collect::<std::collections::HashSet<_>>());
+    let mcp_ids = selection.map(|s| s.mcp_ids.iter().collect::<std::collections::HashSet<_>>());
+    let skill_ids = selection.map(|s| s.skill_ids.iter().collect::<std::collections::HashSet<_>>());
     Ok(DesiredState {
         routes: list_routes(pool)
             .await
             .map_err(|e| e.to_string())?
             .into_iter()
             .filter(|r| r.enabled)
+            .filter(|r| route_ids.as_ref().is_none_or(|ids| ids.contains(&r.id.to_string())))
             .collect(),
         mcp_servers: list_mcp_servers(pool)
             .await
             .map_err(|e| e.to_string())?
             .into_iter()
             .filter(|m| m.enabled)
+            .filter(|m| mcp_ids.as_ref().is_none_or(|ids| ids.contains(&m.id.to_string())))
             .collect(),
         skills: list_skills(pool)
             .await
             .map_err(|e| e.to_string())?
             .into_iter()
             .filter(|s| s.enabled)
+            .filter(|s| skill_ids.as_ref().is_none_or(|ids| ids.contains(&s.id.to_string())))
             .collect(),
     })
 }
@@ -175,6 +195,23 @@ pub async fn build_native_plan(
     ),
     String,
 > {
+    build_native_plan_scoped(pool, installation_id, mode, None).await
+}
+
+pub async fn build_native_plan_scoped(
+    pool: &Pool<Sqlite>,
+    installation_id: &str,
+    mode: &Mode,
+    selection: Option<&SyncSelection>,
+) -> Result<
+    (
+        HarnessInstallation,
+        Box<dyn HarnessAdapter>,
+        ReconciliationPlan,
+        NativePlan,
+    ),
+    String,
+> {
     let inst = list_installations(pool)
         .await
         .map_err(|e| e.to_string())?
@@ -183,7 +220,7 @@ pub async fn build_native_plan(
         .ok_or("installation not found")?;
     let adapter = adapter_for(inst.harness_type.as_str()).ok_or("no adapter")?;
     let parsed = adapter.read_state(&inst).map_err(|e| e.to_string())?;
-    let desired = desired_state(pool).await?;
+    let desired = desired_state(pool, selection).await?;
     let actual = ActualState {
         routes: parsed.models.clone(),
         mcp: parsed.mcp.clone(),
@@ -202,9 +239,11 @@ pub async fn sync_preview(
     state: State<'_, AppState>,
     installation_id: String,
     mode: String,
+    selection: Option<SyncSelection>,
 ) -> Result<PreviewReport, String> {
-    let m = parse_mode(&mode);
-    let (_, _, plan, native_plan) = build_native_plan(&state.pool, &installation_id, &m).await?;
+    let m = if selection.is_some() { Mode::Append } else { parse_mode(&mode) };
+    let (_, _, plan, native_plan) =
+        build_native_plan_scoped(&state.pool, &installation_id, &m, selection.as_ref()).await?;
     let actions: Vec<ActionView> = plan
         .actions
         .iter()
@@ -274,7 +313,7 @@ pub async fn execute_sync(
     mode: &Mode,
     force: bool,
 ) -> Result<ApplyReport, String> {
-    execute_sync_with_plan(pool, installation_id, mode, force, None).await
+    execute_sync_with_plan(pool, installation_id, mode, force, None, None).await
 }
 
 pub async fn execute_sync_with_plan(
@@ -283,9 +322,11 @@ pub async fn execute_sync_with_plan(
     mode: &Mode,
     force: bool,
     expected_plan_hash: Option<&str>,
+    selection: Option<&SyncSelection>,
 ) -> Result<ApplyReport, String> {
+    let effective_mode = if selection.is_some() { Mode::Append } else { *mode };
     let (inst, adapter, _plan, native_plan) =
-        build_native_plan(pool, installation_id, mode).await?;
+        build_native_plan_scoped(pool, installation_id, &effective_mode, selection).await?;
     let current_hash = plan_hash(&_plan, &native_plan)?;
     let blockers = _plan.actions.iter().any(|action| {
         matches!(action, PlanAction::Conflict(_) | PlanAction::Unsupported(_))
@@ -468,6 +509,7 @@ pub async fn sync_apply(
     mode: String,
     force: bool,
     plan_hash: String,
+    selection: Option<SyncSelection>,
 ) -> Result<ApplyReport, String> {
     execute_sync_with_plan(
         &state.pool,
@@ -475,6 +517,7 @@ pub async fn sync_apply(
         &parse_mode(&mode),
         force,
         Some(&plan_hash),
+        selection.as_ref(),
     )
     .await
 }
