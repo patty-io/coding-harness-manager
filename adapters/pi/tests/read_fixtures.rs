@@ -221,5 +221,11 @@ fn provider_scoped_writer_does_not_touch_sibling_provider() {
         writer::remove_model_in_provider(&mut doc, Some("beta"), "same"),
         1
     );
-    assert_eq!(doc["providers"]["alpha"]["models"].as_array().unwrap().len(), 1);
+    assert_eq!(
+        doc["providers"]["alpha"]["models"]
+            .as_array()
+            .unwrap()
+            .len(),
+        1
+    );
 }

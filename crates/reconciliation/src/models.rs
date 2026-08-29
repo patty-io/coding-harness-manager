@@ -26,10 +26,8 @@ pub fn reconcile_models(
     // Native identity is provider-scoped for formats such as Pi. Keeping the
     // provider in the lookup prevents one provider's `qwen` from shadowing a
     // second provider's `qwen`.
-    let actual_by_identity: HashMap<(Option<&str>, &str), &HarnessModel> = actual
-        .iter()
-        .map(|m| (native_identity(m), m))
-        .collect();
+    let actual_by_identity: HashMap<(Option<&str>, &str), &HarnessModel> =
+        actual.iter().map(|m| (native_identity(m), m)).collect();
 
     for d in desired {
         let native_id = d.remote_model_id.as_str();

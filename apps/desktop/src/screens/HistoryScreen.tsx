@@ -50,13 +50,17 @@ export default function HistoryScreen() {
                     "Roll back",
                   )
                 }
-                  disabled={rollback.isPending}
+                  disabled={rollback.isPending || !e.canRollback}
+                  title={e.rollbackReason ?? "Rollback this transaction"}
                   className="rounded border border-blue-300 px-2 py-0.5 text-xs text-blue-700 disabled:opacity-50"
                 >
-                  Rollback
+                  {e.canRollback ? "Rollback" : "Not reversible"}
                 </button>
               </div>
             </div>
+            {!e.canRollback && e.rollbackReason && (
+              <p className="mt-2 text-xs text-slate-500">{e.rollbackReason}</p>
+            )}
             {expanded === e.transactionId && e.snapshots.map((s) => (
               <div key={s.path} className="mt-2 grid grid-cols-2 gap-2">
                 <pre className="overflow-auto rounded bg-red-950 p-2 text-xs">{s.before ?? "(none)"}</pre>

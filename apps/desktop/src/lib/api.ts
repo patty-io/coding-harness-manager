@@ -660,6 +660,8 @@ export interface HistoryEntry {
   startedAt: string;
   summary: string | null;
   snapshots: SnapshotEntry[];
+  canRollback: boolean;
+  rollbackReason: string | null;
 }
 
 export interface RollbackReport {

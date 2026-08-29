@@ -742,7 +742,7 @@ fn normalize_base(url: &str) -> String {
 fn slugify(name: &str) -> String {
     let s: String = name
         .chars()
-        .map(|c| c.is_ascii_alphanumeric().then_some(c).unwrap_or('-'))
+        .map(|c| if c.is_ascii_alphanumeric() { c } else { '-' })
         .collect();
     let trimmed = s.trim_matches('-').to_lowercase();
     if trimmed.is_empty() {
@@ -796,7 +796,7 @@ pub async fn smart_adopt_harness_model_cmd(
     let providers = list_providers(&state.pool)
         .await
         .map_err(|e| e.to_string())?;
-    let target_base = normalize_base(&base_url);
+    let target_base = normalize_base(base_url);
     let mut endpoint: Option<chm_core::domain::provider::ProviderEndpoint> = None;
     let mut provider_created = false;
     let mut endpoint_created = false;
@@ -821,7 +821,7 @@ pub async fn smart_adopt_harness_model_cmd(
         // Create the provider (reuse by slug when present) and its endpoint.
         provider_created = true;
         endpoint_created = true;
-        let slug = slugify(&provider_name);
+        let slug = slugify(provider_name);
         let provider = match chm_database::repos::providers::list_providers(&state.pool)
             .await
             .map_err(|e| e.to_string())?
@@ -833,7 +833,7 @@ pub async fn smart_adopt_harness_model_cmd(
                 chm_database::repos::providers::create_provider(
                     &state.pool,
                     &slug,
-                    &provider_name,
+                    provider_name,
                 )
                 .await
                 .map_err(|e| e.to_string())?

@@ -2,9 +2,10 @@
 
 use chm_core::domain::history::{TransactionStatus, TransactionType};
 use chm_database::repos::history::{
-    begin_transaction, finish_transaction, list_snapshots, list_transactions,
+    add_snapshot, begin_transaction, finish_transaction, list_snapshots, list_transactions,
 };
 use serde::Serialize;
+use sha2::{Digest, Sha256};
 use sqlx::{Pool, Sqlite};
 use tauri::State;
 use uuid::Uuid;
@@ -28,6 +29,37 @@ pub struct HistoryEntry {
     pub started_at: String,
     pub summary: Option<String>,
     pub snapshots: Vec<SnapshotEntry>,
+    pub can_rollback: bool,
+    pub rollback_reason: Option<String>,
+}
+
+fn content_hash(content: Option<&str>) -> Option<String> {
+    content.map(|value| format!("{:x}", Sha256::digest(value.as_bytes())))
+}
+
+fn current_content(path: &str) -> Result<Option<String>, String> {
+    match std::fs::read_to_string(path) {
+        Ok(content) => Ok(Some(content)),
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => Ok(None),
+        Err(error) => Err(error.to_string()),
+    }
+}
+
+fn rollback_eligibility(
+    status: TransactionStatus,
+    transaction_type: TransactionType,
+    snapshot_count: usize,
+) -> (bool, Option<String>) {
+    if transaction_type == TransactionType::Rollback {
+        return (false, Some("rollback transactions cannot be rolled back".into()));
+    }
+    if status != TransactionStatus::Succeeded {
+        return (false, Some("only successful transactions can be rolled back".into()));
+    }
+    if snapshot_count == 0 {
+        return (false, Some("transaction has no file snapshots".into()));
+    }
+    (true, None)
 }
 
 #[tauri::command]
@@ -42,6 +74,8 @@ pub async fn list_history_cmd(
         let snaps = list_snapshots(pool, tx.id)
             .await
             .map_err(|e| e.to_string())?;
+        let (can_rollback, rollback_reason) =
+            rollback_eligibility(tx.status, tx.transaction_type, snaps.len());
         entries.push(HistoryEntry {
             transaction_id: tx.id.to_string(),
             transaction_type: tx.transaction_type.as_str().to_string(),
@@ -56,6 +90,8 @@ pub async fn list_history_cmd(
                     after: s.after_content,
                 })
                 .collect(),
+            can_rollback,
+            rollback_reason,
         });
     }
     Ok(entries)
@@ -66,9 +102,78 @@ pub async fn rollback_transaction_core(
     tx_id: &str,
 ) -> Result<RollbackReport, String> {
     let id = Uuid::parse_str(tx_id).map_err(|e| e.to_string())?;
+    let tx = list_transactions(pool)
+        .await
+        .map_err(|e| e.to_string())?
+        .into_iter()
+        .find(|tx| tx.id == id)
+        .ok_or_else(|| format!("transaction {tx_id} not found"))?;
     let snaps = list_snapshots(pool, id).await.map_err(|e| e.to_string())?;
+    let (eligible, reason) = rollback_eligibility(tx.status, tx.transaction_type, snaps.len());
+    if !eligible {
+        return Err(reason.unwrap_or_else(|| "transaction cannot be rolled back".into()));
+    }
+
+    // Never overwrite an intervening user edit. A rollback is valid only when
+    // every file still matches the state written by the original transaction.
+    let mut current = Vec::with_capacity(snaps.len());
+    let mut conflicts = Vec::new();
+    for snap in &snaps {
+        let content = current_content(&snap.path)?;
+        let actual_hash = content_hash(content.as_deref());
+        let expected_hash = snap
+            .after_hash
+            .clone()
+            .or_else(|| content_hash(snap.after_content.as_deref()));
+        if actual_hash != expected_hash {
+            conflicts.push(format!(
+                "{} (expected {}, found {})",
+                snap.path,
+                expected_hash.as_deref().unwrap_or("missing"),
+                actual_hash.as_deref().unwrap_or("missing")
+            ));
+        }
+        current.push(content);
+    }
+    if !conflicts.is_empty() {
+        return Err(format!(
+            "rollback blocked: files changed since the transaction: {}",
+            conflicts.join(", ")
+        ));
+    }
+
+    // Record the current state before restoring the old state. This makes the
+    // rollback itself a first-class reversible transaction while preserving a
+    // link to the transaction it reverses.
+    let rollback_tx = begin_transaction(
+        pool,
+        TransactionType::Rollback,
+        serde_json::json!({
+            "rolled_back": id.to_string(),
+            "files": snaps.iter().map(|s| s.path.clone()).collect::<Vec<_>>()
+        }),
+    )
+    .await
+    .map_err(|e| e.to_string())?;
+    for (snap, before_restore) in snaps.iter().zip(current.iter()) {
+        add_snapshot(
+            pool,
+            &chm_core::domain::history::ConfigSnapshot {
+                id: Uuid::new_v4(),
+                transaction_id: rollback_tx.id,
+                harness_installation_id: snap.harness_installation_id,
+                path: snap.path.clone(),
+                before_content: before_restore.clone(),
+                after_content: snap.before_content.clone(),
+                before_hash: content_hash(before_restore.as_deref()),
+                after_hash: content_hash(snap.before_content.as_deref()),
+            },
+        )
+        .await
+        .map_err(|e| e.to_string())?;
+    }
     let mut files_restored = Vec::new();
-    for snap in snaps.iter().rev() {
+    for snap in &snaps {
         match &snap.before_content {
             Some(before) => {
                 chm_filesystem::atomic_write(std::path::Path::new(&snap.path), before)
@@ -85,18 +190,11 @@ pub async fn rollback_transaction_core(
             }
         }
     }
-    let rollback_tx = begin_transaction(
-        pool,
-        TransactionType::Rollback,
-        serde_json::json!({ "rolled_back": id.to_string(), "files": files_restored }),
-    )
-    .await
-    .map_err(|e| e.to_string())?;
     finish_transaction(
         pool,
         rollback_tx.id,
         TransactionStatus::Succeeded,
-        Some(format!("rolled back {}", files_restored.len())),
+        Some(format!("rolled back {} (reverses {})", files_restored.len(), id)),
         None,
     )
     .await
@@ -143,4 +241,27 @@ pub async fn purge_old_snapshots_cmd(state: State<'_, AppState>) -> Result<usize
         .await
         .map_err(|e| e.to_string())?;
     Ok(count_row.0 as usize)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn only_successful_snapshot_transactions_are_rollback_eligible() {
+        assert_eq!(
+            rollback_eligibility(TransactionStatus::Succeeded, TransactionType::Sync, 1),
+            (true, None)
+        );
+        assert!(!rollback_eligibility(TransactionStatus::Failed, TransactionType::Sync, 1).0);
+        assert!(!rollback_eligibility(TransactionStatus::Running, TransactionType::Sync, 1).0);
+        assert!(!rollback_eligibility(TransactionStatus::Succeeded, TransactionType::Sync, 0).0);
+        assert!(!rollback_eligibility(TransactionStatus::Succeeded, TransactionType::Rollback, 1).0);
+    }
+
+    #[test]
+    fn content_hash_distinguishes_missing_and_empty_files() {
+        assert_ne!(content_hash(None), content_hash(Some("")));
+        assert_eq!(content_hash(Some("same")), content_hash(Some("same")));
+    }
 }
