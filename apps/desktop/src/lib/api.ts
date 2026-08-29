@@ -761,6 +761,29 @@ export interface RollbackReport {
 export async function listHistory(limit?: number): Promise<HistoryEntry[]> {
   return invoke<HistoryEntry[]>("list_history_cmd", { limit });
 }
+
+export interface DoctorCheck {
+  check: string;
+  passed: boolean;
+  detail: string;
+}
+
+export interface DoctorReport {
+  generatedAt: string;
+  appVersion: string;
+  harnessChecks: { harnessType: string; version: string | null; checks: DoctorCheck[] }[];
+  providerChecks: { providerName: string; endpointName: string; checks: DoctorCheck[] }[];
+  mcpChecks: DoctorCheck[];
+  skillChecks: DoctorCheck[];
+  summary: string;
+}
+
+export async function runDoctor(): Promise<DoctorReport> {
+  return invoke<DoctorReport>("run_doctor_cmd");
+}
+export async function exportDiagnostics(destDir: string): Promise<string> {
+  return invoke<string>("export_diagnostics_cmd", { destDir });
+}
 export async function rollbackTransaction(transactionId: string): Promise<RollbackReport> {
   return invoke<RollbackReport>("rollback_transaction_cmd", { transactionId });
 }

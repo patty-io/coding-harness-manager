@@ -17,6 +17,7 @@ import SettingsScreen from "./screens/SettingsScreen";
 import HarnessProviderDetailScreen from "./screens/HarnessProviderDetailScreen";
 import { ToastViewport } from "./components/Toast";
 import NotFoundScreen from "./screens/NotFoundScreen";
+import DoctorScreen from "./screens/DoctorScreen";
 
 export default function App() {
   useBackForwardNavigation();
@@ -46,6 +47,7 @@ export default function App() {
           <Route path="/sets" element={<SetsScreen />} />
           <Route path="/history" element={<HistoryScreen />} />
           <Route path="/settings" element={<SettingsScreen />} />
+          <Route path="/doctor" element={<DoctorScreen />} />
           <Route path="/pending" element={<Navigate to="/history" replace />} />
           <Route path="*" element={<NotFoundScreen />} />
         </Routes>

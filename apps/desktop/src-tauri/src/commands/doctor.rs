@@ -2,6 +2,7 @@
 
 use chm_database::repos::harness::list_installations;
 use chm_database::repos::providers::{list_endpoints, list_providers};
+use chm_database::repos::skills::list_skills;
 use chm_providers::{discover_models, health_check, resolve_credential};
 use regex::Regex;
 use serde::Serialize;
@@ -190,9 +191,27 @@ pub async fn run_doctor_core(
     let harness = harness_checks(pool).await?;
     let provider = provider_checks(pool, secrets, http).await?;
     let mcp = crate::commands::mcp::mcp_list_servers_for_doctor(pool).await?;
+    let skill_checks: Vec<CheckResult> = list_skills(pool)
+        .await
+        .map_err(|e| e.to_string())?
+        .into_iter()
+        .map(|skill| {
+            let exists = std::path::Path::new(&skill.canonical_path).is_dir();
+            CheckResult {
+                check: format!("skill available: {}", skill.name),
+                passed: exists,
+                detail: if exists {
+                    skill.canonical_path
+                } else {
+                    format!("missing: {}", skill.canonical_path)
+                },
+            }
+        })
+        .collect();
     let total: usize = harness.iter().map(|g| g.checks.len()).sum::<usize>()
         + provider.iter().map(|g| g.checks.len()).sum::<usize>()
-        + mcp.len();
+        + mcp.len()
+        + skill_checks.len();
     let failures: Vec<String> = harness
         .iter()
         .flat_map(|g| {
@@ -208,6 +227,12 @@ pub async fn run_doctor_core(
                 .filter(|c| !c.passed)
                 .map(|c| format!("{}/{}", g.provider_name, c.check))
         }))
+        .chain(
+            skill_checks
+                .iter()
+                .filter(|c| !c.passed)
+                .map(|c| c.check.clone()),
+        )
         .collect();
     let checks_passed = total - failures.len();
     Ok(DoctorReport {
@@ -216,7 +241,7 @@ pub async fn run_doctor_core(
         harness_checks: harness,
         provider_checks: provider,
         mcp_checks: mcp,
-        skill_checks: vec![],
+        skill_checks,
         summary: if failures.is_empty() {
             format!("{checks_passed}/{} checks passed", total)
         } else {
@@ -241,8 +266,22 @@ pub async fn export_diagnostics_core(
     let report = run_doctor_core(pool, secrets, http).await?;
     let json = serde_json::to_string_pretty(&report).map_err(|e| e.to_string())?;
     let redacted = redact(&json);
+    let destination = if dest_dir.trim().is_empty() || dest_dir.trim() == "~" {
+        std::env::var_os("HOME")
+            .map(std::path::PathBuf::from)
+            .unwrap_or_else(|| std::path::PathBuf::from("."))
+            .join(".coding-harness-manager")
+    } else if let Some(rest) = dest_dir.strip_prefix("~/") {
+        std::env::var_os("HOME")
+            .map(std::path::PathBuf::from)
+            .unwrap_or_else(|| std::path::PathBuf::from("."))
+            .join(rest)
+    } else {
+        std::path::PathBuf::from(dest_dir)
+    };
+    std::fs::create_dir_all(&destination).map_err(|e| e.to_string())?;
     let stamp = chrono::Utc::now().format("%Y%m%dT%H%M%S");
-    let path = std::path::Path::new(dest_dir).join(format!("chm-diagnostics-{stamp}.json"));
+    let path = destination.join(format!("chm-diagnostics-{stamp}.json"));
     std::fs::write(&path, redacted.as_bytes()).map_err(|e| e.to_string())?;
     Ok(path.display().to_string())
 }
@@ -253,4 +292,19 @@ pub async fn export_diagnostics_cmd(
     dest_dir: String,
 ) -> Result<String, String> {
     export_diagnostics_core(&state.pool, state.secrets.as_ref(), &state.http, &dest_dir).await
+}
+
+#[cfg(test)]
+mod tests {
+    use super::redact;
+
+    #[test]
+    fn redacts_common_credentials_without_touching_labels() {
+        let input = r#"{"token":"sk-test-secret-12345678", "authorization":"Bearer abcdefghijklmnop", "name":"demo"}"#;
+        let output = redact(input);
+        assert!(!output.contains("sk-test-secret-12345678"));
+        assert!(!output.contains("Bearer abcdefghijklmnop"));
+        assert!(output.contains("<REDACTED>"));
+        assert!(output.contains("demo"));
+    }
 }

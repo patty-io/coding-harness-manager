@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
 import { getVersion } from "@tauri-apps/api/app";
+import { Link } from "react-router-dom";
 
 function Row({ label, children }: { label: string; children: React.ReactNode }) {
   return (
@@ -47,6 +48,18 @@ export default function SettingsScreen() {
           <kbd className="rounded bg-slate-700 px-1">⌘]</kbd> (or ⌘← / ⌘→)
           move through page history.
         </p>
+      </div>
+
+      <div className="mt-6 rounded border border-slate-700 bg-slate-800/60 p-4">
+        <h2 className="font-medium text-slate-200">Recovery and diagnostics</h2>
+        <p className="mt-1 text-sm text-slate-400">
+          Every file write creates a backup and an entry in History. Run Doctor
+          for a redacted machine report before asking for support.
+        </p>
+        <div className="mt-3 flex gap-3 text-sm">
+          <Link to="/history" className="text-blue-400 hover:underline">Open History →</Link>
+          <Link to="/doctor" className="text-blue-400 hover:underline">Open Doctor →</Link>
+        </div>
       </div>
     </div>
   );

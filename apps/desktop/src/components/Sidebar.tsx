@@ -29,6 +29,10 @@ const SECTIONS: Section[] = [
       { to: "/history", label: "History" },
     ],
   },
+  {
+    heading: "Support",
+    items: [{ to: "/doctor", label: "Doctor" }],
+  },
 ];
 
 export default function Sidebar() {
