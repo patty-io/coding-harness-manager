@@ -521,7 +521,16 @@ export default function HarnessDetailScreen() {
                               `matched via ${m.providerMatch}`
                             }
                           >
-                            {m.providerName}
+                            {m.providerId ? (
+                              <Link
+                                to={`/providers/${m.providerId}`}
+                                className="text-blue-400 hover:underline"
+                              >
+                                {m.providerName}
+                              </Link>
+                            ) : (
+                              m.providerName
+                            )}
                             {m.providerMatch?.startsWith("catalog") && (
                               <span className="ml-1 text-slate-600">
                                 {m.providerMatch === "catalog-suffix" ? "(catalog~)" : "(catalog)"}

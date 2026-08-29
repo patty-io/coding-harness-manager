@@ -63,6 +63,68 @@ pub fn fold_model(
     }
 }
 
+/// Update an existing model entry (matched by id) under any provider.
+/// Returns false when no provider carries that model id.
+pub fn update_model(
+    doc: &mut Value,
+    model_id: &str,
+    display_name: &str,
+    context_window: Option<i64>,
+) -> bool {
+    let Some(providers) = doc
+        .as_object_mut()
+        .and_then(|o| o.get_mut("providers"))
+        .and_then(|p| p.as_object_mut())
+    else {
+        return false;
+    };
+    let mut found = false;
+    for (_pname, pv) in providers.iter_mut() {
+        let Some(models) = pv.get_mut("models").and_then(|m| m.as_array_mut()) else {
+            continue;
+        };
+        for m in models.iter_mut() {
+            if m.get("id").and_then(|v| v.as_str()) == Some(model_id) {
+                if let Some(obj) = m.as_object_mut() {
+                    obj.insert("name".into(), Value::String(display_name.into()));
+                    match context_window {
+                        Some(ctx) => {
+                            obj.insert("contextWindow".into(), Value::Number(ctx.into()));
+                        }
+                        None => {
+                            obj.remove("contextWindow");
+                        }
+                    }
+                    found = true;
+                }
+            }
+        }
+    }
+    found
+}
+
+/// Remove a model entry (matched by id) from every provider that carries it.
+/// Returns the number of entries removed.
+pub fn remove_model(doc: &mut Value, model_id: &str) -> usize {
+    let Some(providers) = doc
+        .as_object_mut()
+        .and_then(|o| o.get_mut("providers"))
+        .and_then(|p| p.as_object_mut())
+    else {
+        return 0;
+    };
+    let mut removed = 0;
+    for (_pname, pv) in providers.iter_mut() {
+        let Some(models) = pv.get_mut("models").and_then(|m| m.as_array_mut()) else {
+            continue;
+        };
+        let before = models.len();
+        models.retain(|m| m.get("id").and_then(|v| v.as_str()) != Some(model_id));
+        removed += before - models.len();
+    }
+    removed
+}
+
 pub fn serialize(doc: &Value) -> String {
     serde_json::to_string_pretty(doc).unwrap_or_else(|_| "{}".into())
 }

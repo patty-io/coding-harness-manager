@@ -358,6 +358,7 @@ export interface HarnessModelRow {
     | "catalog-suffix"
     | null;
   providerBaseUrl: string | null;
+  providerId: string | null;
 }
 
 export interface HarnessModelOp {

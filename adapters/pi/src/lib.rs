@@ -107,6 +107,33 @@ impl HarnessAdapter for PiAdapter {
                     );
                     folded = true;
                 }
+                PlanAction::Update(u) if u.kind == "model" => {
+                    let model_id = u.identity.as_str();
+                    let display = u
+                        .desired
+                        .get("display_name")
+                        .and_then(|v| v.as_str())
+                        .unwrap_or(model_id);
+                    let ctx = u.desired.get("context_window").and_then(|v| v.as_i64());
+                    if writer::update_model(&mut doc, model_id, display, ctx) {
+                        folded = true;
+                    } else {
+                        warnings.push(format!(
+                            "update skipped: model {model_id} not found in config"
+                        ));
+                    }
+                }
+                PlanAction::Remove(r) if r.kind == "model" => {
+                    let removed = writer::remove_model(&mut doc, &r.identity);
+                    if removed > 0 {
+                        folded = true;
+                    } else {
+                        warnings.push(format!(
+                            "remove skipped: model {} not found in config",
+                            r.identity
+                        ));
+                    }
+                }
                 PlanAction::Unsupported(u) => warnings.push(format!("unsupported: {}", u.reason)),
                 PlanAction::Conflict(c) => {
                     warnings.push(format!("conflict on {}: {}", c.identity, c.reason))

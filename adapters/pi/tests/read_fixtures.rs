@@ -1,6 +1,7 @@
 use chm_core::domain::harness::{HarnessInstallation, HarnessType, InstallationStatus};
 use chm_harness_sdk::adapter::types::HarnessAdapter;
 use pi_adapter::PiAdapter;
+use pi_adapter::writer;
 use serde_json::Value;
 use std::path::PathBuf;
 
@@ -87,4 +88,62 @@ fn pi_full_config_parses_without_warnings() {
             version_dir.display()
         );
     }
+}
+
+#[test]
+fn writer_updates_and_removes_models() {
+    let raw = r#"{
+        "providers": {
+            "pattycode": {
+                "baseUrl": "https://omni.agents.patty.io/v1",
+                "models": [
+                    {"id": "gl/glm-5.2", "name": "GLM 5.2"},
+                    {"id": "mm/minimax-m3", "name": "MiniMax M3"}
+                ]
+            },
+            "yolo": {"baseUrl": "https://yolo.example/v1", "models": [{"id": "qwen", "name": "Qwen"}]}
+        }
+    }"#;
+    let mut doc = writer::parse_document(raw).unwrap();
+
+    // update: matched by id under any provider
+    assert!(writer::update_model(
+        &mut doc,
+        "gl/glm-5.2",
+        "GLM 5.2 (edited)",
+        Some(200000)
+    ));
+    let models = &doc["providers"]["pattycode"]["models"];
+    assert_eq!(models[0]["name"], "GLM 5.2 (edited)");
+    assert_eq!(models[0]["contextWindow"], 200_000);
+
+    // update with None context removes the field
+    assert!(writer::update_model(
+        &mut doc,
+        "gl/glm-5.2",
+        "GLM 5.2",
+        None
+    ));
+    assert!(
+        doc["providers"]["pattycode"]["models"][0]
+            .get("contextWindow")
+            .is_none()
+    );
+
+    // unknown id is reported, not invented
+    assert!(!writer::update_model(&mut doc, "nope", "x", None));
+
+    // remove drops the entry, leaves siblings and the provider
+    assert_eq!(writer::remove_model(&mut doc, "mm/minimax-m3"), 1);
+    let ids: Vec<&str> = doc["providers"]["pattycode"]["models"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .map(|m| m["id"].as_str().unwrap())
+        .collect();
+    assert_eq!(ids, vec!["gl/glm-5.2"]);
+    assert!(doc["providers"]["yolo"]["models"].as_array().unwrap().len() == 1);
+
+    // removing a nonexistent id reports zero
+    assert_eq!(writer::remove_model(&mut doc, "mm/minimax-m3"), 0);
 }

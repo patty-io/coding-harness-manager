@@ -85,6 +85,9 @@ pub struct HarnessModelRow {
     pub provider_match: Option<String>,
     /// Provider base URL when the attribution came from the harness config.
     pub provider_base_url: Option<String>,
+    /// Registry provider id, when the attributed provider exists in the
+    /// Providers section (drives the provider-detail link).
+    pub provider_id: Option<String>,
 }
 
 #[tauri::command]
@@ -107,31 +110,36 @@ pub async fn harness_models_view_cmd(
         .map(harness_provider_map)
         .unwrap_or_default();
 
-    // endpoint -> (provider display name, endpoint id) for attribution.
-    let mut endpoint_provider: std::collections::HashMap<uuid::Uuid, String> =
+    // endpoint -> (provider id, provider display name); base_url -> provider id.
+    let mut endpoint_provider: std::collections::HashMap<uuid::Uuid, (uuid::Uuid, String)> =
+        std::collections::HashMap::new();
+    let mut base_url_provider: std::collections::HashMap<String, uuid::Uuid> =
         std::collections::HashMap::new();
     for p in &providers {
         for e in list_endpoints(&state.pool, p.id)
             .await
             .map_err(|e| e.to_string())?
         {
-            endpoint_provider.insert(e.id, p.display_name.clone());
+            endpoint_provider.insert(e.id, (p.id, p.display_name.clone()));
+            base_url_provider
+                .entry(normalize_base(&e.base_url))
+                .or_insert(p.id);
         }
     }
 
-    // Library attribution: route remote id -> provider.
-    let mut library_provider: std::collections::HashMap<String, String> =
+    // Library attribution: route remote id -> (provider id, name).
+    let mut library_provider: std::collections::HashMap<String, (uuid::Uuid, String)> =
         std::collections::HashMap::new();
     for r in &routes {
-        if let Some(pn) = endpoint_provider.get(&r.endpoint_id) {
+        if let Some(pidpn) = endpoint_provider.get(&r.endpoint_id) {
             library_provider
                 .entry(r.remote_model_id.to_lowercase())
-                .or_insert_with(|| pn.clone());
+                .or_insert(pidpn.clone());
         }
     }
 
     // Catalog attribution (remote id across every discovered endpoint).
-    let mut catalog_provider: std::collections::HashMap<String, String> =
+    let mut catalog_provider: std::collections::HashMap<String, (uuid::Uuid, String)> =
         std::collections::HashMap::new();
     for p in &providers {
         for e in list_endpoints(&state.pool, p.id)
@@ -144,7 +152,7 @@ pub async fn harness_models_view_cmd(
             {
                 catalog_provider
                     .entry(c.remote_model_id.to_lowercase())
-                    .or_insert_with(|| p.display_name.clone());
+                    .or_insert((p.id, p.display_name.clone()));
             }
         }
     }
@@ -176,10 +184,10 @@ pub async fn harness_models_view_cmd(
                 r.remote_model_id.to_lowercase() == remote_lower
             });
             let keys = attribution_keys(&m.route.remote_model_id);
-            let find_in = |map: &std::collections::HashMap<String, String>| {
+            let find_in = |map: &std::collections::HashMap<String, (uuid::Uuid, String)>| {
                 keys.iter().find_map(|k| map.get(k).cloned())
             };
-            let (provider_name, provider_match, provider_base_url) = {
+            let (provider_name, provider_match, provider_base_url, provider_id) = {
                 // 1) The harness's own provider grouping is authoritative.
                 let native_lower = m.native_id.to_lowercase();
                 let native = keys
@@ -188,23 +196,42 @@ pub async fn harness_models_view_cmd(
                     .or_else(|| native_providers.get(&native_lower))
                     .cloned();
                 if let Some((pname, base)) = native {
-                    (Some(pname), Some("harness".to_string()), base)
-                } else if let Some(pn) = keys
+                    let pid = base
+                        .as_deref()
+                        .and_then(|b| base_url_provider.get(&normalize_base(b)))
+                        .copied();
+                    (
+                        Some(pname),
+                        Some("harness".to_string()),
+                        base,
+                        pid.map(|p| p.to_string()),
+                    )
+                } else if let Some((pid, pn)) = keys
                     .first()
                     .and_then(|k| library_provider.get(k).cloned())
                 {
-                    (Some(pn), Some("library".to_string()), None)
-                } else if let Some(pn) = keys
+                    (Some(pn), Some("library".to_string()), None, Some(pid.to_string()))
+                } else if let Some((pid, pn)) = keys
                     .first()
                     .and_then(|k| catalog_provider.get(k).cloned())
                 {
-                    (Some(pn), Some("catalog".to_string()), None)
-                } else if let Some(pn) = find_in(&library_provider) {
-                    (Some(pn), Some("library-suffix".to_string()), None)
-                } else if let Some(pn) = find_in(&catalog_provider) {
-                    (Some(pn), Some("catalog-suffix".to_string()), None)
+                    (Some(pn), Some("catalog".to_string()), None, Some(pid.to_string()))
+                } else if let Some((pid, pn)) = find_in(&library_provider) {
+                    (
+                        Some(pn),
+                        Some("library-suffix".to_string()),
+                        None,
+                        Some(pid.to_string()),
+                    )
+                } else if let Some((pid, pn)) = find_in(&catalog_provider) {
+                    (
+                        Some(pn),
+                        Some("catalog-suffix".to_string()),
+                        None,
+                        Some(pid.to_string()),
+                    )
                 } else {
-                    (None, None, None)
+                    (None, None, None, None)
                 }
             };
             HarnessModelRow {
@@ -218,6 +245,7 @@ pub async fn harness_models_view_cmd(
                 provider_name,
                 provider_match,
                 provider_base_url,
+                provider_id,
             }
         })
         .collect())
@@ -477,6 +505,19 @@ pub async fn apply_harness_model_edits_cmd(
         + count_kind(&plan, "model", "remove");
     if mutating == 0 {
         return Err("nothing changed by these operations".into());
+    }
+    // The adapter may drop actions it cannot write (e.g. an older writer
+    // without removal support). Reporting success while writing nothing is
+    // worse than failing loudly with the adapter's own explanation.
+    if native_plan.changes.is_empty() {
+        let detail = if native_plan.warnings.is_empty() {
+            "the adapter produced no writable changes for this operation".to_string()
+        } else {
+            native_plan.warnings.join("; ")
+        };
+        return Err(format!(
+            "this harness adapter cannot write this change yet: {detail}"
+        ));
     }
 
     let tx = begin_transaction(
