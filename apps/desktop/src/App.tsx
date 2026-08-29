@@ -15,6 +15,7 @@ import { DashboardScreen } from "./screens/DashboardScreen";
 import { PlaceholderScreen } from "./screens/PlaceholderScreen";
 import SettingsScreen from "./screens/SettingsScreen";
 import HarnessProviderDetailScreen from "./screens/HarnessProviderDetailScreen";
+import { ToastViewport } from "./components/Toast";
 
 const PLACEHOLDERS = [
   "pending",
@@ -52,6 +53,7 @@ export default function App() {
           ))}
         </Routes>
       </main>
+      <ToastViewport />
     </div>
   );
 }

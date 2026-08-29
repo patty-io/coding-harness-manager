@@ -46,7 +46,7 @@ export default function HistoryScreen() {
                   confirm(
                     "Roll back this sync?",
                     "Files changed by this sync will be restored from the snapshot.",
-                    () => rollback.mutate(e.transactionId),
+                    () => rollback.mutateAsync(e.transactionId).then(() => undefined),
                     "Roll back",
                   )
                 }

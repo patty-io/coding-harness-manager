@@ -92,7 +92,7 @@ export default function ProvidersScreen() {
                   confirm(
                     `Delete ${p.display_name}?`,
                     "This deletes the provider and ALL its endpoints, models, and bindings. This cannot be undone.",
-                    () => del.mutate(p.id),
+                    () => del.mutateAsync(p.id).then(() => undefined),
                     "Delete",
                   )
                 }

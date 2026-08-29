@@ -203,6 +203,7 @@ export default function HarnessDetailScreen() {
       invalidateAfterEdit();
     } catch (e) {
       setRowNote(`Failed: ${String(e)}`);
+      throw e;
     } finally {
       setBusyRow(null);
     }
@@ -628,7 +629,7 @@ export default function HarnessDetailScreen() {
                                 `This removes the model from this harness's config file. A backup is taken first and you can undo it from History.`,
                                 () => {
                                   setBusyRow(m.nativeId);
-                                  void runOp([
+                                  return runOp([
                                     {
                                       op: "remove",
                                       nativeId: m.nativeId,
@@ -733,7 +734,7 @@ export default function HarnessDetailScreen() {
                               remoteModelId: dupId.trim(),
                               displayName: dupName.trim(),
                             },
-                          ]);
+                          ]).catch(() => undefined);
                         }}
                         disabled={invalid}
                         className="rounded bg-blue-600 px-3 py-1 text-sm text-white hover:bg-blue-500 disabled:opacity-50"
@@ -798,7 +799,7 @@ export default function HarnessDetailScreen() {
                       onClick={() => {
                         const ctx = parseInt(editContext, 10);
                         setEditing(null);
-                        void runOp([
+                          void runOp([
                           {
                             op: "update",
                             nativeId: editing.nativeId,
@@ -807,7 +808,7 @@ export default function HarnessDetailScreen() {
                             remoteModelId: editRemote,
                             ...(Number.isFinite(ctx) ? { contextWindow: ctx } : {}),
                           },
-                        ]);
+                        ]).catch(() => undefined);
                       }}
                       className="rounded bg-blue-600 px-3 py-1 text-sm text-white hover:bg-blue-500"
                     >

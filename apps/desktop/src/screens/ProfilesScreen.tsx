@@ -52,7 +52,7 @@ export default function ProfilesScreen() {
               </button>
               <button
                 onClick={() =>
-                  confirm("Delete preset?", "This cannot be undone.", () => del.mutate(p.id), "Delete")
+                  confirm("Delete preset?", "This cannot be undone.", () => del.mutateAsync(p.id).then(() => undefined), "Delete")
                 }
                 className="rounded border border-red-200 px-2 py-0.5 text-xs text-red-600"
               >

@@ -283,7 +283,7 @@ export default function McpScreen() {
                       confirm(
                         `Delete ${s.name}?`,
                         "This removes the MCP server from your library.",
-                        () => del.mutate(s.id),
+                        () => del.mutateAsync(s.id).then(() => undefined),
                         "Delete",
                       )
                     }
