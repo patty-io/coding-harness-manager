@@ -119,7 +119,7 @@ export default function HarnessesScreen() {
                   title="Compare registry with this harness's config and preview changes"
                   className="rounded border border-blue-500/60 bg-blue-500/10 px-2 py-0.5 text-xs font-medium text-blue-300 hover:bg-blue-500/25"
                 >
-                  Review changes
+                  Sync from library…
                 </button>
               )}
             </div>

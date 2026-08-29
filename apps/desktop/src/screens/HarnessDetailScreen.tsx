@@ -328,9 +328,10 @@ export default function HarnessDetailScreen() {
           </div>
           <button
             onClick={() => setSyncing(true)}
+            title="Compare your My Models library with this harness and preview what a sync would change. Nothing is written until you press Apply."
             className="rounded bg-blue-600 px-3 py-1 text-sm text-white hover:bg-blue-500"
           >
-            Review changes
+            Sync from library…
           </button>
         </div>
       </div>
@@ -401,8 +402,8 @@ export default function HarnessDetailScreen() {
                 </div>
                 <p className="mt-1 text-xs text-amber-200/70">
                   "Keep my changes" records the file as it is now as the new
-                  baseline. "Review changes" instead compares the registry with
-                  disk and lets you apply.
+                  baseline. "Sync from library…" instead compares your My
+                  Models library with disk and lets you apply.
                 </p>
                 {showDiff && (
                   <div className="mt-3 grid grid-cols-1 gap-3 lg:grid-cols-2">
