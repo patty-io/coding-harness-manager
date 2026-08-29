@@ -1,9 +1,10 @@
 import { useState } from "react";
-import { Link, useParams } from "react-router-dom";
+import { Link, useNavigate, useParams } from "react-router-dom";
 import { useQuery } from "@tanstack/react-query";
 import {
   adoptHarnessModel,
   applyHarnessModelEdits,
+  ensureProviderFromHarness,
   harnessModelsView,
   launchProfile,
   listEndpointOptions,
@@ -78,6 +79,7 @@ function EmptyState({ children }: { children: React.ReactNode }) {
 
 export default function HarnessDetailScreen() {
   const { id } = useParams<{ id: string }>();
+  const navigate = useNavigate();
   const [tab, setTab] = useState<TabId>("overview");
   const [showDiff, setShowDiff] = useState(false);
   const [syncing, setSyncing] = useState(false);
@@ -141,6 +143,28 @@ export default function HarnessDetailScreen() {
   const [busyRow, setBusyRow] = useState<string | null>(null);
   const [rowNote, setRowNote] = useState<string | null>(null);
   const { confirm, confirmDialog } = useConfirm();
+  const [linkingProvider, setLinkingProvider] = useState<string | null>(null);
+
+  const openProvider = async (m: HarnessModelRow) => {
+    if (m.providerId) {
+      navigate(`/providers/${m.providerId}`);
+      return;
+    }
+    // Harness-declared provider: materialize it (name + base URL from the
+    // harness config) so it has a detail page, then navigate there.
+    if (m.providerMatch === "harness" && m.providerBaseUrl && m.providerName) {
+      setLinkingProvider(m.providerName);
+      try {
+        const r = await ensureProviderFromHarness(id!, m.providerName);
+        void qc.invalidateQueries({ queryKey: ["providers"] });
+        navigate(`/providers/${r.providerId}`);
+      } catch (e) {
+        setRowNote(`Could not open provider: ${String(e)}`);
+      } finally {
+        setLinkingProvider(null);
+      }
+    }
+  };
   const [adoptEndpoint, setAdoptEndpoint] = useState("");
   const { data: endpointOptions } = useQuery({
     queryKey: ["endpoint-options"],
@@ -521,16 +545,27 @@ export default function HarnessDetailScreen() {
                               `matched via ${m.providerMatch}`
                             }
                           >
-                            {m.providerId ? (
-                              <Link
-                                to={`/providers/${m.providerId}`}
-                                className="text-blue-400 hover:underline"
-                              >
-                                {m.providerName}
-                              </Link>
-                            ) : (
-                              m.providerName
-                            )}
+                            {(() => {
+                              const clickable =
+                                !!m.providerId ||
+                                (m.providerMatch === "harness" &&
+                                  !!m.providerBaseUrl);
+                              if (!clickable) return m.providerName;
+                              return (
+                                <button
+                                  onClick={(e) => {
+                                    e.stopPropagation();
+                                    void openProvider(m);
+                                  }}
+                                  disabled={linkingProvider === m.providerName}
+                                  className="text-blue-400 hover:underline disabled:opacity-50"
+                                >
+                                  {linkingProvider === m.providerName
+                                    ? "opening…"
+                                    : m.providerName}
+                                </button>
+                              );
+                            })()}
                             {m.providerMatch?.startsWith("catalog") && (
                               <span className="ml-1 text-slate-600">
                                 {m.providerMatch === "catalog-suffix" ? "(catalog~)" : "(catalog)"}

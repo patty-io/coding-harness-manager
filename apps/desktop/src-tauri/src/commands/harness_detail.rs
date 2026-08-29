@@ -815,3 +815,120 @@ fn native_providers_lookup<'m>(
 ) -> Option<&'m (String, Option<String>)> {
     map.get(remote_lower).or_else(|| map.get(native_lower))
 }
+#[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct EnsureProviderOutcome {
+    pub provider_id: String,
+    pub provider_created: bool,
+    pub endpoint_created: bool,
+}
+
+/// Materialize a harness-declared provider (name + base URL from the
+/// harness's own config) into the registry so it has a detail page.
+/// Reuses the provider by slug and the endpoint by base URL when present.
+#[tauri::command]
+pub async fn ensure_provider_from_harness_cmd(
+    state: State<'_, AppState>,
+    installation_id: String,
+    provider_name: String,
+) -> Result<EnsureProviderOutcome, String> {
+    use chm_core::domain::provider::{AuthType, Protocol, ProviderEndpoint};
+
+    let id = Uuid::parse_str(&installation_id).map_err(|e| e.to_string())?;
+    let inst = list_installations(&state.pool)
+        .await
+        .map_err(|e| e.to_string())?
+        .into_iter()
+        .find(|i| i.id == id)
+        .ok_or_else(|| format!("installation {installation_id} not found"))?;
+
+    let provider_map = harness_provider_map(&inst);
+    let base_url = provider_map
+        .values()
+        .find(|(pname, _)| *pname == provider_name)
+        .and_then(|(_, base)| base.clone())
+        .ok_or_else(|| {
+            format!("provider {provider_name} not declared in this harness's config")
+        })?;
+
+    let providers = list_providers(&state.pool)
+        .await
+        .map_err(|e| e.to_string())?;
+    let target_base = normalize_base(&base_url);
+    let mut provider_created = false;
+    let mut endpoint_created = false;
+
+    let mut endpoint: Option<ProviderEndpoint> = None;
+    for p in &providers {
+        for e in list_endpoints(&state.pool, p.id)
+            .await
+            .map_err(|e| e.to_string())?
+        {
+            if normalize_base(&e.base_url) == target_base {
+                endpoint = Some(e);
+                break;
+            }
+        }
+        if endpoint.is_some() {
+            break;
+        }
+    }
+
+    let provider = if let Some(e) = &endpoint {
+        providers
+            .iter()
+            .find(|p| p.id == e.provider_id)
+            .cloned()
+            .ok_or("endpoint without provider")?
+    } else {
+        provider_created = true;
+        endpoint_created = true;
+        let slug = slugify(&provider_name);
+        match providers.into_iter().find(|p| p.name == slug) {
+            Some(p) => {
+                provider_created = false;
+                p
+            }
+            None => {
+                chm_database::repos::providers::create_provider(
+                    &state.pool,
+                    &slug,
+                    &provider_name,
+                )
+                .await
+                .map_err(|e| e.to_string())?
+            }
+        }
+    };
+
+    let endpoint_id = if let Some(e) = endpoint {
+        e.id
+    } else {
+        chm_database::repos::providers::create_endpoint(
+            &state.pool,
+            &ProviderEndpoint {
+                id: Uuid::new_v4(),
+                provider_id: provider.id,
+                name: "API".into(),
+                base_url,
+                protocol: Protocol::parse_str("openai-chat"),
+                discovery_path: Some("/v1/models".into()),
+                auth_type: AuthType::BearerToken,
+                credential_ref: None,
+                headers: Default::default(),
+                enabled: true,
+                created_at: chrono::Utc::now(),
+                updated_at: chrono::Utc::now(),
+            },
+        )
+        .await
+        .map_err(|e| e.to_string())?
+        .id
+    };
+
+    Ok(EnsureProviderOutcome {
+        provider_id: provider.id.to_string(),
+        provider_created,
+        endpoint_created,
+    })
+}

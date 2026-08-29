@@ -414,6 +414,21 @@ export async function smartAdoptHarnessModel(
     nativeId,
   });
 }
+export interface EnsureProviderOutcome {
+  providerId: string;
+  providerCreated: boolean;
+  endpointCreated: boolean;
+}
+
+export async function ensureProviderFromHarness(
+  installationId: string,
+  providerName: string,
+): Promise<EnsureProviderOutcome> {
+  return invoke<EnsureProviderOutcome>("ensure_provider_from_harness_cmd", {
+    installationId,
+    providerName,
+  });
+}
 export async function adoptHarnessModel(
   installationId: string,
   nativeId: string,
