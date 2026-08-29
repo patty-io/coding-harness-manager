@@ -80,11 +80,11 @@ export default function DoctorScreen() {
         {exportRun.isError && <p className="mt-2 text-xs text-red-400">Export failed: {exportRun.error.message}</p>}
       </div>
 
-      {doctor.isError && <p className="mt-4 text-sm text-red-400">Doctor failed: {doctor.error.message}</p>}
+      {doctor.isError && <p className="mt-4 text-sm text-red-400" role="alert">Doctor failed: {doctor.error.message}</p>}
       {report && (
         <div className="mt-4 space-y-3">
           <div className="rounded border border-slate-700 bg-slate-800/60 p-3 text-sm">
-            <span className={report.summary.startsWith("issues") ? "text-amber-300" : "text-green-400"}>{report.summary}</span>
+            <span className={report.summary.startsWith("issues") ? "text-amber-300" : "text-green-400"} role="status" aria-live="polite">{report.summary}</span>
             <span className="ml-3 text-xs text-slate-500">generated {new Date(report.generatedAt).toLocaleString()} · app {report.appVersion}</span>
           </div>
           {report.harnessChecks.map((group) => (

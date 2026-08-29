@@ -339,10 +339,15 @@ export default function HarnessDetailScreen() {
         </p>
       )}
 
-      <div className="mt-4 flex gap-1 border-b border-slate-700">
+      <div className="mt-4 flex gap-1 border-b border-slate-700" role="tablist" aria-label="Harness details">
         {TABS.map((t) => (
           <button
             key={t.id}
+            id={`harness-tab-${t.id}`}
+            type="button"
+            role="tab"
+            aria-selected={tab === t.id}
+            aria-controls={`harness-tabpanel-${t.id}`}
             onClick={() => setTab(t.id)}
             className={`rounded-t px-4 py-2 text-sm ${
               tab === t.id
@@ -370,7 +375,13 @@ export default function HarnessDetailScreen() {
         ))}
       </div>
 
-      <div className="mt-4">
+      <div
+        className="mt-4"
+        id={`harness-tabpanel-${tab}`}
+        role="tabpanel"
+        aria-labelledby={`harness-tab-${tab}`}
+        tabIndex={0}
+      >
         {tab === "overview" && (
           <div>
             {drift?.drifted && (

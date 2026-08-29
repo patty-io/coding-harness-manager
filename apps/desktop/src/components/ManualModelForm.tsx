@@ -2,6 +2,7 @@ import { useEffect, useState } from "react";
 import { useEndpoints, useProviders } from "../hooks/useProviders";
 import type { RouteCreateInput } from "../lib/api";
 import type { UseMutationResult } from "@tanstack/react-query";
+import { Field } from "./Field";
 
 export function ManualModelForm({
   create,
@@ -63,48 +64,60 @@ export function ManualModelForm({
     <div className="mt-6 rounded border border-slate-700 bg-slate-800 p-4">
       <h2 className="font-medium">Add Model Manually</h2>
       <div className="mt-2 grid grid-cols-1 gap-2 md:grid-cols-2">
-        <select
-          value={providerName}
-          onChange={(e) => setProviderName(e.target.value)}
-          className="rounded border border-slate-600 px-2 py-1"
-        >
-          <option value="">provider…</option>
-          {(allProviders ?? []).map((p) => (
-            <option key={p.id} value={p.display_name}>
-              {p.display_name}
-            </option>
-          ))}
-        </select>
-        <select
-          value={endpointId}
-          onChange={(e) => setEndpointId(e.target.value)}
-          className="rounded border border-slate-600 px-2 py-1"
-        >
-          {(endpoints ?? []).map((e) => (
-            <option key={e.id} value={e.id}>
-              {e.name}
-            </option>
-          ))}
-        </select>
-        <input
-          value={remoteModelId}
-          onChange={(e) => setRemoteModelId(e.target.value)}
-          placeholder="remote model id (required)"
-          className="rounded border border-slate-600 px-2 py-1"
-        />
-        <input
-          value={displayName}
-          onChange={(e) => setDisplayName(e.target.value)}
-          placeholder="display name"
-          className="rounded border border-slate-600 px-2 py-1"
-        />
-        <input
-          value={contextWindow}
-          onChange={(e) => setContextWindow(e.target.value)}
-          placeholder="context window"
-          type="number"
-          className="rounded border border-slate-600 px-2 py-1"
-        />
+        <Field id="manual-provider" label="Provider" required>
+          <select
+            value={providerName}
+            onChange={(e) => setProviderName(e.target.value)}
+            className="w-full rounded border border-slate-600 px-2 py-1"
+          >
+            <option value="">Choose provider…</option>
+            {(allProviders ?? []).map((p) => (
+              <option key={p.id} value={p.display_name}>
+                {p.display_name}
+              </option>
+            ))}
+          </select>
+        </Field>
+        <Field id="manual-endpoint" label="Endpoint" required>
+          <select
+            value={endpointId}
+            onChange={(e) => setEndpointId(e.target.value)}
+            className="w-full rounded border border-slate-600 px-2 py-1"
+          >
+            <option value="">Choose endpoint…</option>
+            {(endpoints ?? []).map((e) => (
+              <option key={e.id} value={e.id}>
+                {e.name}
+              </option>
+            ))}
+          </select>
+        </Field>
+        <Field id="manual-remote-model-id" label="Remote model id" required>
+          <input
+            value={remoteModelId}
+            onChange={(e) => setRemoteModelId(e.target.value)}
+            placeholder="e.g. qwen3.8-27b"
+            className="w-full rounded border border-slate-600 px-2 py-1"
+          />
+        </Field>
+        <Field id="manual-display-name" label="Display name" description="Optional name shown in the library.">
+          <input
+            value={displayName}
+            onChange={(e) => setDisplayName(e.target.value)}
+            placeholder="Defaults to remote model id"
+            className="w-full rounded border border-slate-600 px-2 py-1"
+          />
+        </Field>
+        <Field id="manual-context-window" label="Context window" description="Optional token limit.">
+          <input
+            value={contextWindow}
+            onChange={(e) => setContextWindow(e.target.value)}
+            placeholder="e.g. 128000"
+            type="number"
+            min="1"
+            className="w-full rounded border border-slate-600 px-2 py-1"
+          />
+        </Field>
       </div>
       <div className="mt-3 flex gap-2">
         <button
