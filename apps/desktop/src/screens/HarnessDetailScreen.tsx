@@ -143,6 +143,8 @@ export default function HarnessDetailScreen() {
   const [editContext, setEditContext] = useState<string>("");
   const [busyRow, setBusyRow] = useState<string | null>(null);
   const [rowNote, setRowNote] = useState<string | null>(null);
+  const [directEditMode, setDirectEditMode] = useState(false);
+  const [rawCopied, setRawCopied] = useState(false);
   const { confirm, confirmDialog } = useConfirm();
   const [adoptEndpoint, setAdoptEndpoint] = useState("");
   const { data: endpointOptions } = useQuery({
@@ -206,6 +208,17 @@ export default function HarnessDetailScreen() {
       throw e;
     } finally {
       setBusyRow(null);
+    }
+  };
+
+  const copyRawConfig = async () => {
+    if (typeof rawConfig !== "string") return;
+    try {
+      await navigator.clipboard.writeText(rawConfig);
+      setRawCopied(true);
+      window.setTimeout(() => setRawCopied(false), 1800);
+    } catch {
+      setRowNote("Could not copy the raw config; select the text manually.");
     }
   };
 
@@ -420,6 +433,9 @@ export default function HarnessDetailScreen() {
               </div>
             )}
             <div className="rounded border border-slate-700 bg-slate-800 p-4">
+              <div className="mb-3 text-xs font-medium uppercase tracking-wide text-slate-500">
+                Actual state · read from disk
+              </div>
               <Row label="Models configured">{counts.models}</Row>
               <Row label="MCP servers attached">{counts.mcp}</Row>
               <Row label="Skills installed">{counts.skills}</Row>
@@ -429,8 +445,9 @@ export default function HarnessDetailScreen() {
               </Row>
             </div>
             <p className="mt-3 text-xs text-slate-500">
-              Editing is not wired up yet — this page currently mirrors what is
-              on disk. Changing values from inside the app lands next.
+              This view is authoritative for the harness files on this machine.
+              Changes made through Sync from library or the advanced direct-edit
+              controls are written to disk and recorded in History.
             </p>
           </div>
         )}
@@ -438,11 +455,28 @@ export default function HarnessDetailScreen() {
         {tab === "models" && (
           <div>
             <div className="flex flex-wrap items-center justify-between gap-2">
-              <p className="text-xs text-slate-500">
-                Models configured on this harness, as they are on disk right
-                now. Rows matching your library are marked; the rest can be
-                pulled in.
-              </p>
+              <div>
+                <p className="text-xs text-slate-500">
+                  Actual state: models currently configured on this harness. A
+                  library match is only a status indicator; Sync from library
+                  is the separate desired-state workflow.
+                </p>
+                <button
+                  type="button"
+                  onClick={() => setDirectEditMode((v) => !v)}
+                  className="mt-2 rounded border border-amber-500/40 px-2 py-1 text-xs text-amber-300 hover:bg-amber-500/10"
+                  aria-expanded={directEditMode}
+                >
+                  {directEditMode ? "Hide direct editing" : "Edit harness directly…"}
+                </button>
+                {directEditMode && (
+                  <p className="mt-1 max-w-xl text-xs text-amber-200/70">
+                    Advanced mode writes the harness config itself. These edits
+                    do not change My Models; every write creates a backup and a
+                    History entry.
+                  </p>
+                )}
+              </div>
               {(() => {
                 const canAdd = missingFromLibrary.length > 0;
                 return (
@@ -595,7 +629,7 @@ export default function HarnessDetailScreen() {
                               To library
                             </button>
                           )}
-                          <button
+                          {directEditMode && <button
                             onClick={() => {
                               setEditing(m);
                               setEditName(m.displayName);
@@ -608,8 +642,8 @@ export default function HarnessDetailScreen() {
                             className="rounded border border-slate-600 px-2 py-0.5 text-xs text-slate-300 hover:bg-slate-700"
                           >
                             Edit
-                          </button>
-                          <button
+                          </button>}
+                          {directEditMode && <button
                             disabled={busyRow === m.nativeId}
                             onClick={() => {
                               setDuplicating(m);
@@ -620,8 +654,8 @@ export default function HarnessDetailScreen() {
                             className="rounded border border-slate-600 px-2 py-0.5 text-xs text-slate-300 hover:bg-slate-700 disabled:opacity-50"
                           >
                             Duplicate
-                          </button>
-                          <button
+                          </button>}
+                          {directEditMode && <button
                             disabled={busyRow === m.nativeId}
                             onClick={() =>
                               confirm(
@@ -644,7 +678,7 @@ export default function HarnessDetailScreen() {
                             className="rounded border border-red-500/50 px-2 py-0.5 text-xs text-red-400 hover:bg-red-500/10 disabled:opacity-50"
                           >
                             Delete
-                          </button>
+                          </button>}
                         </div>
                       </td>
                     </tr>
@@ -947,10 +981,24 @@ export default function HarnessDetailScreen() {
               <EmptyState>Scroll to this tab to load the raw config.</EmptyState>
             )}
             {typeof rawConfig === "string" ? (
-              <pre className="max-h-[60vh] overflow-auto rounded border border-slate-700 bg-slate-950 p-4 font-mono text-xs leading-relaxed text-slate-300">
-                {rawConfig}
-              </pre>
-             ) : null}
+              <div>
+                <div className="mb-2 flex items-center justify-between">
+                  <span className="text-xs text-slate-500">
+                    Actual file contents · read-only
+                  </span>
+                  <button
+                    type="button"
+                    onClick={() => void copyRawConfig()}
+                    className="rounded border border-slate-600 px-2 py-1 text-xs text-slate-300 hover:bg-slate-700"
+                  >
+                    {rawCopied ? "Copied" : "Copy config"}
+                  </button>
+                </div>
+                <pre className="max-h-[60vh] overflow-auto rounded border border-slate-700 bg-slate-950 p-4 font-mono text-xs leading-relaxed text-slate-300">
+                  {rawConfig}
+                </pre>
+              </div>
+            ) : null}
           </div>
         )}
       </div>
