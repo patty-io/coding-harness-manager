@@ -20,6 +20,9 @@ type Tab = "mine" | "discovered";
 export default function ModelsScreen() {
   const [tab, setTab] = useState<Tab>("mine");
   const [providerFilter, setProviderFilter] = useState("");
+  const [endpointFilter, setEndpointFilter] = useState("");
+  const [stateFilter, setStateFilter] = useState("");
+  const [search, setSearch] = useState("");
   const { data: routes } = useRoutes();
   const { data: catalog } = useCatalogAll(tab === "discovered");
   const importBatch = useImportBatch();
@@ -42,12 +45,58 @@ export default function ModelsScreen() {
     [routes],
   );
 
+  const endpoints = useMemo(
+    () =>
+      [...
+        new Map(
+          [
+            ...(routes ?? []).map((r) => [
+              r.endpoint_id,
+              `${r.provider_name} · ${r.endpoint_name}`,
+            ] as const),
+            ...(catalog ?? []).map((m) => [
+              m.endpoint_id,
+              `${m.provider_name} · ${m.endpoint_name}`,
+            ] as const),
+          ],
+        ),
+      ],
+    [routes, catalog],
+  );
+
+  const stateOptions =
+    tab === "mine"
+      ? ["enabled", "disabled"]
+      : [...new Set((catalog ?? []).map((m) => m.status))].sort();
+
   const filteredRoutes = useMemo(
     () =>
       (routes ?? []).filter(
-        (r) => !providerFilter || r.provider_name === providerFilter,
+        (r) =>
+          (!providerFilter || r.provider_name === providerFilter) &&
+          (!endpointFilter || r.endpoint_id === endpointFilter) &&
+          (!stateFilter || (stateFilter === "enabled" ? r.enabled : !r.enabled)) &&
+          (!search.trim() ||
+            `${r.display_name} ${r.remote_model_id} ${r.provider_name} ${r.endpoint_name}`
+              .toLowerCase()
+              .includes(search.trim().toLowerCase())),
       ),
-    [routes, providerFilter],
+    [routes, providerFilter, endpointFilter, stateFilter, search],
+  );
+
+  const filteredCatalog = useMemo(
+    () =>
+      (catalog ?? []).filter(
+        (m) =>
+          (!providerFilter || m.provider_name === providerFilter) &&
+          (!endpointFilter || m.endpoint_id === endpointFilter) &&
+          (!stateFilter || m.status === stateFilter) &&
+          (!search.trim() ||
+            `${m.remote_model_id} ${m.provider_name} ${m.endpoint_name}`
+              .toLowerCase()
+              .includes(search.trim().toLowerCase())),
+      ),
+    [catalog, providerFilter, endpointFilter, stateFilter, search],
   );
 
   const toggleCatalog = (id: string) =>
@@ -67,7 +116,7 @@ export default function ModelsScreen() {
             active={tab === "discovered"}
             onClick={() => setTab("discovered")}
           >
-            Not imported
+            Discovered
           </TabButton>
         </div>
       </div>
@@ -82,6 +131,15 @@ export default function ModelsScreen() {
             />
             <SyncToHarnessButton label="Sync entire library…" />
             <label>
+              Search:{" "}
+              <input
+                value={search}
+                onChange={(e) => setSearch(e.target.value)}
+                placeholder="model or provider"
+                className="w-44 rounded border border-slate-600 px-2 py-1"
+              />
+            </label>
+            <label>
               Provider:{" "}
               <select
                 value={providerFilter}
@@ -92,6 +150,36 @@ export default function ModelsScreen() {
                 {providers.map((p) => (
                   <option key={p} value={p}>
                     {p}
+                </option>
+              ))}
+              </select>
+            </label>
+            <label>
+              Endpoint:{" "}
+              <select
+                value={endpointFilter}
+                onChange={(e) => setEndpointFilter(e.target.value)}
+                className="max-w-56 rounded border border-slate-600 px-2 py-1"
+              >
+                <option value="">all</option>
+                {endpoints.map(([id, label]) => (
+                  <option key={id} value={id}>
+                    {label}
+                  </option>
+                ))}
+              </select>
+            </label>
+            <label>
+              State:{" "}
+              <select
+                value={stateFilter}
+                onChange={(e) => setStateFilter(e.target.value)}
+                className="rounded border border-slate-600 px-2 py-1"
+              >
+                <option value="">all</option>
+                {stateOptions.map((state) => (
+                  <option key={state} value={state}>
+                    {state}
                   </option>
                 ))}
               </select>
@@ -102,6 +190,7 @@ export default function ModelsScreen() {
               <tr className="border-b text-left">
                 <th className="p-2"><span className="sr-only">Select</span></th>
                 <th className="p-2">Provider</th>
+                <th className="p-2">Endpoint</th>
                 <th className="p-2">Model</th>
                 <th className="p-2">Context</th>
                 <th className="p-2">Source</th>
@@ -127,6 +216,7 @@ export default function ModelsScreen() {
                     />
                   </td>
                   <td className="p-2">{r.provider_name}</td>
+                  <td className="p-2 text-xs text-slate-400">{r.endpoint_name}</td>
                   <td className="p-2">
                     <div className="font-medium">{r.display_name}</div>
                     <div className="font-mono text-xs text-slate-400">
@@ -205,6 +295,9 @@ export default function ModelsScreen() {
             >
               Add {selectedCatalog.length > 0 ? `(${selectedCatalog.length})` : ""} to My Models
             </button>
+            <span className="ml-3 text-xs text-slate-500">
+              Select discovered models by endpoint; status is refreshed by provider discovery.
+            </span>
           </div>
           <table className="mt-3 w-full bg-slate-800 text-sm">
             <thead>
@@ -212,11 +305,12 @@ export default function ModelsScreen() {
                 <th className="p-2"></th>
                 <th className="p-2">Provider</th>
                 <th className="p-2">Remote model id</th>
+                <th className="p-2">Endpoint</th>
                 <th className="p-2">Status</th>
               </tr>
             </thead>
             <tbody>
-              {(catalog ?? [])
+              {filteredCatalog
                 .filter((m) => !m.in_my_models)
                 .map((m) => (
                 <tr key={m.id} className="border-b">
@@ -229,6 +323,7 @@ export default function ModelsScreen() {
                   </td>
                   <td className="p-2">{m.provider_name}</td>
                   <td className="p-2 font-mono text-xs">{m.remote_model_id}</td>
+                  <td className="p-2 text-xs text-slate-400">{m.endpoint_name}</td>
                   <td className="p-2 text-xs">
                     {m.status}
                     {m.match_confidence !== null && (

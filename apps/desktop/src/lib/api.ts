@@ -294,6 +294,7 @@ export interface ModelRouteView {
   id: string;
   endpoint_id: string;
   provider_name: string;
+  endpoint_name: string;
   remote_model_id: string;
   display_name: string;
   context_window: number | null;

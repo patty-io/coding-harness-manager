@@ -18,6 +18,7 @@ pub struct ModelRouteView {
     pub id: String,
     pub endpoint_id: String,
     pub provider_name: String,
+    pub endpoint_name: String,
     pub remote_model_id: String,
     pub display_name: String,
     pub context_window: Option<i64>,
@@ -54,7 +55,7 @@ pub async fn list_route_views(pool: &Pool<Sqlite>) -> Result<Vec<ModelRouteView>
     let views = routes
         .into_iter()
         .map(|r| {
-            let (provider_name, _endpoint_name) = endpoint_map
+            let (provider_name, endpoint_name) = endpoint_map
                 .get(&r.endpoint_id)
                 .cloned()
                 .unwrap_or_default();
@@ -62,6 +63,7 @@ pub async fn list_route_views(pool: &Pool<Sqlite>) -> Result<Vec<ModelRouteView>
                 id: r.id.to_string(),
                 endpoint_id: r.endpoint_id.to_string(),
                 provider_name,
+                endpoint_name,
                 remote_model_id: r.remote_model_id.clone(),
                 display_name: r.display_name.clone(),
                 context_window: r.context_window,
