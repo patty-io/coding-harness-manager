@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { Link, useParams } from "react-router-dom";
+import { Link, useNavigate, useParams } from "react-router-dom";
 import { useQuery } from "@tanstack/react-query";
 import {
   adoptHarnessModel,
@@ -22,7 +22,10 @@ import {
 import { SyncDialog } from "../components/SyncDialog";
 import { ConfigDiffViewer } from "../components/ConfigDiffViewer";
 import { useConfirm } from "../components/ConfirmDialog";
-import { smartAdoptHarnessModel } from "../lib/api";
+import {
+  ensureProviderFromHarness,
+  smartAdoptHarnessModel,
+} from "../lib/api";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 
 const STATUS_STYLES: Record<string, string> = {
@@ -80,6 +83,7 @@ function EmptyState({ children }: { children: React.ReactNode }) {
 
 export default function HarnessDetailScreen() {
   const { id } = useParams<{ id: string }>();
+  const navigate = useNavigate();
   const [tab, setTab] = useState<TabId>("overview");
   const [showDiff, setShowDiff] = useState(false);
   const [syncing, setSyncing] = useState(false);
@@ -146,9 +150,32 @@ export default function HarnessDetailScreen() {
   const [editContext, setEditContext] = useState<string>("");
   const [busyRow, setBusyRow] = useState<string | null>(null);
   const [rowNote, setRowNote] = useState<string | null>(null);
+  const [linkingProvider, setLinkingProvider] = useState<string | null>(null);
   const [directEditMode, setDirectEditMode] = useState(false);
   const [rawCopied, setRawCopied] = useState(false);
   const { confirm, confirmDialog } = useConfirm();
+
+  const openProvider = async (model: HarnessModelRow) => {
+    if (model.providerMatch === "harness" && model.providerName && model.providerBaseUrl) {
+      setLinkingProvider(model.providerName);
+      try {
+        // If this provider was materialized from the harness before, this
+        // also repairs a missing credential (for example Pi's inline key).
+        const result = await ensureProviderFromHarness(id!, model.providerName);
+        void qc.invalidateQueries({ queryKey: ["providers"] });
+        void qc.invalidateQueries({ queryKey: ["endpoints", result.providerId] });
+        navigate(`/providers/${result.providerId}`);
+      } catch (error) {
+        setRowNote(`Could not open provider: ${String(error)}`);
+      } finally {
+        setLinkingProvider(null);
+      }
+      return;
+    }
+    if (model.providerId) {
+      navigate(`/providers/${model.providerId}`);
+    }
+  };
   const driftActionError = acceptLocalChanges.error ?? revertToBaseline.error;
   const driftActionPending =
     acceptLocalChanges.isPending || revertToBaseline.isPending;
@@ -597,19 +624,28 @@ export default function HarnessDetailScreen() {
                               `matched via ${m.providerMatch}`
                             }
                           >
-                            {m.providerId ? (
+                            {m.providerId ||
+                            (m.providerMatch === "harness" && m.providerBaseUrl) ? (
                               <Link
-                                to={`/providers/${m.providerId}`}
-                                className="text-blue-400 hover:underline"
+                                to={
+                                  m.providerId
+                                    ? `/providers/${m.providerId}`
+                                    : `/harnesses/${id}/providers/${encodeURIComponent(m.providerName)}`
+                                }
+                                onClick={(event) => {
+                                  if (
+                                    m.providerMatch === "harness" &&
+                                    m.providerBaseUrl
+                                  ) {
+                                    event.preventDefault();
+                                    void openProvider(m);
+                                  }
+                                }}
+                                className="text-blue-400 hover:underline disabled:opacity-50"
                               >
-                                {m.providerName}
-                              </Link>
-                            ) : m.providerMatch === "harness" && m.providerBaseUrl ? (
-                              <Link
-                                to={`/harnesses/${id}/providers/${encodeURIComponent(m.providerName)}`}
-                                className="text-blue-400 hover:underline"
-                              >
-                                {m.providerName}
+                                {linkingProvider === m.providerName
+                                  ? "opening…"
+                                  : m.providerName}
                               </Link>
                             ) : (
                               m.providerName

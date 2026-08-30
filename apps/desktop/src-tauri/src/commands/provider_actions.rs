@@ -72,6 +72,7 @@ pub struct EndpointDiscoverOutcome {
 pub struct ProviderDiscoverReport {
     pub endpoints_attempted: usize,
     pub endpoints_succeeded: usize,
+    pub endpoints_failed: usize,
     pub endpoints_skipped: Vec<SkippedEndpoint>,
     pub total: usize,
     pub added: usize,
@@ -88,6 +89,22 @@ pub struct SkippedEndpoint {
     pub endpoint_id: String,
     pub endpoint_name: String,
     pub reason: String,
+}
+
+fn count_failed_discovery_outcomes(
+    outcomes: &[EndpointDiscoverOutcome],
+    skipped: &[SkippedEndpoint],
+) -> usize {
+    outcomes
+        .iter()
+        .filter(|outcome| {
+            outcome.error.is_some()
+                && outcome.report.is_none()
+                && !skipped
+                    .iter()
+                    .any(|endpoint| endpoint.endpoint_id == outcome.endpoint_id)
+        })
+        .count()
 }
 
 /// Pick the endpoints that should be probed during a provider-level discovery.
@@ -232,6 +249,7 @@ pub async fn discover_provider_models(
         .await
         .map_err(|e| e.to_string())?;
     let (chosen, skipped) = pick_discovery_endpoints(&endpoints);
+    let endpoints_attempted = chosen.len();
     let mut outcomes: Vec<EndpointDiscoverOutcome> = skipped
         .iter()
         .map(|(ep, reason)| EndpointDiscoverOutcome {
@@ -301,18 +319,21 @@ pub async fn discover_provider_models(
             }
         }
     }
+    let skipped_reports: Vec<SkippedEndpoint> = skipped
+        .into_iter()
+        .map(|(ep, reason)| SkippedEndpoint {
+            endpoint_id: ep.id.to_string(),
+            endpoint_name: ep.name,
+            reason,
+        })
+        .collect();
+    let failed = count_failed_discovery_outcomes(&outcomes, &skipped_reports);
     let distinct_models = new_models.len() + updated_models.len();
     Ok(ProviderDiscoverReport {
-        endpoints_attempted: succeeded + outcomes.len().saturating_sub(skipped.len()),
+        endpoints_attempted,
         endpoints_succeeded: succeeded,
-        endpoints_skipped: skipped
-            .into_iter()
-            .map(|(ep, reason)| SkippedEndpoint {
-                endpoint_id: ep.id.to_string(),
-                endpoint_name: ep.name,
-                reason,
-            })
-            .collect(),
+        endpoints_failed: failed,
+        endpoints_skipped: skipped_reports,
         total,
         added,
         updated,
@@ -655,4 +676,45 @@ pub async fn provider_summaries(
             },
         )
         .collect())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{
+        DiscoverReport, EndpointDiscoverOutcome, SkippedEndpoint, count_failed_discovery_outcomes,
+    };
+
+    #[test]
+    fn failed_discovery_count_excludes_skipped_endpoints() {
+        let outcomes = vec![
+            EndpointDiscoverOutcome {
+                endpoint_id: "failed".into(),
+                endpoint_name: "Yolo-Auto API".into(),
+                report: None,
+                error: Some("authentication failed".into()),
+            },
+            EndpointDiscoverOutcome {
+                endpoint_id: "skipped".into(),
+                endpoint_name: "alternate".into(),
+                report: None,
+                error: Some("duplicate protocol".into()),
+            },
+            EndpointDiscoverOutcome {
+                endpoint_id: "ok".into(),
+                endpoint_name: "working".into(),
+                report: Some(DiscoverReport {
+                    total: 1,
+                    added: 1,
+                    updated: 0,
+                }),
+                error: None,
+            },
+        ];
+        let skipped = vec![SkippedEndpoint {
+            endpoint_id: "skipped".into(),
+            endpoint_name: "alternate".into(),
+            reason: "duplicate protocol".into(),
+        }];
+        assert_eq!(count_failed_discovery_outcomes(&outcomes, &skipped), 1);
+    }
 }

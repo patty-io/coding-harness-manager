@@ -17,6 +17,135 @@ struct HarnessProviderDeclaration {
     model_ids: std::collections::HashSet<String>,
 }
 
+/// The Pi config may carry an API key as a literal, an environment-variable
+/// reference, or a shell command. Keep the classification separate from the
+/// normalized provider state so secrets never cross the adapter/UI boundary.
+#[derive(Debug, Clone, PartialEq, Eq)]
+enum HarnessApiKeySource {
+    Environment(String),
+    Literal(String),
+    Command,
+}
+
+fn pi_api_key_source(
+    raw: &str,
+    provider_name: &str,
+) -> Result<Option<HarnessApiKeySource>, String> {
+    let document: serde_json::Value =
+        serde_json::from_str(raw).map_err(|error| format!("invalid Pi models.json: {error}"))?;
+    let Some(providers) = document
+        .get("providers")
+        .and_then(|value| value.as_object())
+    else {
+        return Ok(None);
+    };
+    let Some(config) = providers
+        .iter()
+        .find(|(name, _)| name.eq_ignore_ascii_case(provider_name))
+        .and_then(|(_, value)| value.as_object())
+    else {
+        return Ok(None);
+    };
+    let Some(value) = config
+        .get("apiKey")
+        .and_then(|value| value.as_str())
+        .map(str::trim)
+        .filter(|value| !value.is_empty())
+    else {
+        return Ok(None);
+    };
+
+    if let Some(rest) = value.strip_prefix('$') {
+        let name = rest
+            .strip_prefix('{')
+            .and_then(|rest| rest.strip_suffix('}'))
+            .unwrap_or(rest)
+            .trim();
+        let valid = !name.is_empty()
+            && name.chars().enumerate().all(|(index, character)| {
+                if index == 0 {
+                    character == '_' || character.is_ascii_alphabetic()
+                } else {
+                    character == '_' || character.is_ascii_alphanumeric()
+                }
+            });
+        if valid {
+            return Ok(Some(HarnessApiKeySource::Environment(name.to_string())));
+        }
+    }
+    if value.starts_with('!') {
+        // Pi supports command-backed credentials, but CHM must not execute
+        // arbitrary config commands while importing a provider.
+        return Ok(Some(HarnessApiKeySource::Command));
+    }
+    Ok(Some(HarnessApiKeySource::Literal(value.to_string())))
+}
+
+fn pi_models_config_path(
+    install: &chm_core::domain::harness::HarnessInstallation,
+) -> Option<std::path::PathBuf> {
+    let path = install.config_path.as_ref().map(std::path::PathBuf::from)?;
+    if path.file_name().and_then(|name| name.to_str()) == Some("models.json") {
+        Some(path)
+    } else {
+        path.parent().map(|parent| parent.join("models.json"))
+    }
+}
+
+/// Resolve a Pi provider's configured key into CHM's OS-backed credential
+/// reference. Literal values are stored in the OS keychain; `$ENV_VAR`
+/// values remain environment references. Command-backed values are never
+/// executed and therefore return no credential.
+async fn harness_api_key_credential(
+    state: &AppState,
+    install: &chm_core::domain::harness::HarnessInstallation,
+    provider_name: &str,
+) -> Result<Option<chm_core::domain::credentials::CredentialRef>, String> {
+    if install.harness_type.as_str() != "pi" {
+        return Ok(None);
+    }
+    let Some(path) = pi_models_config_path(install) else {
+        return Ok(None);
+    };
+    let raw = std::fs::read_to_string(&path)
+        .map_err(|error| format!("failed to read {}: {error}", path.display()))?;
+    let Some(source) = pi_api_key_source(&raw, provider_name)? else {
+        return Ok(None);
+    };
+    match source {
+        HarnessApiKeySource::Environment(name) => {
+            chm_database::repos::providers::create_credential_ref(
+                &state.pool,
+                chm_core::domain::credentials::CredentialKind::Env,
+                &name,
+            )
+            .await
+            .map(Some)
+            .map_err(|error| error.to_string())
+        }
+        HarnessApiKeySource::Literal(value) => {
+            let store_key = format!(
+                "providers/harness/{}/{}",
+                install.id,
+                slugify(provider_name)
+            );
+            state.secrets.set(&store_key, &value).map_err(|error| {
+                format!("could not store the Pi API key in the OS keychain: {error}")
+            })?;
+            let reference = format!("coding-harness-manager/{store_key}");
+            chm_database::repos::providers::create_credential_ref(
+                &state.pool,
+                chm_core::domain::credentials::CredentialKind::Keychain,
+                &reference,
+            )
+            .await
+            .map(Some)
+            .map_err(|error| error.to_string())
+        }
+        HarnessApiKeySource::Command => Ok(None),
+    }
+}
+
 /// Read provider declarations from the adapter's normalized state. Every
 /// adapter is allowed to parse a different native format, but provider records
 /// share a small safe shape (`native_provider_id` plus optional base URL), and
@@ -57,19 +186,20 @@ fn harness_provider_declarations(
         // provider still attributes correctly when its native config stores
         // models in a sibling table or file.
         for model in &parsed.models {
-            if model_provider_id(model).is_some_and(|provider_id| {
-                provider_id.eq_ignore_ascii_case(name)
-            }) {
+            if model_provider_id(model)
+                .is_some_and(|provider_id| provider_id.eq_ignore_ascii_case(name))
+            {
                 model_ids.insert(model.native_id.to_lowercase());
                 model_ids.insert(model.route.remote_model_id.to_lowercase());
             }
         }
 
-        if let Some(existing) = declarations
-            .iter_mut()
-            .find(|declaration: &&mut HarnessProviderDeclaration| {
-                declaration.name.eq_ignore_ascii_case(name)
-            })
+        if let Some(existing) =
+            declarations
+                .iter_mut()
+                .find(|declaration: &&mut HarnessProviderDeclaration| {
+                    declaration.name.eq_ignore_ascii_case(name)
+                })
         {
             if existing.base_url.is_none() {
                 existing.base_url = base_url;
@@ -87,9 +217,9 @@ fn harness_provider_declarations(
     declarations
 }
 
-fn provider_model_ids(object: &serde_json::Map<String, serde_json::Value>)
-    -> std::collections::HashSet<String>
-{
+fn provider_model_ids(
+    object: &serde_json::Map<String, serde_json::Value>,
+) -> std::collections::HashSet<String> {
     let mut model_ids = std::collections::HashSet::new();
     match object.get("models") {
         Some(serde_json::Value::Array(models)) => {
@@ -554,9 +684,7 @@ fn model_activity_label(model_id: &str, display_name: Option<&str>) -> String {
     let display = display_name
         .map(activity_value)
         .filter(|value| !value.is_empty() && !value.eq_ignore_ascii_case(model_id));
-    display
-        .map(|name| format!("{id} ({name})"))
-        .unwrap_or(id)
+    display.map(|name| format!("{id} ({name})")).unwrap_or(id)
 }
 
 fn format_context_window(value: Option<i64>) -> String {
@@ -639,13 +767,10 @@ pub(crate) fn model_edit_activity_summary(
     for op in ops {
         let source = parsed.models.iter().find(|model| {
             model.native_id.eq_ignore_ascii_case(&op.native_id)
-                && op
-                    .native_provider_id
-                    .as_deref()
-                    .is_none_or(|provider| {
-                        model_provider_id(model)
-                            .is_some_and(|actual| actual.eq_ignore_ascii_case(provider))
-                    })
+                && op.native_provider_id.as_deref().is_none_or(|provider| {
+                    model_provider_id(model)
+                        .is_some_and(|actual| actual.eq_ignore_ascii_case(provider))
+                })
         });
         let provider = op
             .destination_provider_id
@@ -656,23 +781,13 @@ pub(crate) fn model_edit_activity_summary(
             .map(|value| format!(" via {}", activity_value(value)))
             .unwrap_or_default();
         match op.op.as_str() {
-            "remove" if plan_has_model_action(
-                plan,
-                "remove",
-                &op.native_id,
-                provider,
-            ) => {
+            "remove" if plan_has_model_action(plan, "remove", &op.native_id, provider) => {
                 let label = source
                     .map(|model| {
-                        model_activity_label(
-                            &model.native_id,
-                            Some(&model.route.display_name),
-                        )
+                        model_activity_label(&model.native_id, Some(&model.route.display_name))
                     })
                     .unwrap_or_else(|| model_activity_label(&op.native_id, None));
-                details.push(format!(
-                    "Deleted model {label}{provider_suffix}"
-                ));
+                details.push(format!("Deleted model {label}{provider_suffix}"));
             }
             "duplicate" => {
                 let new_id = op
@@ -680,7 +795,7 @@ pub(crate) fn model_edit_activity_summary(
                     .as_deref()
                     .map(str::trim)
                     .filter(|value| !value.is_empty())
-                    .unwrap_or_else(|| "");
+                    .unwrap_or("");
                 let new_id = if new_id.is_empty() {
                     format!("{}-copy", op.native_id)
                 } else {
@@ -691,21 +806,17 @@ pub(crate) fn model_edit_activity_summary(
                 }
                 let source_label = source
                     .map(|model| {
-                        model_activity_label(
-                            &model.native_id,
-                            Some(&model.route.display_name),
-                        )
+                        model_activity_label(&model.native_id, Some(&model.route.display_name))
                     })
                     .unwrap_or_else(|| model_activity_label(&op.native_id, None));
                 let new_display = op
                     .display_name
                     .as_deref()
                     .filter(|value| !value.trim().is_empty());
-                let default_display = source.map(|model| format!("{} (copy)", model.route.display_name));
-                let new_label = model_activity_label(
-                    &new_id,
-                    new_display.or(default_display.as_deref()),
-                );
+                let default_display =
+                    source.map(|model| format!("{} (copy)", model.route.display_name));
+                let new_label =
+                    model_activity_label(&new_id, new_display.or(default_display.as_deref()));
                 details.push(format!(
                     "Duplicated model {source_label} as {new_label}{provider_suffix}"
                 ));
@@ -715,25 +826,21 @@ pub(crate) fn model_edit_activity_summary(
                     .remote_model_id
                     .as_deref()
                     .map(str::trim)
-                    .filter(|value| !value.is_empty() && !value.eq_ignore_ascii_case(&op.native_id));
-                let has_plan_change = plan_has_model_action(
-                    plan,
-                    "update",
-                    &op.native_id,
-                    provider,
-                ) || renamed_id.is_some_and(|new_id| {
-                    plan_has_model_action(plan, "add", new_id, provider)
-                        || plan_has_model_action(plan, "remove", &op.native_id, provider)
-                });
+                    .filter(|value| {
+                        !value.is_empty() && !value.eq_ignore_ascii_case(&op.native_id)
+                    });
+                let has_plan_change =
+                    plan_has_model_action(plan, "update", &op.native_id, provider)
+                        || renamed_id.is_some_and(|new_id| {
+                            plan_has_model_action(plan, "add", new_id, provider)
+                                || plan_has_model_action(plan, "remove", &op.native_id, provider)
+                        });
                 if !has_plan_change {
                     continue;
                 }
                 let source_label = source
                     .map(|model| {
-                        model_activity_label(
-                            &model.native_id,
-                            Some(&model.route.display_name),
-                        )
+                        model_activity_label(&model.native_id, Some(&model.route.display_name))
                     })
                     .unwrap_or_else(|| model_activity_label(&op.native_id, None));
                 let mut changes = Vec::new();
@@ -746,8 +853,7 @@ pub(crate) fn model_edit_activity_summary(
                         "renamed to {}",
                         model_activity_label(new_id, renamed_display)
                     ));
-                } else if let (Some(source), Some(display)) =
-                    (source, op.display_name.as_deref())
+                } else if let (Some(source), Some(display)) = (source, op.display_name.as_deref())
                     && source.route.display_name != display
                 {
                     changes.push(format!(
@@ -799,9 +905,7 @@ pub(crate) fn model_edit_activity_summary(
         let add = count_kind(plan, "model", "add");
         let update = count_kind(plan, "model", "update");
         let remove = count_kind(plan, "model", "remove");
-        return format!(
-            "{harness}: {add} model(s) added, {update} updated, {remove} deleted"
-        );
+        return format!("{harness}: {add} model(s) added, {update} updated, {remove} deleted");
     }
     if details.len() > 8 {
         let remaining = details.len() - 8;
@@ -1247,7 +1351,7 @@ pub async fn smart_adopt_harness_model_cmd(
 ) -> Result<SmartAdoptOutcome, String> {
     use chm_core::domain::provider::{AuthType, Protocol, ProviderEndpoint};
 
-    let (_inst, parsed) = read_parsed_installation(&state.pool, &installation_id).await?;
+    let (inst, parsed) = read_parsed_installation(&state.pool, &installation_id).await?;
     let model = parsed
         .models
         .iter()
@@ -1298,8 +1402,26 @@ pub async fn smart_adopt_harness_model_cmd(
     let mut provider_created = false;
     let mut endpoint_created = false;
     let endpoint = find_endpoint_by_base_url(&state.pool, &providers, &base_url).await?;
+    let credential = if endpoint
+        .as_ref()
+        .is_none_or(|endpoint| endpoint.credential_ref.is_none())
+    {
+        harness_api_key_credential(&state, &inst, &provider_name).await?
+    } else {
+        None
+    };
 
-    let endpoint = if let Some(e) = endpoint {
+    let endpoint = if let Some(mut e) = endpoint {
+        if e.credential_ref.is_none()
+            && let Some(credential) = credential
+        {
+            e.credential_ref = Some(credential);
+            e.auth_type = AuthType::BearerToken;
+            e.updated_at = chrono::Utc::now();
+            e = chm_database::repos::providers::update_endpoint(&state.pool, &e)
+                .await
+                .map_err(|error| error.to_string())?;
+        }
         e
     } else {
         // Create the provider (reuse by slug when present) and its endpoint.
@@ -1324,7 +1446,7 @@ pub async fn smart_adopt_harness_model_cmd(
                 protocol: Protocol::parse_str("openai-chat"),
                 discovery_path: Some("/v1/models".into()),
                 auth_type: AuthType::BearerToken,
-                credential_ref: None,
+                credential_ref: credential,
                 headers: Default::default(),
                 enabled: true,
                 created_at: chrono::Utc::now(),
@@ -1397,6 +1519,7 @@ pub struct EnsureProviderOutcome {
     pub provider_id: String,
     pub provider_created: bool,
     pub endpoint_created: bool,
+    pub credential_attached: bool,
 }
 
 #[derive(Serialize)]
@@ -1483,7 +1606,7 @@ pub async fn ensure_provider_from_harness_cmd(
 ) -> Result<EnsureProviderOutcome, String> {
     use chm_core::domain::provider::{AuthType, Protocol, ProviderEndpoint};
 
-    let (_inst, parsed) = read_parsed_installation(&state.pool, &installation_id).await?;
+    let (inst, parsed) = read_parsed_installation(&state.pool, &installation_id).await?;
 
     let provider_declarations = harness_provider_declarations(&parsed);
     let base_url = provider_declarations
@@ -1499,6 +1622,15 @@ pub async fn ensure_provider_from_harness_cmd(
     let mut endpoint_created = false;
 
     let endpoint = find_endpoint_by_base_url(&state.pool, &providers, &base_url).await?;
+    let credential = if endpoint
+        .as_ref()
+        .is_none_or(|endpoint| endpoint.credential_ref.is_none())
+    {
+        harness_api_key_credential(&state, &inst, &provider_name).await?
+    } else {
+        None
+    };
+    let mut credential_attached = false;
 
     let provider = if let Some(e) = &endpoint {
         providers
@@ -1523,9 +1655,21 @@ pub async fn ensure_provider_from_harness_cmd(
         }
     };
 
-    let _endpoint_id = if let Some(e) = endpoint {
+    let _endpoint_id = if let Some(mut e) = endpoint {
+        if e.credential_ref.is_none()
+            && let Some(credential) = credential
+        {
+            e.credential_ref = Some(credential);
+            e.auth_type = AuthType::BearerToken;
+            e.updated_at = chrono::Utc::now();
+            chm_database::repos::providers::update_endpoint(&state.pool, &e)
+                .await
+                .map_err(|error| error.to_string())?;
+            credential_attached = true;
+        }
         e.id
     } else {
+        credential_attached = credential.is_some();
         chm_database::repos::providers::create_endpoint(
             &state.pool,
             &ProviderEndpoint {
@@ -1536,7 +1680,7 @@ pub async fn ensure_provider_from_harness_cmd(
                 protocol: Protocol::parse_str("openai-chat"),
                 discovery_path: Some("/v1/models".into()),
                 auth_type: AuthType::BearerToken,
-                credential_ref: None,
+                credential_ref: credential,
                 headers: Default::default(),
                 enabled: true,
                 created_at: chrono::Utc::now(),
@@ -1552,14 +1696,16 @@ pub async fn ensure_provider_from_harness_cmd(
         provider_id: provider.id.to_string(),
         provider_created,
         endpoint_created,
+        credential_attached,
     })
 }
 
 #[cfg(test)]
 mod activity_tests {
     use super::{
-        HarnessModelOp, harness_provider_declarations, harness_provider_for_model,
-        harness_provider_models, model_edit_activity_summary,
+        HarnessApiKeySource, HarnessModelOp, harness_provider_declarations,
+        harness_provider_for_model, harness_provider_models, model_edit_activity_summary,
+        pi_api_key_source,
     };
     use chm_core::domain::models::ModelRoute;
     use chm_harness_sdk::adapter::plan::{PlanAction, ReconciliationPlan, RemoveAction};
@@ -1645,14 +1791,40 @@ mod activity_tests {
         )
         .expect("provider should resolve from normalized records");
         assert_eq!(resolved.0, "custom-api-cline-bot");
-        assert_eq!(
-            resolved.1.as_deref(),
-            Some("https://api.cline.bot/api/v1")
-        );
+        assert_eq!(resolved.1.as_deref(), Some("https://api.cline.bot/api/v1"));
 
         let detail = harness_provider_models(&parsed, "custom-api-cline-bot")
             .expect("provider detail should use the same declaration source");
         assert_eq!(detail.0, "custom-api-cline-bot");
         assert_eq!(detail.2.len(), 1);
+    }
+
+    #[test]
+    fn pi_api_key_source_classifies_without_exposing_secrets() {
+        let literal = r#"{
+            "providers": {"Yolo-Auto": {"apiKey": "secret-value"}}
+        }"#;
+        assert!(matches!(
+            pi_api_key_source(literal, "yolo-auto"),
+            Ok(Some(HarnessApiKeySource::Literal(_)))
+        ));
+
+        let env = r#"{
+            "providers": {"Yolo-Auto": {"apiKey": "$YOLO_API_KEY"}}
+        }"#;
+        assert_eq!(
+            pi_api_key_source(env, "Yolo-Auto"),
+            Ok(Some(HarnessApiKeySource::Environment(
+                "YOLO_API_KEY".into()
+            )))
+        );
+
+        let command = r#"{
+            "providers": {"Yolo-Auto": {"apiKey": "!security find-generic-password"}}
+        }"#;
+        assert_eq!(
+            pi_api_key_source(command, "Yolo-Auto"),
+            Ok(Some(HarnessApiKeySource::Command))
+        );
     }
 }

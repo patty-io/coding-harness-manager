@@ -57,6 +57,14 @@ export default function ProviderDetailScreen() {
   const { data: providerCatalog } = useProviderCatalog(id);
   const [discoverResult, setDiscoverResult] = useState<ProviderDiscoverReport | null>(null);
   const [addedCatalogIds, setAddedCatalogIds] = useState<Set<string>>(new Set());
+  const discoveryFailures =
+    discoverResult?.outcomes.filter(
+      (outcome) =>
+        !!outcome.error &&
+        !discoverResult.endpointsSkipped.some(
+          (endpoint) => endpoint.endpointId === outcome.endpointId,
+        ),
+    ) ?? [];
 
   const [showForm, setShowForm] = useState(false);
   const [name, setName] = useState("");
@@ -295,9 +303,20 @@ export default function ProviderDetailScreen() {
             <div>
               Probed{" "}
               <strong>{discoverResult.endpointsSucceeded}</strong> of{" "}
-              {discoverResult.endpointsSucceeded +
-                discoverResult.endpointsSkipped.length}{" "}
-              endpoints ·{" "}
+              <strong>{discoverResult.endpointsAttempted}</strong>{" "}
+              endpoints
+              {discoverResult.endpointsFailed > 0 && (
+                <>
+                  {" "}· <strong>{discoverResult.endpointsFailed}</strong> failed
+                </>
+              )}
+              {discoverResult.endpointsSkipped.length > 0 && (
+                <>
+                  {" "}· <strong>{discoverResult.endpointsSkipped.length}</strong>{" "}
+                  skipped
+                </>
+              )}
+              {" "}·{" "}
               <strong>{discoverResult.distinctModels}</strong> distinct
               models (
               <strong>{discoverResult.added}</strong> new,{" "}
@@ -325,6 +344,21 @@ export default function ProviderDetailScreen() {
                   <li key={s.endpointId} className="text-slate-500">
                     <span className="font-mono">{s.endpointName}</span>:{" "}
                     {s.reason}
+                  </li>
+                ))}
+              </ul>
+            </details>
+          )}
+
+          {discoveryFailures.length > 0 && (
+            <details open className="mt-2 rounded border border-red-500/30 bg-red-500/5 p-2">
+              <summary className="cursor-pointer text-xs text-red-300">
+                {discoveryFailures.length} endpoint(s) failed
+              </summary>
+              <ul className="mt-1 space-y-1 pl-4 text-xs text-red-300">
+                {discoveryFailures.map((outcome) => (
+                  <li key={outcome.endpointId}>
+                    <span className="font-mono">{outcome.endpointName}</span>: {outcome.error}
                   </li>
                 ))}
               </ul>
@@ -440,7 +474,9 @@ export default function ProviderDetailScreen() {
           {discoverResult.newModels.length === 0 &&
             discoverResult.updatedModels.length === 0 && (
               <p className="mt-3 text-xs text-slate-500">
-                No models returned by this provider.
+                {discoveryFailures.length > 0
+                  ? "No models were cataloged because one or more endpoint requests failed."
+                  : "No models returned by this provider."}
               </p>
             )}
         </div>

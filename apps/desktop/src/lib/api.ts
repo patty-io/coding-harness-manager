@@ -277,6 +277,7 @@ export interface SkippedEndpoint {
 export interface ProviderDiscoverReport {
   endpointsAttempted: number;
   endpointsSucceeded: number;
+  endpointsFailed: number;
   endpointsSkipped: SkippedEndpoint[];
   total: number;
   added: number;
@@ -521,6 +522,7 @@ export interface EnsureProviderOutcome {
   providerId: string;
   providerCreated: boolean;
   endpointCreated: boolean;
+  credentialAttached: boolean;
 }
 
 export async function ensureProviderFromHarness(
