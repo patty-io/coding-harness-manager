@@ -1,4 +1,4 @@
-//! Adapter facade: compiles all Tier-1 adapters into one registry.
+//! Adapter facade: compiles every supported harness adapter into one registry.
 
 use chm_harness_sdk::adapter::types::HarnessAdapter;
 
@@ -17,6 +17,9 @@ pub mod pi {
 pub mod reasonix {
     pub use reasonix_adapter::*;
 }
+pub mod detection {
+    pub use detection_adapter::*;
+}
 
 pub fn all_adapters() -> Vec<Box<dyn HarnessAdapter>> {
     vec![
@@ -25,5 +28,15 @@ pub fn all_adapters() -> Vec<Box<dyn HarnessAdapter>> {
         Box::new(opencode::OpenCodeAdapter),
         Box::new(pi::PiAdapter),
         Box::new(reasonix::ReasonixAdapter),
+        Box::new(detection::KimiAdapter),
+        Box::new(detection::GeminiAdapter),
+        Box::new(detection::QwenAdapter),
+        Box::new(detection::CursorAdapter),
+        Box::new(detection::ClineAdapter),
+        Box::new(detection::RooAdapter),
+        Box::new(detection::AiderAdapter),
+        Box::new(detection::AmpAdapter),
+        Box::new(detection::GooseAdapter),
+        Box::new(detection::ContinueAdapter),
     ]
 }

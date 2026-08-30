@@ -201,7 +201,7 @@ async fn bind_skill_core(
         .find(|s| s.id == sid)
         .ok_or("skill not found")?;
 
-    let def = chm_harness_sdk::definition::tier1_definitions()
+    let def = chm_harness_sdk::definition::all_definitions()
         .into_iter()
         .find(|d| d.id == inst.harness_type.as_str())
         .ok_or("no definition")?;

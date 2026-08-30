@@ -13,8 +13,8 @@ pub enum HarnessType {
     OpenCode,
     Pi,
     Reasonix,
-    /// Detection-only harnesses (e.g. "gemini-cli"). Only ever constructed
-    /// from the definition registry; never the parse fallback.
+    /// Additional harness ids not represented by one of the built-in enum
+    /// variants (for example, "gemini-cli" or "kimi-cli").
     Custom(String),
 }
 

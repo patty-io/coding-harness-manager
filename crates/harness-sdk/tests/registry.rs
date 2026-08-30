@@ -1,4 +1,4 @@
-use chm_harness_sdk::definition::{all_definitions, detection_only_definitions, tier1_definitions};
+use chm_harness_sdk::definition::{additional_definitions, all_definitions, tier1_definitions};
 
 #[test]
 fn tier1_has_exactly_five_harnesses() {
@@ -36,6 +36,8 @@ fn tier1_ids_match_domain_harness_types() {
 }
 
 #[test]
-fn detection_only_has_ten_entries() {
-    assert_eq!(detection_only_definitions().len(), 10);
+fn additional_definitions_have_ten_entries() {
+    let defs = additional_definitions();
+    assert_eq!(defs.len(), 10);
+    assert!(defs.iter().all(|definition| !definition.detection_only));
 }

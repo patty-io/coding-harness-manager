@@ -11,6 +11,7 @@ Status legend: DRAFT / COMPLETE / PARTIAL (not all verifiable locally)
 | Pi | docs/harnesses/pi.md | COMPLETE | 0.84.3 |
 | Reasonix | docs/harnesses/reasonix.md | COMPLETE | 1.31.4 |
 | Detection logic | docs/harnesses/detection.md | COMPLETE | vercel-labs/skills HEAD |
+| Additional adapters | adapters/detection | COMPLETE | official harness docs/source |
 
 Rule: a doc is COMPLETE only if every section of the template has
 evidence (a path, command output, config excerpt, or explicit
@@ -24,4 +25,6 @@ evidence (a path, command output, config excerpt, or explicit
 - opencode | installed | 1.18.23 | ~/.config/opencode/opencode.jsonc
 - pi | installed | 0.84.3 | ~/.pi/agent/models.json
 - reasonix | installed | 1.31.4 | ~/.reasonix/config.toml
-- detection-only: gemini-cli, kimi-cli, aider detected (executable present)
+- additional adapters: Gemini CLI, Qwen Code, Kimi CLI, Cursor, Cline, Roo
+  Code, Aider, Amp, Goose, and Continue are read and validated through their
+  documented config files; write support is capability-specific.

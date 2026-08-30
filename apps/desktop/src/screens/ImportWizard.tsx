@@ -1,7 +1,7 @@
 import { useMemo, useState } from "react";
 import { Link } from "react-router-dom";
 import { useQueries } from "@tanstack/react-query";
-import { readHarnessState, TIER1_HARNESSES } from "../lib/api";
+import { readHarnessState } from "../lib/api";
 import { useInstallations, useScanHarnesses } from "../hooks/useHarnesses";
 import { useImportHarnessState } from "../hooks/useImport";
 import type { ImportOptions, ImportReport } from "../lib/api";
@@ -39,9 +39,10 @@ export default function ImportWizard() {
   });
   const importMutation = useImportHarnessState();
 
-  const tier1 = (installations ?? []).filter((i) =>
-    TIER1_HARNESSES.includes(i.harness_type as (typeof TIER1_HARNESSES)[number]),
-  );
+  // Every registered harness now has an adapter. Keep the wizard scoped to
+  // the installations returned by the scanner instead of the old Tier-1
+  // allow-list, which hid Kimi, Cline, Goose, and the other adapters.
+  const supported = installations ?? [];
 
   const stepIndex = STEPS.indexOf(step);
 
@@ -73,7 +74,7 @@ export default function ImportWizard() {
         setRunStatus((previous) => ({ ...previous, [id]: "succeeded" }));
       } catch (e) {
         setRunStatus((previous) => ({ ...previous, [id]: "failed" }));
-        const harness = tier1.find((installation) => installation.id === id);
+        const harness = supported.find((installation) => installation.id === id);
         errors.push(
           (harness?.harness_type ?? id) +
             ": " +
@@ -173,13 +174,13 @@ export default function ImportWizard() {
       {step === "select" && (
         <section className="mt-6">
           <h1 className="text-2xl font-bold">
-            Found {tier1.length} supported harnesses
+            Found {supported.length} supported harnesses
           </h1>
           <p className="mt-2 text-slate-200">
             Select which harnesses to import from (read-only).
           </p>
           <ul className="mt-4 space-y-2">
-            {tier1.map((i) => (
+            {supported.map((i) => (
               <li key={i.id}>
                 <label className="flex items-center gap-2 rounded border border-slate-700 bg-slate-800 p-3">
                   <input
@@ -230,7 +231,7 @@ export default function ImportWizard() {
               </div>
               <div className="mt-4 space-y-2">
                 {reviewed.map(({ installationId, state: harnessState }) => {
-                  const harness = tier1.find((i) => i.id === installationId);
+                  const harness = supported.find((i) => i.id === installationId);
                   return <div key={installationId} className="rounded border border-slate-700 bg-slate-800 p-3 text-sm"><div className="font-medium text-slate-200">{harness?.harness_type ?? installationId}</div><div className="mt-1 text-xs text-slate-400">{harnessState.providers.length} providers · {harnessState.models.length} models · {harnessState.mcp.length} MCP · {harnessState.skills.length} skills</div>{harnessState.warnings.length > 0 && <div className="mt-1 text-xs text-amber-300">{harnessState.warnings.length} warning(s)</div>}</div>;
                 })}
               </div>
@@ -278,7 +279,7 @@ export default function ImportWizard() {
             <h2 className="font-medium">Per-harness results</h2>
             <ul className="mt-2 space-y-1 text-xs">
               {selected.map((installationId) => {
-                const harness = tier1.find((i) => i.id === installationId);
+                const harness = supported.find((i) => i.id === installationId);
                 return <li key={installationId}>{harness?.harness_type ?? installationId}: {runStatus[installationId] ?? "skipped"}</li>;
               })}
             </ul>

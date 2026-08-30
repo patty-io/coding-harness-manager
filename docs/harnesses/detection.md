@@ -2,7 +2,7 @@
 
 > Status: COMPLETE
 > Last updated: 2026-08-27
-> Source: vercel-labs/skills (cloned 2026-08-27, HEAD) + local verification of all Tier-1 harnesses
+> Source: official harness documentation, vercel-labs/skills (cloned 2026-08-27, HEAD), and local verification
 
 ## vercel-labs/skills detection (reusable)
 
@@ -20,7 +20,7 @@ Key mechanics:
 5. `packageJsonHasDependency()` — npm package detection used for IDE-embedded agents (cline via package.json deps).
 6. Universal skills dir convention: `.agents/skills` (project) and `~/.agents/skills` (global) — vercel calls these "universal agents" (amp, replit, antigravity, gemini-cli).
 
-**Reusable directly** (per Tier-1 + detection-only harness):
+**Reusable directly** (for every registered harness):
 | Agent | config dir (existence check) | env override |
 |-------|------------------------------|--------------|
 | claude-code | `~/.claude` | CLAUDE_CONFIG_DIR |
@@ -30,7 +30,7 @@ Key mechanics:
 | reasonix | `~/.reasonix` | — |
 | gemini-cli | `~/.gemini` | — |
 | qwen-code | `~/.qwen` | — |
-| kimi-code-cli | `~/.kimi-code` or `~/.kimi` | — |
+| kimi-cli | `~/.kimi` (legacy `~/.kimi-code`) | — |
 | cursor | `~/.cursor` | — |
 | cline | `~/.cline` (+ package.json deps) | — |
 | roo | `~/.roo` | — |
@@ -39,9 +39,9 @@ Key mechanics:
 | goose | `~/.config/goose` | — |
 | continue | `~/.continue` (or cwd `.continue`) | — |
 
-## Our Tier-1 definitions (candidates for HarnessDefinition)
+## Our first-class definitions (candidates for HarnessDefinition)
 
-Verified against real machines (2026-08-27) — ALL FIVE installed:
+Verified against real machines (2026-08-27) — all five first-class harnesses installed:
 
 | Harness id | executable(s) | config dir(s) | skill dir(s) | mcp path(s) | version cmd → output |
 |-----------|---------------|---------------|--------------|-------------|----------------------|
@@ -53,9 +53,14 @@ Verified against real machines (2026-08-27) — ALL FIVE installed:
 
 **Strategy recommendation**: CHM combines BOTH signals — executable-in-PATH (via `find_executable`) AND config-dir existence (vercel style). Config-dir-only → `ConfigMissing` status (detected but no executable — matters for the import wizard); executable + config → `Installed`. Env overrides `CLAUDE_CONFIG_DIR`/`CODEX_HOME` honored for the two harnesses that define them.
 
-## Detection-only list (V1 shows "Detected — support coming")
+## Additional adapter list
 
-Gemini CLI, Qwen Code, Kimi CLI, Cursor, Cline, Roo Code, Aider, Amp, Goose, Continue — config dirs from the table above; detection-only means NO version/config parsing in V1.
+Gemini CLI, Qwen Code, Kimi CLI, Cursor, Cline, Roo Code, Aider, Amp, Goose,
+and Continue are now backed by the format-aware adapters in
+`adapters/detection`. They are parsed from their documented user-level
+configuration files, validated during doctor checks, and expose only the
+native writable surfaces that are stable for that harness. A selection-only
+format is intentionally not presented as an arbitrary model registry.
 
 ## Version-detection commands per harness (verified)
 

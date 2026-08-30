@@ -1,12 +1,11 @@
 //! Doctor diagnostics + redaction (Phase 13).
 
+use chm_core::domain::history::{TransactionStatus, TransactionType};
 use chm_database::repos::harness::list_installations;
 use chm_database::repos::history::{begin_transaction, finish_transaction};
 use chm_database::repos::providers::{list_endpoints, list_providers};
 use chm_database::repos::skills::list_skills;
-use chm_core::domain::history::{TransactionStatus, TransactionType};
 use chm_providers::{discover_models, health_check, resolve_credential};
-use chm_harness_sdk::definition::all_definitions;
 use chrono::Utc;
 use regex::Regex;
 use serde::Serialize;
@@ -64,13 +63,6 @@ pub fn redact(text: &str) -> String {
     out
 }
 
-fn detection_only_name(harness_type: &str) -> Option<&'static str> {
-    all_definitions()
-        .into_iter()
-        .find(|definition| definition.id == harness_type && definition.detection_only)
-        .map(|definition| definition.name)
-}
-
 async fn harness_checks(pool: &Pool<Sqlite>) -> Result<Vec<HarnessCheckGroup>, String> {
     let installs = list_installations(pool).await.map_err(|e| e.to_string())?;
     let mut groups = Vec::new();
@@ -91,22 +83,6 @@ async fn harness_checks(pool: &Pool<Sqlite>) -> Result<Vec<HarnessCheckGroup>, S
                 passed: false,
                 detail: "not detected on PATH".into(),
             }),
-        }
-        if let Some(name) = detection_only_name(inst.harness_type.as_str()) {
-            checks.push(CheckResult {
-                check: "configuration support".into(),
-                passed: false,
-                detail: format!(
-                    "{} is detected, but Coding Harness Manager does not read or manage its configuration yet; this is a support limitation, not a broken install",
-                    name
-                ),
-            });
-            groups.push(HarnessCheckGroup {
-                harness_type: inst.harness_type.as_str().to_string(),
-                version: inst.version.clone(),
-                checks,
-            });
-            continue;
         }
         // config readable / parse valid
         match &inst.config_path {
@@ -474,8 +450,7 @@ pub async fn export_diagnostics_cmd(
     )
     .await
     .map_err(|e| e.to_string())?;
-    match export_diagnostics_core(&state.pool, state.secrets.as_ref(), &state.http, &dest_dir)
-        .await
+    match export_diagnostics_core(&state.pool, state.secrets.as_ref(), &state.http, &dest_dir).await
     {
         Ok(path) => {
             finish_transaction(
@@ -505,13 +480,7 @@ pub async fn export_diagnostics_cmd(
 
 #[cfg(test)]
 mod tests {
-    use super::{detection_only_name, redact};
-
-    #[test]
-    fn explains_detection_only_kimi_support() {
-        assert_eq!(detection_only_name("kimi-cli"), Some("Kimi CLI"));
-        assert_eq!(detection_only_name("pi"), None);
-    }
+    use super::redact;
 
     #[test]
     fn redacts_common_credentials_without_touching_labels() {

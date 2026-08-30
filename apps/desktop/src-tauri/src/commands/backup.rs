@@ -303,9 +303,15 @@ async fn finish_restore_audit(
     // A backup made before this restore began will not contain the original
     // running audit row. In that case create a completion row in the restored
     // database rather than silently losing the audit trail.
-    if finish_transaction(&audit_pool, audit_id, status, summary.clone(), error.clone())
-        .await
-        .is_err()
+    if finish_transaction(
+        &audit_pool,
+        audit_id,
+        status,
+        summary.clone(),
+        error.clone(),
+    )
+    .await
+    .is_err()
     {
         let replacement = begin_transaction(
             &audit_pool,
@@ -400,7 +406,10 @@ pub async fn restore_backup_core(pool: &Pool<Sqlite>, backup_path: &str) -> Resu
             )
             .await
             {
-                return Err(format!("{}; could not record restore audit: {error}", outcome.message));
+                return Err(format!(
+                    "{}; could not record restore audit: {error}",
+                    outcome.message
+                ));
             }
             Ok(outcome.message)
         }
@@ -650,13 +659,13 @@ pub async fn preview_import_core(pool: &Pool<Sqlite>, file_path: &str) -> Result
     }
     let mut endpoint_ids: HashMap<Uuid, Uuid> = HashMap::new();
     for endpoint in &export.endpoints {
-        if let Some(provider_id) = provider_ids.get(&endpoint.provider_id).copied() {
-            if let Some((_, current)) = current_endpoints.iter().find(|(id, current)| {
+        if let Some(provider_id) = provider_ids.get(&endpoint.provider_id).copied()
+            && let Some((_, current)) = current_endpoints.iter().find(|(id, current)| {
                 *id == provider_id
                     && normalize_url(&current.base_url) == normalize_url(&endpoint.base_url)
-            }) {
-                endpoint_ids.insert(endpoint.id, current.id);
-            }
+            })
+        {
+            endpoint_ids.insert(endpoint.id, current.id);
         }
     }
     let mut route_ids: HashMap<Uuid, Uuid> = HashMap::new();
@@ -1324,12 +1333,12 @@ mod tests {
     use chm_core::domain::provider::{AuthType, Protocol, ProviderEndpoint};
     use chm_core::domain::sets::SetItemType;
     use chm_database::connect_test;
+    use chm_database::repos::history::list_transactions;
     use chm_database::repos::mcp::create_mcp_server;
     use chm_database::repos::models::create_route;
     use chm_database::repos::profiles::{
         add_set_item, create_profile, create_set, list_profiles, list_sets,
     };
-    use chm_database::repos::history::list_transactions;
     use chm_database::repos::providers::{
         create_endpoint, create_provider, list_providers, update_provider,
     };
@@ -1522,13 +1531,15 @@ mod tests {
             .unwrap();
         let providers = list_providers(&restored).await.unwrap();
         assert_eq!(providers[0].display_name, "Before");
-        assert!(list_transactions(&restored)
-            .await
-            .unwrap()
-            .iter()
-            .any(|tx| {
-                tx.transaction_type == chm_core::domain::history::TransactionType::Restore
-                    && tx.status == chm_core::domain::history::TransactionStatus::Succeeded
-            }));
+        assert!(
+            list_transactions(&restored)
+                .await
+                .unwrap()
+                .iter()
+                .any(|tx| {
+                    tx.transaction_type == chm_core::domain::history::TransactionType::Restore
+                        && tx.status == chm_core::domain::history::TransactionStatus::Succeeded
+                })
+        );
     }
 }

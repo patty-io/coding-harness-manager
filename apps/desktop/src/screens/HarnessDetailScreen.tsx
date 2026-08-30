@@ -228,41 +228,17 @@ export default function HarnessDetailScreen() {
   }
 
   if (stateError) {
-    const detectionOnly = installation?.status === "detected" && !installation.config_path;
-    const harnessName = installation?.harness_type === "kimi-cli"
-      ? "Kimi CLI"
-      : installation?.harness_type ?? "This harness";
     return (
       <div>
         <Link to="/harnesses" className="text-sm text-slate-400 hover:text-slate-200">
           ← Harnesses
         </Link>
-        {detectionOnly ? (
-          <div className="mt-4 rounded border border-amber-500/40 bg-amber-500/10 p-4">
-            <h2 className="font-medium text-amber-200">
-              {harnessName} is detected, but not readable yet
-            </h2>
-            <p className="mt-2 text-sm leading-relaxed text-amber-100/80">
-              CHM found the executable on your PATH. This harness is currently
-              detection-only, so there is no configuration adapter to parse or
-              edit its files yet. Doctor is reporting a support limitation —
-              not a corrupt installation or a missing Kimi CLI binary.
-            </p>
-            <Link
-              to="/doctor"
-              className="mt-3 inline-block text-sm font-medium text-amber-200 underline hover:text-amber-100"
-            >
-              Open Doctor for details →
-            </Link>
-          </div>
-        ) : (
-          <p className="mt-4 rounded border border-red-500/30 bg-red-500/10 p-4 text-sm text-red-300">
-            Could not read this harness&apos;s config: {(stateError as Error).message}{" "}
-            <Link to="/doctor" className="font-medium underline hover:text-red-200">
-              Open Doctor →
-            </Link>
-          </p>
-        )}
+        <p className="mt-4 rounded border border-red-500/30 bg-red-500/10 p-4 text-sm text-red-300">
+          Could not read this harness&apos;s config: {(stateError as Error).message}{" "}
+          <Link to="/doctor" className="font-medium underline hover:text-red-200">
+            Open Doctor →
+          </Link>
+        </p>
       </div>
     );
   }

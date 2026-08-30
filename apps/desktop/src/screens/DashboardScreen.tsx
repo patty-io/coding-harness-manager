@@ -142,9 +142,7 @@ function HarnessCard({
             statusStyles[installation.status] ?? statusStyles.detected
           }`}
         >
-          {summary?.support === "detection-only"
-            ? "Detected only"
-            : statusLabels[installation.status] ?? installation.status}
+          {statusLabels[installation.status] ?? installation.status}
         </span>
       </div>
 
@@ -153,19 +151,7 @@ function HarnessCard({
           Config changed outside the app
         </p>
       )}
-      {summary?.support === "detection-only" ? (
-        <p className="mt-2 rounded border border-amber-500/40 bg-amber-500/10 px-2 py-1 text-xs text-amber-200">
-          The executable is detected, but CHM cannot read this harness&apos;s
-          configuration yet.{" "}
-          <Link
-            to="/doctor"
-            onClick={(event) => event.stopPropagation()}
-            className="font-medium underline hover:text-amber-100"
-          >
-            Why?
-          </Link>
-        </p>
-      ) : summary?.stateError ? (
+      {summary?.stateError ? (
         <p className="mt-2 rounded border border-red-500/40 bg-red-500/10 px-2 py-1 text-xs text-red-300">
           Could not read current state: {summary.stateError}{" "}
           <Link
@@ -201,10 +187,12 @@ function HarnessCard({
             : "not scanned"}
         </span>
         <span className="text-slate-500">·</span>
-        <span className={installation.harness_type === "pi" || installation.harness_type === "opencode" ? "text-green-400" : "text-slate-400"}>
-          {installation.harness_type === "pi" || installation.harness_type === "opencode"
-            ? "config writes supported"
-            : "read-only adapter"}
+        <span className={summary?.support === "supported" ? "text-green-400" : "text-slate-400"}>
+          {summary
+            ? summary.support === "supported"
+              ? "adapter available"
+              : "no config adapter"
+            : "checking adapter…"}
         </span>
       </div>
 

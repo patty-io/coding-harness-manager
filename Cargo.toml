@@ -15,6 +15,7 @@ members = [
   "adapters/codex",
   "adapters/claude-code",
   "adapters/reasonix",
+  "adapters/detection",
   "adapters",
 ]
 exclude = ["apps/desktop/src-tauri"]

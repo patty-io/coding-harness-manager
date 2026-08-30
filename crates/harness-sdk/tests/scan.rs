@@ -71,7 +71,7 @@ fn scan_marks_config_missing_when_only_executable_absent() {
 }
 
 #[test]
-fn scan_detects_detection_only_harness_by_executable() {
+fn scan_detects_supported_harness_by_executable() {
     let dir = TempDir::new().unwrap();
     let bindir = dir.path().join("bin");
     std::fs::create_dir_all(&bindir).unwrap();
@@ -94,10 +94,10 @@ fn scan_detects_detection_only_harness_by_executable() {
         .installations
         .iter()
         .find(|i| i.harness_type.as_str() == "gemini-cli");
-    assert!(gem.is_some(), "detection-only harness must be reported");
-    assert_eq!(gem.unwrap().status_v(), "detected");
+    assert!(gem.is_some(), "supported harness must be reported");
+    assert_eq!(gem.unwrap().status_v(), "installed");
     assert!(
         gem.unwrap().version.is_none(),
-        "no version work for detection-only"
+        "fixture executable has no usable version output"
     );
 }

@@ -11,3 +11,4 @@ codex-adapter = { path = "codex" }
 opencode-adapter = { path = "opencode" }
 pi-adapter = { path = "pi" }
 reasonix-adapter = { path = "reasonix" }
+detection-adapter = { path = "detection" }

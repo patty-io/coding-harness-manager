@@ -35,8 +35,10 @@ This repository contains everything:
   config format under `docs/harnesses/`
 - **Release engineering** — CI, multi-platform build matrix, packaging docs
 
-Detection includes Gemini CLI, Qwen Code, Kimi CLI, Cursor, Cline, Roo Code,
-Aider, Amp, Goose, and Continue as "Detected — support coming".
+The adapter registry covers Gemini CLI, Qwen Code, Kimi CLI, Cursor, Cline,
+Roo Code, Aider, Amp, Goose, and Continue in addition to the Tier-1
+harnesses. Each adapter reports only the native surfaces the harness actually
+persists (for example, model selection versus a model registry).
 
 ## Design philosophy
 
@@ -145,7 +147,7 @@ coding-harness-manager/
 │   ├── reconciliation/          desired→plan engine (pure, no I/O)
 │   ├── filesystem/              atomic writes, backups, links
 │   └── harness-sdk/             adapter contract, detection registry, helpers
-├── adapters/                    claude-code · codex · opencode · pi · reasonix
+├── adapters/                    first-class + format-aware harness adapters
 ├── fixtures/                    real (redacted) config snapshots for goldens
 ├── docs/
 │   ├── plans/                   original project plan

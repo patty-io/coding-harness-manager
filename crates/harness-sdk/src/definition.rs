@@ -1,5 +1,5 @@
-//! Registry of harness definitions. Data comes from docs/harnesses/detection.md
-//! (verified 2026-08-27 against real installs).
+//! Registry of harness definitions. Data comes from the official harness
+//! documentation and is kept in lockstep with the adapter registry.
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Platform {
@@ -101,46 +101,115 @@ pub fn tier1_definitions() -> Vec<HarnessDefinition> {
     ]
 }
 
-pub fn detection_only_definitions() -> Vec<HarnessDefinition> {
+/// Additional harness definitions beyond the five first-class harnesses.
+/// Every definition in this list has a registered adapter; the adapters may
+/// expose different native surfaces depending on what the harness persists
+/// on disk (for example, model selection rather than a model registry).
+pub fn additional_definitions() -> Vec<HarnessDefinition> {
     vec![
         def(
             "gemini-cli",
             "Gemini CLI",
             &["gemini"],
-            &[".gemini"],
-            &[],
-            &[],
-            true,
+            &[".gemini/settings.json"],
+            &[".gemini/skills"],
+            &[".gemini/settings.json", ".gemini/mcp_config.json"],
+            false,
         ),
         def(
             "qwen-code",
             "Qwen Code",
             &["qwen-code", "qwen"],
-            &[".qwen"],
+            &[".qwen/settings.json"],
             &[],
-            &[],
-            true,
+            &[".qwen/settings.json"],
+            false,
         ),
         def(
             "kimi-cli",
             "Kimi CLI",
             &["kimi"],
-            &[".kimi-code", ".kimi"],
-            &[],
-            &[],
-            true,
+            &[
+                ".kimi/config.toml",
+                ".kimi/config.json",
+                ".kimi-code/config.toml",
+                ".kimi-code/config.json",
+            ],
+            &[".kimi/skills", ".kimi-code/skills"],
+            &[".kimi/mcp.json", ".kimi-code/mcp.json"],
+            false,
         ),
         def(
             "cursor",
             "Cursor",
-            &["cursor"],
-            &[".cursor"],
+            // Cursor's current CLI installs as `agent`; keep the older
+            // `cursor`/`cursor-agent` names for existing installations.
+            &["agent", "cursor", "cursor-agent"],
+            &[".cursor/cli-config.json", ".cursor/mcp.json"],
             &[],
-            &[],
-            true,
+            &[".cursor/mcp.json"],
+            false,
         ),
-        def("cline", "Cline", &["cline"], &[".cline"], &[], &[], true),
-        def("roo-code", "Roo Code", &["roo"], &[".roo"], &[], &[], true),
+        def(
+            "cline",
+            "Cline",
+            &["cline"],
+            &[
+                ".cline/data/settings/providers.json",
+                ".cline/data/settings/models.json",
+                ".cline/mcp.json",
+                "Library/Application Support/Code/User/globalStorage/saoudrizwan.claude-dev/settings/cline_mcp_settings.json",
+                ".config/Code/User/globalStorage/saoudrizwan.claude-dev/settings/cline_mcp_settings.json",
+                "Code/User/globalStorage/saoudrizwan.claude-dev/settings/cline_mcp_settings.json",
+            ],
+            &[".cline/data/settings/skills", ".cline/skills"],
+            &[
+                ".cline/mcp.json",
+                ".cline/data/settings/cline_mcp_settings.json",
+                "Library/Application Support/Code/User/globalStorage/saoudrizwan.claude-dev/settings/cline_mcp_settings.json",
+                ".config/Code/User/globalStorage/saoudrizwan.claude-dev/settings/cline_mcp_settings.json",
+                "Code/User/globalStorage/saoudrizwan.claude-dev/settings/cline_mcp_settings.json",
+            ],
+            false,
+        ),
+        def(
+            "roo-code",
+            "Roo Code",
+            &["roo"],
+            &[
+                ".roo/mcp.json",
+                ".roo/settings.json",
+                "Library/Application Support/Code/User/globalStorage/rooveterinaryinc.roo-cline/settings/mcp_settings.json",
+                "Library/Application Support/Code/User/globalStorage/rooveterinaryinc.roo-cline/settings/cline_mcp_settings.json",
+                "Library/Application Support/Code/User/globalStorage/roocode.roo-cline/settings/mcp_settings.json",
+                "Library/Application Support/Code/User/globalStorage/roocode.roo-cline/settings/cline_mcp_settings.json",
+                ".config/Code/User/globalStorage/rooveterinaryinc.roo-cline/settings/mcp_settings.json",
+                ".config/Code/User/globalStorage/rooveterinaryinc.roo-cline/settings/cline_mcp_settings.json",
+                ".config/Code/User/globalStorage/roocode.roo-cline/settings/mcp_settings.json",
+                ".config/Code/User/globalStorage/roocode.roo-cline/settings/cline_mcp_settings.json",
+                "Code/User/globalStorage/rooveterinaryinc.roo-cline/settings/mcp_settings.json",
+                "Code/User/globalStorage/rooveterinaryinc.roo-cline/settings/cline_mcp_settings.json",
+                "Code/User/globalStorage/roocode.roo-cline/settings/mcp_settings.json",
+                "Code/User/globalStorage/roocode.roo-cline/settings/cline_mcp_settings.json",
+            ],
+            &[".roo/skills"],
+            &[
+                ".roo/mcp.json",
+                "Library/Application Support/Code/User/globalStorage/rooveterinaryinc.roo-cline/settings/mcp_settings.json",
+                "Library/Application Support/Code/User/globalStorage/rooveterinaryinc.roo-cline/settings/cline_mcp_settings.json",
+                "Library/Application Support/Code/User/globalStorage/roocode.roo-cline/settings/mcp_settings.json",
+                "Library/Application Support/Code/User/globalStorage/roocode.roo-cline/settings/cline_mcp_settings.json",
+                ".config/Code/User/globalStorage/rooveterinaryinc.roo-cline/settings/mcp_settings.json",
+                ".config/Code/User/globalStorage/rooveterinaryinc.roo-cline/settings/cline_mcp_settings.json",
+                ".config/Code/User/globalStorage/roocode.roo-cline/settings/mcp_settings.json",
+                ".config/Code/User/globalStorage/roocode.roo-cline/settings/cline_mcp_settings.json",
+                "Code/User/globalStorage/rooveterinaryinc.roo-cline/settings/mcp_settings.json",
+                "Code/User/globalStorage/rooveterinaryinc.roo-cline/settings/cline_mcp_settings.json",
+                "Code/User/globalStorage/roocode.roo-cline/settings/mcp_settings.json",
+                "Code/User/globalStorage/roocode.roo-cline/settings/cline_mcp_settings.json",
+            ],
+            false,
+        ),
         def(
             "aider",
             "Aider",
@@ -148,32 +217,62 @@ pub fn detection_only_definitions() -> Vec<HarnessDefinition> {
             &[".aider.conf.yml"],
             &[],
             &[],
-            true,
+            false,
         ),
-        def("amp", "Amp", &["amp"], &[".config/amp"], &[], &[], true),
+        def(
+            "amp",
+            "Amp",
+            &["amp"],
+            &[
+                ".config/amp/settings.json",
+                ".config/amp/settings.jsonc",
+                ".amp/settings.json",
+            ],
+            &[".config/amp/skills"],
+            &[
+                ".config/amp/settings.json",
+                ".config/amp/settings.jsonc",
+                ".amp/settings.json",
+            ],
+            false,
+        ),
         def(
             "goose",
             "Goose",
             &["goose"],
-            &[".config/goose"],
+            &[".config/goose/config.yaml", ".config/goose/config.yml"],
+            &[".config/goose/skills"],
             &[],
-            &[],
-            true,
+            false,
         ),
         def(
             "continue",
             "Continue",
             &["continue"],
-            &[".continue"],
+            &[
+                ".continue/config.yaml",
+                ".continue/config.yml",
+                ".continue/config.json",
+            ],
             &[],
-            &[],
-            true,
+            &[
+                ".continue/config.yaml",
+                ".continue/config.yml",
+                ".continue/config.json",
+            ],
+            false,
         ),
     ]
 }
 
+/// Compatibility alias for clients compiled against the V1 registry.  These
+/// definitions are no longer detection-only; they are backed by adapters.
+pub fn detection_only_definitions() -> Vec<HarnessDefinition> {
+    additional_definitions()
+}
+
 pub fn all_definitions() -> Vec<HarnessDefinition> {
     let mut all = tier1_definitions();
-    all.extend(detection_only_definitions());
+    all.extend(additional_definitions());
     all
 }

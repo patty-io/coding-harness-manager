@@ -126,8 +126,27 @@ pub fn parse_mcp_json(
     spec: &serde_json::Value,
     provenance: serde_json::Value,
 ) -> McpServer {
-    let transport = match spec.get("type").and_then(|t| t.as_str()) {
-        Some("remote") | Some("http") | Some("sse") => McpTransport::Http,
+    // MCP clients use a few spellings for the same transport.  Normalize the
+    // explicit type/transportType first, then fall back to the documented
+    // URL-vs-command shapes.  In particular, Cline uses `streamableHttp`
+    // while Roo/Continue use `streamable-http`.
+    let transport_type = spec
+        .get("type")
+        .or_else(|| spec.get("transportType"))
+        .or_else(|| spec.get("transport"))
+        .and_then(|value| value.as_str())
+        .map(|value| {
+            value
+                .chars()
+                .filter(|character| *character != '-' && *character != '_')
+                .flat_map(char::to_lowercase)
+                .collect::<String>()
+        });
+    let transport = match transport_type.as_deref() {
+        Some("remote") | Some("http") | Some("streamablehttp") => McpTransport::Http,
+        Some("sse") => McpTransport::Sse,
+        _ if spec.get("httpUrl").is_some() => McpTransport::Http,
+        _ if spec.get("url").is_some() && spec.get("command").is_none() => McpTransport::Sse,
         _ => McpTransport::Stdio,
     };
     let command_array: Vec<String> = spec
@@ -173,14 +192,23 @@ pub fn parse_mcp_json(
         transport,
         command,
         args,
-        url: spec.get("url").and_then(|v| v.as_str()).map(String::from),
+        url: spec
+            .get("url")
+            .or_else(|| spec.get("httpUrl"))
+            .and_then(|v| v.as_str())
+            .map(String::from),
         env,
         scope_type: ScopeType::Global,
         scope_path: None,
         provenance,
         enabled: spec
             .get("enabled")
-            .and_then(|v| v.as_bool())
+            .and_then(|value| value.as_bool())
+            .or_else(|| {
+                spec.get("disabled")
+                    .and_then(|value| value.as_bool())
+                    .map(|disabled| !disabled)
+            })
             .unwrap_or(true),
     }
 }

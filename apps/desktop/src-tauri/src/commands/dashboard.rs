@@ -7,28 +7,12 @@ use tauri::State;
 use crate::AppState;
 
 /// Describes how much of a detected harness the app can currently inspect.
-/// Detection-only definitions intentionally have no adapter yet; they are not
-/// broken installations and should not be presented as config read failures.
 pub(crate) fn harness_support(harness_type: &str) -> &'static str {
-    let detection_only = chm_harness_sdk::definition::all_definitions()
-        .into_iter()
-        .find(|definition| definition.id == harness_type)
-        .is_some_and(|definition| definition.detection_only);
-    if detection_only {
-        "detection-only"
-    } else if crate::commands::sync::adapter_for(harness_type).is_some() {
+    if crate::commands::sync::adapter_for(harness_type).is_some() {
         "supported"
     } else {
         "unsupported"
     }
-}
-
-fn harness_display_name(harness_type: &str) -> String {
-    chm_harness_sdk::definition::all_definitions()
-        .into_iter()
-        .find(|definition| definition.id == harness_type)
-        .map(|definition| definition.name.to_string())
-        .unwrap_or_else(|| harness_type.to_string())
 }
 
 #[derive(Serialize)]
@@ -60,8 +44,8 @@ mod tests {
     use super::harness_support;
 
     #[test]
-    fn classifies_kimi_as_detection_only() {
-        assert_eq!(harness_support("kimi-cli"), "detection-only");
+    fn classifies_kimi_as_supported() {
+        assert_eq!(harness_support("kimi-cli"), "supported");
     }
 
     #[test]
@@ -101,21 +85,6 @@ pub async fn dashboard_stats(state: State<'_, AppState>) -> Result<DashboardStat
             drifted += 1;
         }
         let support = harness_support(inst.harness_type.as_str()).to_string();
-        if support == "detection-only" {
-            let name = harness_display_name(inst.harness_type.as_str());
-            harness_details.push(DashboardHarnessSummary {
-                installation_id: inst.id.to_string(),
-                models: None,
-                mcp: None,
-                skills: None,
-                drifted: is_drifted,
-                state_error: Some(format!(
-                    "{name} is detected, but configuration reading is not supported yet"
-                )),
-                support,
-            });
-            continue;
-        }
         let state = crate::commands::sync::adapter_for(inst.harness_type.as_str())
             .ok_or_else(|| format!("no adapter for {}", inst.harness_type.as_str()))
             .and_then(|adapter| adapter.read_state(inst).map_err(|e| e.to_string()));

@@ -1,0 +1,21 @@
+[package]
+name = "detection-adapter"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+
+[dependencies]
+chm-core.workspace = true
+chm-filesystem.workspace = true
+chm-harness-sdk.workspace = true
+chrono.workspace = true
+json_comments = "0.2"
+serde_json.workspace = true
+serde_yaml = "0.9"
+toml = "0.8"
+toml_edit = "0.22"
+uuid.workspace = true
+
+[dev-dependencies]
+serde_json.workspace = true
+tempfile.workspace = true

@@ -12,7 +12,7 @@ const STATUS_STYLES: Record<string, string> = {
 
 const STATUS_LABELS: Record<string, string> = {
   installed: "Installed",
-  detected: "Detected only",
+  detected: "Detected, command not found",
   "config-missing": "Config found, no binary",
   error: "Error",
 };
@@ -111,10 +111,10 @@ export default function HarnessesScreen() {
                 last scan {i.last_scanned_at ? new Date(i.last_scanned_at).toLocaleString() : "—"}
               </div>
             </div>
-            {i.status === "detected" && (
+            {i.status === "detected" && !i.config_path && (
               <p className="mt-3 rounded border border-amber-500/30 bg-amber-500/10 px-2 py-1 text-xs leading-relaxed text-amber-200">
-                CHM found the executable, but this harness is detection-only:
-                its configuration cannot be read or managed yet.{" "}
+                CHM found the executable. Its user configuration will be
+                resolved on the next scan.{" "}
                 <Link
                   to="/doctor"
                   onClick={(event) => event.stopPropagation()}
