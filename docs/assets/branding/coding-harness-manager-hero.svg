@@ -1,0 +1,119 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="760" height="360" viewBox="0 0 760 360" role="img" aria-labelledby="title desc">
+  <title id="title">Coding Harness Manager — configure once, sync everywhere</title>
+  <desc id="desc">An animated control plane routes providers, models, MCP servers, and skills to five coding harnesses, then receives verification signals.</desc>
+  <defs>
+    <linearGradient id="brand" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#5eead4"/>
+      <stop offset=".35" stop-color="#7dd3fc"/>
+      <stop offset=".68" stop-color="#a5b4fc"/>
+      <stop offset="1" stop-color="#f0abfc"/>
+    </linearGradient>
+    <linearGradient id="panel" x1="0" y1="0" x2="0" y2="1">
+      <stop stop-color="#18181b"/>
+      <stop offset="1" stop-color="#0f0f12"/>
+    </linearGradient>
+    <pattern id="grid" width="24" height="24" patternUnits="userSpaceOnUse">
+      <path d="M24 0H0V24" fill="none" stroke="#27272a" stroke-width=".6" opacity=".55"/>
+    </pattern>
+    <filter id="glow" x="-80%" y="-80%" width="260%" height="260%">
+      <feGaussianBlur stdDeviation="4" result="blur"/>
+      <feMerge><feMergeNode in="blur"/><feMergeNode in="SourceGraphic"/></feMerge>
+    </filter>
+    <filter id="soft" x="-40%" y="-40%" width="180%" height="180%">
+      <feGaussianBlur stdDeviation="12"/>
+    </filter>
+    <path id="p1" d="M331 159C271 121 226 94 176 82"/>
+    <path id="p2" d="M326 174C258 171 213 167 160 168"/>
+    <path id="p3" d="M334 199C275 229 230 255 177 278"/>
+    <path id="p4" d="M429 159C489 121 534 94 584 82"/>
+    <path id="p5" d="M434 187C502 190 547 202 600 216"/>
+  </defs>
+
+  <rect x="1" y="1" width="758" height="358" rx="18" fill="#09090b" stroke="#27272a" stroke-width="2"/>
+  <rect x="2" y="2" width="756" height="356" rx="17" fill="url(#grid)"/>
+  <ellipse cx="380" cy="184" rx="150" ry="112" fill="#7dd3fc" opacity=".045" filter="url(#soft)">
+    <animate attributeName="opacity" values=".025;.07;.025" dur="4s" repeatCount="indefinite"/>
+  </ellipse>
+
+  <g fill="none" stroke="#3f3f46" stroke-width="1.3">
+    <use href="#p1"/><use href="#p2"/><use href="#p3"/><use href="#p4"/><use href="#p5"/>
+  </g>
+  <g fill="none" stroke="url(#brand)" stroke-width="1.6" stroke-linecap="round" stroke-dasharray="4 12" opacity=".7">
+    <use href="#p1"><animate attributeName="stroke-dashoffset" from="0" to="-32" dur="2.2s" repeatCount="indefinite"/></use>
+    <use href="#p2"><animate attributeName="stroke-dashoffset" from="0" to="-32" dur="2.5s" repeatCount="indefinite"/></use>
+    <use href="#p3"><animate attributeName="stroke-dashoffset" from="0" to="-32" dur="2.8s" repeatCount="indefinite"/></use>
+    <use href="#p4"><animate attributeName="stroke-dashoffset" from="0" to="-32" dur="2.4s" repeatCount="indefinite"/></use>
+    <use href="#p5"><animate attributeName="stroke-dashoffset" from="0" to="-32" dur="2.7s" repeatCount="indefinite"/></use>
+  </g>
+
+  <g font-family="ui-monospace, SFMono-Regular, Menlo, Consolas, monospace">
+    <g transform="translate(62 48)">
+      <rect width="116" height="54" rx="10" fill="url(#panel)" stroke="#3f3f46"/>
+      <circle cx="17" cy="17" r="4" fill="#d8b4fe"/>
+      <text x="29" y="21" fill="#e4e4e7" font-size="11" font-weight="700">CLAUDE CODE</text>
+      <text x="16" y="40" fill="#71717a" font-size="9">settings.json</text>
+    </g>
+    <g transform="translate(46 141)">
+      <rect width="116" height="54" rx="10" fill="url(#panel)" stroke="#3f3f46"/>
+      <circle cx="17" cy="17" r="4" fill="#7dd3fc"/>
+      <text x="29" y="21" fill="#e4e4e7" font-size="11" font-weight="700">CODEX</text>
+      <text x="16" y="40" fill="#71717a" font-size="9">config.toml</text>
+    </g>
+    <g transform="translate(63 250)">
+      <rect width="116" height="54" rx="10" fill="url(#panel)" stroke="#3f3f46"/>
+      <circle cx="17" cy="17" r="4" fill="#5eead4"/>
+      <text x="29" y="21" fill="#e4e4e7" font-size="11" font-weight="700">OPENCODE</text>
+      <text x="16" y="40" fill="#71717a" font-size="9">opencode.jsonc</text>
+    </g>
+    <g transform="translate(582 48)">
+      <rect width="116" height="54" rx="10" fill="url(#panel)" stroke="#3f3f46"/>
+      <circle cx="17" cy="17" r="4" fill="#f0abfc"/>
+      <text x="29" y="21" fill="#e4e4e7" font-size="11" font-weight="700">PI</text>
+      <text x="16" y="40" fill="#71717a" font-size="9">models.json</text>
+    </g>
+    <g transform="translate(598 189)">
+      <rect width="116" height="54" rx="10" fill="url(#panel)" stroke="#3f3f46"/>
+      <circle cx="17" cy="17" r="4" fill="#a5b4fc"/>
+      <text x="29" y="21" fill="#e4e4e7" font-size="11" font-weight="700">REASONIX</text>
+      <text x="16" y="40" fill="#71717a" font-size="9">config.toml</text>
+    </g>
+  </g>
+
+  <g filter="url(#glow)">
+    <circle cx="380" cy="180" r="55" fill="#09090b" stroke="url(#brand)" stroke-width="2.4">
+      <animate attributeName="r" values="54;57;54" dur="4s" repeatCount="indefinite"/>
+      <animate attributeName="stroke-opacity" values=".75;1;.75" dur="4s" repeatCount="indefinite"/>
+    </circle>
+    <circle cx="380" cy="180" r="43" fill="#18181b" stroke="#3f3f46"/>
+  </g>
+  <g font-family="ui-monospace, SFMono-Regular, Menlo, Consolas, monospace" text-anchor="middle">
+    <text x="380" y="174" fill="#fafafa" font-size="23" font-weight="800" letter-spacing="4">CHM</text>
+    <text x="380" y="193" fill="#a1a1aa" font-size="8" letter-spacing="1.5">CONTROL PLANE</text>
+  </g>
+
+  <g font-family="ui-monospace, SFMono-Regular, Menlo, Consolas, monospace" font-size="8" text-anchor="middle">
+    <g transform="translate(380 112)"><rect x="-28" y="-9" width="56" height="18" rx="9" fill="#18181b" stroke="#5eead4"/><text y="3" fill="#99f6e4">PROVIDERS</text></g>
+    <g transform="translate(448 180)"><rect x="-22" y="-9" width="44" height="18" rx="9" fill="#18181b" stroke="#7dd3fc"/><text y="3" fill="#bae6fd">MODELS</text></g>
+    <g transform="translate(380 248)"><rect x="-18" y="-9" width="36" height="18" rx="9" fill="#18181b" stroke="#c4b5fd"/><text y="3" fill="#ddd6fe">MCP</text></g>
+    <g transform="translate(312 180)"><rect x="-22" y="-9" width="44" height="18" rx="9" fill="#18181b" stroke="#f0abfc"/><text y="3" fill="#f5d0fe">SKILLS</text></g>
+    <animateTransform attributeName="transform" type="rotate" from="0 380 180" to="360 380 180" dur="18s" repeatCount="indefinite"/>
+  </g>
+
+  <g fill="#fafafa" filter="url(#glow)">
+    <circle r="3"><animateMotion dur="3.2s" repeatCount="indefinite" begin="0s"><mpath href="#p1"/></animateMotion></circle>
+    <circle r="3"><animateMotion dur="3.2s" repeatCount="indefinite" begin=".6s"><mpath href="#p2"/></animateMotion></circle>
+    <circle r="3"><animateMotion dur="3.2s" repeatCount="indefinite" begin="1.2s"><mpath href="#p3"/></animateMotion></circle>
+    <circle r="3"><animateMotion dur="3.2s" repeatCount="indefinite" begin=".3s"><mpath href="#p4"/></animateMotion></circle>
+    <circle r="3"><animateMotion dur="3.2s" repeatCount="indefinite" begin=".9s"><mpath href="#p5"/></animateMotion></circle>
+  </g>
+
+  <g fill="#34d399" font-family="ui-monospace, SFMono-Regular, Menlo, Consolas, monospace" font-size="8">
+    <g transform="translate(193 87)" opacity="0"><circle r="3"/><text x="8" y="3">VERIFIED</text><animate attributeName="opacity" values="0;0;1;1;0" keyTimes="0;.62;.68;.9;1" dur="3.2s" repeatCount="indefinite"/></g>
+    <g transform="translate(570 220)" opacity="0"><circle r="3"/><text x="-8" y="3" text-anchor="end">VERIFIED</text><animate attributeName="opacity" values="0;0;1;1;0" keyTimes="0;.62;.68;.9;1" dur="3.2s" begin=".9s" repeatCount="indefinite"/></g>
+  </g>
+
+  <g font-family="ui-monospace, SFMono-Regular, Menlo, Consolas, monospace" text-anchor="middle">
+    <text x="380" y="324" fill="url(#brand)" font-size="15" font-weight="700" letter-spacing="3">CODING HARNESS MANAGER</text>
+    <text x="380" y="342" fill="#71717a" font-size="9" letter-spacing="1.2">CONFIGURE ONCE  ·  PREVIEW THE DIFF  ·  SYNC EVERYWHERE</text>
+  </g>
+</svg>
