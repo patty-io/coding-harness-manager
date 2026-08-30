@@ -12,7 +12,7 @@ const STATUS_STYLES: Record<string, string> = {
 
 const STATUS_LABELS: Record<string, string> = {
   installed: "Installed",
-  detected: "Detected",
+  detected: "Detected only",
   "config-missing": "Config found, no binary",
   error: "Error",
 };
@@ -111,6 +111,19 @@ export default function HarnessesScreen() {
                 last scan {i.last_scanned_at ? new Date(i.last_scanned_at).toLocaleString() : "—"}
               </div>
             </div>
+            {i.status === "detected" && (
+              <p className="mt-3 rounded border border-amber-500/30 bg-amber-500/10 px-2 py-1 text-xs leading-relaxed text-amber-200">
+                CHM found the executable, but this harness is detection-only:
+                its configuration cannot be read or managed yet.{" "}
+                <Link
+                  to="/doctor"
+                  onClick={(event) => event.stopPropagation()}
+                  className="font-medium underline hover:text-amber-100"
+                >
+                  Why?
+                </Link>
+              </p>
+            )}
             <div className="mt-3 flex items-center justify-between border-t border-slate-700/60 pt-3">
               <span className="text-xs text-blue-400">Open →</span>
               {i.status !== "detected" && (

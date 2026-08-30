@@ -8,6 +8,7 @@ const root = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 const read = (path) => readFileSync(resolve(root, path), "utf8");
 
 const harness = read("src/screens/HarnessDetailScreen.tsx");
+const configDiff = read("src/components/ConfigDiffViewer.tsx");
 const sync = read("src/components/SyncDialog.tsx");
 const html = read("index.html");
 
@@ -29,6 +30,9 @@ describe("product contracts", () => {
     assert.ok(harness.includes('role="tabpanel"'), "harness content must expose a tabpanel");
     assert.ok(harness.includes("Sync from library…"), "sync action must state its direction");
     assert.ok(harness.includes('title="Save this harness model into your My Models library"'), "row action must state its direction");
+    assert.ok(harness.includes("<ConfigDiffViewer"), "drift view must render a real diff");
+    assert.ok(configDiff.includes('aria-label="Previous change"'), "diff must support previous-change navigation");
+    assert.ok(configDiff.includes('aria-label="Next change"'), "diff must support next-change navigation");
     assert.ok(sync.includes("planHash"), "sync apply must carry the validated plan hash");
     assert.ok(sync.includes("selection"), "sync apply must carry explicit selection");
     assert.ok(!sourceFiles.some((file) => read(file).includes("window.confirm")), "native confirm must not be used in the webview");

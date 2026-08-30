@@ -142,7 +142,9 @@ function HarnessCard({
             statusStyles[installation.status] ?? statusStyles.detected
           }`}
         >
-          {statusLabels[installation.status] ?? installation.status}
+          {summary?.support === "detection-only"
+            ? "Detected only"
+            : statusLabels[installation.status] ?? installation.status}
         </span>
       </div>
 
@@ -151,11 +153,30 @@ function HarnessCard({
           Config changed outside the app
         </p>
       )}
-      {summary?.stateError && (
-        <p className="mt-2 rounded border border-red-500/40 bg-red-500/10 px-2 py-1 text-xs text-red-300">
-          Could not read current state · open Doctor for details
+      {summary?.support === "detection-only" ? (
+        <p className="mt-2 rounded border border-amber-500/40 bg-amber-500/10 px-2 py-1 text-xs text-amber-200">
+          The executable is detected, but CHM cannot read this harness&apos;s
+          configuration yet.{" "}
+          <Link
+            to="/doctor"
+            onClick={(event) => event.stopPropagation()}
+            className="font-medium underline hover:text-amber-100"
+          >
+            Why?
+          </Link>
         </p>
-      )}
+      ) : summary?.stateError ? (
+        <p className="mt-2 rounded border border-red-500/40 bg-red-500/10 px-2 py-1 text-xs text-red-300">
+          Could not read current state: {summary.stateError}{" "}
+          <Link
+            to="/doctor"
+            onClick={(event) => event.stopPropagation()}
+            className="font-medium underline hover:text-red-200"
+          >
+            Open Doctor →
+          </Link>
+        </p>
+      ) : null}
 
       <div className="mt-3 flex gap-4 text-xs text-slate-400">
         <span>

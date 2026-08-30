@@ -19,6 +19,7 @@ import {
   useRecordManualSnapshot,
 } from "../hooks/useHarnesses";
 import { SyncDialog } from "../components/SyncDialog";
+import { ConfigDiffViewer } from "../components/ConfigDiffViewer";
 import { useConfirm } from "../components/ConfirmDialog";
 import { smartAdoptHarnessModel } from "../lib/api";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
@@ -227,14 +228,41 @@ export default function HarnessDetailScreen() {
   }
 
   if (stateError) {
+    const detectionOnly = installation?.status === "detected" && !installation.config_path;
+    const harnessName = installation?.harness_type === "kimi-cli"
+      ? "Kimi CLI"
+      : installation?.harness_type ?? "This harness";
     return (
       <div>
         <Link to="/harnesses" className="text-sm text-slate-400 hover:text-slate-200">
           ← Harnesses
         </Link>
-        <p className="mt-4 rounded border border-red-500/30 bg-red-500/10 p-4 text-sm text-red-300">
-          Could not read this harness's config: {(stateError as Error).message}
-        </p>
+        {detectionOnly ? (
+          <div className="mt-4 rounded border border-amber-500/40 bg-amber-500/10 p-4">
+            <h2 className="font-medium text-amber-200">
+              {harnessName} is detected, but not readable yet
+            </h2>
+            <p className="mt-2 text-sm leading-relaxed text-amber-100/80">
+              CHM found the executable on your PATH. This harness is currently
+              detection-only, so there is no configuration adapter to parse or
+              edit its files yet. Doctor is reporting a support limitation —
+              not a corrupt installation or a missing Kimi CLI binary.
+            </p>
+            <Link
+              to="/doctor"
+              className="mt-3 inline-block text-sm font-medium text-amber-200 underline hover:text-amber-100"
+            >
+              Open Doctor for details →
+            </Link>
+          </div>
+        ) : (
+          <p className="mt-4 rounded border border-red-500/30 bg-red-500/10 p-4 text-sm text-red-300">
+            Could not read this harness&apos;s config: {(stateError as Error).message}{" "}
+            <Link to="/doctor" className="font-medium underline hover:text-red-200">
+              Open Doctor →
+            </Link>
+          </p>
+        )}
       </div>
     );
   }
@@ -412,24 +440,10 @@ export default function HarnessDetailScreen() {
                   Models library with disk and lets you apply.
                 </p>
                 {showDiff && (
-                  <div className="mt-3 grid grid-cols-1 gap-3 lg:grid-cols-2">
-                    <div>
-                      <div className="mb-1 text-xs font-medium text-slate-400">
-                        Last written by the app
-                      </div>
-                      <pre className="max-h-64 overflow-auto rounded border border-slate-700 bg-slate-950 p-2 font-mono text-[11px] text-slate-400">
-                        {drift.lastWrittenContent ?? "(none)"}
-                      </pre>
-                    </div>
-                    <div>
-                      <div className="mb-1 text-xs font-medium text-amber-300">
-                        On disk now
-                      </div>
-                      <pre className="max-h-64 overflow-auto rounded border border-amber-500/30 bg-slate-950 p-2 font-mono text-[11px] text-slate-200">
-                        {drift.currentContent ?? "(file missing)"}
-                      </pre>
-                    </div>
-                  </div>
+                  <ConfigDiffViewer
+                    before={drift.lastWrittenContent}
+                    after={drift.currentContent}
+                  />
                 )}
               </div>
             )}

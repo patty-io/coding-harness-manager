@@ -47,6 +47,7 @@ export interface DashboardHarnessSummary {
   skills: number | null;
   drifted: boolean;
   stateError: string | null;
+  support: "supported" | "detection-only" | "unsupported";
 }
 
 export async function dashboardStats(): Promise<DashboardStats> {
