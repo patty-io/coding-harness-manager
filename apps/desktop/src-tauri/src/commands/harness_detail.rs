@@ -17,67 +17,102 @@ struct HarnessProviderDeclaration {
     model_ids: std::collections::HashSet<String>,
 }
 
-/// Read provider declarations from a harness config once. Pi and several
-/// other harnesses expose model lists either as arrays of `{id: ...}` objects
-/// or as id-keyed objects; normalizing both shapes here keeps attribution and
-/// provider-detail views on the same source of truth.
+/// Read provider declarations from the adapter's normalized state. Every
+/// adapter is allowed to parse a different native format, but provider records
+/// share a small safe shape (`native_provider_id` plus optional base URL), and
+/// model routes carry the provider id in their overrides. Keeping this logic
+/// on normalized state means TOML, JSON, JSONC, and YAML harnesses all receive
+/// the same attribution and provider-detail behavior.
 fn harness_provider_declarations(
-    inst: &chm_core::domain::harness::HarnessInstallation,
+    parsed: &chm_harness_sdk::adapter::types::ParsedState,
 ) -> Vec<HarnessProviderDeclaration> {
-    let Some(path) = &inst.config_path else {
-        return Vec::new();
-    };
-    let Ok(text) = std::fs::read_to_string(path) else {
-        return Vec::new();
-    };
-    let Ok(v) = serde_json::from_str::<serde_json::Value>(&text) else {
-        return Vec::new();
-    };
-    let Some(providers) = v.get("providers").and_then(|p| p.as_object()) else {
-        return Vec::new();
-    };
-    providers
-        .iter()
-        .map(|(pname, provider)| {
-            let base_url = provider
-                .get("baseUrl")
-                .or_else(|| provider.get("base_url"))
-                .or_else(|| provider.get("url"))
-                .and_then(|value| value.as_str())
-                .map(str::to_string);
-            let mut model_ids = std::collections::HashSet::new();
-            match provider.get("models") {
-                Some(serde_json::Value::Array(models)) => {
-                    for model in models {
+    let mut declarations = Vec::new();
+
+    for provider in &parsed.providers {
+        let Some(object) = provider.as_object() else {
+            continue;
+        };
+        // Claude settings also use ParsedState.providers for arbitrary env
+        // overrides. Those are not model-serving providers and should never
+        // appear in the Models table.
+        if object.contains_key("env_override") {
+            continue;
+        }
+        let Some(name) = ["native_provider_id", "name", "id", "provider"]
+            .iter()
+            .find_map(|key| object.get(*key).and_then(|value| value.as_str()))
+            .map(str::trim)
+            .filter(|name| !name.is_empty() && !name.starts_with("__"))
+        else {
+            continue;
+        };
+        let base_url = ["base_url", "baseUrl", "url", "openAiBaseUrl"]
+            .iter()
+            .find_map(|key| object.get(*key).and_then(|value| value.as_str()))
+            .map(str::to_string);
+        let mut model_ids = provider_model_ids(object);
+
+        // Most adapters expose the provider separately from its model list.
+        // Reconnect those records through the normalized model override so a
+        // provider still attributes correctly when its native config stores
+        // models in a sibling table or file.
+        for model in &parsed.models {
+            if model_provider_id(model).is_some_and(|provider_id| {
+                provider_id.eq_ignore_ascii_case(name)
+            }) {
+                model_ids.insert(model.native_id.to_lowercase());
+                model_ids.insert(model.route.remote_model_id.to_lowercase());
+            }
+        }
+
+        if let Some(existing) = declarations
+            .iter_mut()
+            .find(|declaration: &&mut HarnessProviderDeclaration| {
+                declaration.name.eq_ignore_ascii_case(name)
+            })
+        {
+            if existing.base_url.is_none() {
+                existing.base_url = base_url;
+            }
+            existing.model_ids.extend(model_ids);
+        } else {
+            declarations.push(HarnessProviderDeclaration {
+                name: name.to_string(),
+                base_url,
+                model_ids,
+            });
+        }
+    }
+
+    declarations
+}
+
+fn provider_model_ids(object: &serde_json::Map<String, serde_json::Value>)
+    -> std::collections::HashSet<String>
+{
+    let mut model_ids = std::collections::HashSet::new();
+    match object.get("models") {
+        Some(serde_json::Value::Array(models)) => {
+            for model in models {
+                match model {
+                    serde_json::Value::String(id) => {
+                        model_ids.insert(id.to_lowercase());
+                    }
+                    serde_json::Value::Object(model) => {
                         if let Some(id) = model.get("id").and_then(|value| value.as_str()) {
                             model_ids.insert(id.to_lowercase());
                         }
                     }
+                    _ => {}
                 }
-                Some(serde_json::Value::Object(models)) => {
-                    model_ids.extend(models.keys().map(|id| id.to_lowercase()));
-                }
-                _ => {}
             }
-            HarnessProviderDeclaration {
-                name: pname.clone(),
-                base_url,
-                model_ids,
-            }
-        })
-        .collect()
-}
-
-/// Provider grouping declared by the harness config itself, e.g. Pi's
-/// models.json: providers.<name>.models[] with `id` fields. Returns
-/// (model id -> provider name, provider base url). For duplicate model ids,
-/// retain the first declaration for the legacy providerless fallback; rows
-/// carrying a native provider id use the declarations directly.
-fn harness_provider_map(
-    inst: &chm_core::domain::harness::HarnessInstallation,
-) -> std::collections::HashMap<String, (String, Option<String>)> {
-    let declarations = harness_provider_declarations(inst);
-    harness_provider_map_from_declarations(&declarations)
+        }
+        Some(serde_json::Value::Object(models)) => {
+            model_ids.extend(models.keys().map(|id| id.to_lowercase()));
+        }
+        _ => {}
+    }
+    model_ids
 }
 
 fn harness_provider_map_from_declarations(
@@ -123,12 +158,12 @@ pub async fn harness_models_view_cmd(
     state: State<'_, AppState>,
     installation_id: String,
 ) -> Result<Vec<HarnessModelRow>, String> {
-    let (inst_for_map, parsed) = read_parsed_installation(&state.pool, &installation_id).await?;
+    let (_inst, parsed) = read_parsed_installation(&state.pool, &installation_id).await?;
     let routes = list_routes(&state.pool).await.map_err(|e| e.to_string())?;
     let providers = list_providers(&state.pool)
         .await
         .map_err(|e| e.to_string())?;
-    let native_provider_declarations = harness_provider_declarations(&inst_for_map);
+    let native_provider_declarations = harness_provider_declarations(&parsed);
     let native_providers = harness_provider_map_from_declarations(&native_provider_declarations);
 
     // endpoint -> (provider id, provider display name); base_url -> provider id.
@@ -505,6 +540,13 @@ fn model_provider_id(model: &chm_harness_sdk::adapter::types::HarnessModel) -> O
         .overrides
         .get("native_provider_id")
         .and_then(|value| value.as_str())
+        .or_else(|| {
+            model
+                .route
+                .capabilities
+                .get("provider")
+                .and_then(|value| value.as_str())
+        })
 }
 
 fn model_activity_label(model_id: &str, display_name: Option<&str>) -> String {
@@ -1205,7 +1247,7 @@ pub async fn smart_adopt_harness_model_cmd(
 ) -> Result<SmartAdoptOutcome, String> {
     use chm_core::domain::provider::{AuthType, Protocol, ProviderEndpoint};
 
-    let (inst, parsed) = read_parsed_installation(&state.pool, &installation_id).await?;
+    let (_inst, parsed) = read_parsed_installation(&state.pool, &installation_id).await?;
     let model = parsed
         .models
         .iter()
@@ -1221,7 +1263,7 @@ pub async fn smart_adopt_harness_model_cmd(
         })
         .ok_or_else(|| format!("model {native_id} not found on this harness"))?;
 
-    let provider_declarations = harness_provider_declarations(&inst);
+    let provider_declarations = harness_provider_declarations(&parsed);
     let provider_map = harness_provider_map_from_declarations(&provider_declarations);
     let native_lower = native_id.to_lowercase();
     let provider = native_provider_id
@@ -1382,7 +1424,7 @@ pub async fn harness_provider_detail_cmd(
     // inside the model iterator reread and reparsed the same config for every
     // row, which was needlessly expensive for larger harness configs.
     let (declared_name, base_url, declared_model_ids) =
-        harness_provider_models(&inst, &provider_name).ok_or_else(|| {
+        harness_provider_models(&parsed, &provider_name).ok_or_else(|| {
             format!("provider {provider_name} not declared in this harness config")
         })?;
     let models = parsed
@@ -1415,10 +1457,10 @@ pub async fn harness_provider_detail_cmd(
 /// config a single time. Provider model lists may be arrays or id-keyed
 /// objects depending on the harness.
 fn harness_provider_models(
-    inst: &chm_core::domain::harness::HarnessInstallation,
+    parsed: &chm_harness_sdk::adapter::types::ParsedState,
     provider_name: &str,
 ) -> Option<(String, Option<String>, std::collections::HashSet<String>)> {
-    harness_provider_declarations(inst)
+    harness_provider_declarations(parsed)
         .into_iter()
         .find(|declaration| declaration.name.eq_ignore_ascii_case(provider_name))
         .map(|declaration| {
@@ -1441,13 +1483,13 @@ pub async fn ensure_provider_from_harness_cmd(
 ) -> Result<EnsureProviderOutcome, String> {
     use chm_core::domain::provider::{AuthType, Protocol, ProviderEndpoint};
 
-    let inst = crate::commands::find_installation(&state.pool, &installation_id).await?;
+    let (_inst, parsed) = read_parsed_installation(&state.pool, &installation_id).await?;
 
-    let provider_map = harness_provider_map(&inst);
-    let base_url = provider_map
-        .values()
-        .find(|(pname, _)| *pname == provider_name)
-        .and_then(|(_, base)| base.clone())
+    let provider_declarations = harness_provider_declarations(&parsed);
+    let base_url = provider_declarations
+        .iter()
+        .find(|declaration| declaration.name.eq_ignore_ascii_case(&provider_name))
+        .and_then(|declaration| declaration.base_url.clone())
         .ok_or_else(|| format!("provider {provider_name} not declared in this harness's config"))?;
 
     let providers = list_providers(&state.pool)
@@ -1515,7 +1557,10 @@ pub async fn ensure_provider_from_harness_cmd(
 
 #[cfg(test)]
 mod activity_tests {
-    use super::{HarnessModelOp, model_edit_activity_summary};
+    use super::{
+        HarnessModelOp, harness_provider_declarations, harness_provider_for_model,
+        harness_provider_models, model_edit_activity_summary,
+    };
     use chm_core::domain::models::ModelRoute;
     use chm_harness_sdk::adapter::plan::{PlanAction, ReconciliationPlan, RemoveAction};
     use chm_harness_sdk::adapter::types::{HarnessModel, ParsedState};
@@ -1557,5 +1602,57 @@ mod activity_tests {
             summary,
             "Pi: Deleted model qwen3.8-27b (Qwen 3.8 27B) via Yolo-Auto"
         );
+    }
+
+    #[test]
+    fn provider_attribution_uses_normalized_adapter_provider_records() {
+        let route = ModelRoute::new(
+            "deepseek-v4-flash".into(),
+            "custom-api-cline-bot/deepseek-v4-flash".into(),
+            Some(1_000_000),
+            serde_json::json!({"provider": "custom-api-cline-bot"}),
+            serde_json::json!({}),
+        );
+        let parsed = ParsedState {
+            models: vec![HarnessModel {
+                native_id: "deepseek-v4-flash".into(),
+                route,
+            }],
+            providers: vec![
+                serde_json::json!({
+                    "native_provider_id": "custom-api-cline-bot",
+                    "base_url": "https://api.cline.bot/api/v1"
+                }),
+                serde_json::json!({"native_provider_id": "__schema__"}),
+            ],
+            ..Default::default()
+        };
+
+        let declarations = harness_provider_declarations(&parsed);
+        assert_eq!(declarations.len(), 1, "schema metadata is not a provider");
+        assert_eq!(declarations[0].name, "custom-api-cline-bot");
+        assert_eq!(
+            declarations[0].base_url.as_deref(),
+            Some("https://api.cline.bot/api/v1")
+        );
+        assert!(declarations[0].model_ids.contains("deepseek-v4-flash"));
+
+        let resolved = harness_provider_for_model(
+            &declarations,
+            "custom-api-cline-bot",
+            "deepseek-v4-flash",
+            "deepseek-v4-flash",
+        )
+        .expect("provider should resolve from normalized records");
+        assert_eq!(resolved.0, "custom-api-cline-bot");
+        assert_eq!(
+            resolved.1.as_deref(),
+            Some("https://api.cline.bot/api/v1")
+        );
+
+        let detail = harness_provider_models(&parsed, "custom-api-cline-bot")
+            .expect("provider detail should use the same declaration source");
+        assert_eq!(detail.0, "custom-api-cline-bot");
+        assert_eq!(detail.2.len(), 1);
     }
 }
