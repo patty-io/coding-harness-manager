@@ -265,7 +265,7 @@ export default function ModelsScreen() {
                         confirm(
                           "Delete this model route?",
                           "It will no longer be available to sync to harnesses.",
-                          () => del.mutateAsync(r.id).then(() => undefined),
+                          () => del.mutateAsync(r.id),
                           "Delete",
                         )
                       }

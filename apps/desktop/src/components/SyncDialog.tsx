@@ -1,60 +1,13 @@
 import { useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { invoke } from "@tauri-apps/api/core";
 import { Link } from "react-router-dom";
+import {
+  syncApply,
+  syncPreview,
+  type SyncSelection,
+} from "../lib/api";
 
-export interface ActionView {
-  kind: string;
-  identity: string;
-  action: string;
-}
-
-export interface FilePreview {
-  path: string;
-  before: string | null;
-  after: string | null;
-}
-
-export interface PreviewReport {
-  summary: string;
-  actions: ActionView[];
-  files: FilePreview[];
-  planHash: string;
-  writableChanges: number;
-  hasBlockers: boolean;
-}
-
-export interface SyncSelection {
-  modelIds?: string[];
-  mcpIds?: string[];
-  skillIds?: string[];
-}
-
-export interface ApplyReport {
-  summary: string;
-  filesWritten: string[];
-  linksCreated: string[];
-  transactionId: string;
-  validation: { ok: boolean; errors: string[] };
-}
-
-export function syncPreview(
-  installationId: string,
-  mode: string,
-  selection?: SyncSelection,
-): Promise<PreviewReport> {
-  return invoke<PreviewReport>("sync_preview", { installationId, mode, selection });
-}
-
-export function syncApply(
-  installationId: string,
-  mode: string,
-  force: boolean,
-  planHash: string,
-  selection?: SyncSelection,
-): Promise<ApplyReport> {
-  return invoke<ApplyReport>("sync_apply", { installationId, mode, force, planHash, selection });
-}
+export type { SyncSelection } from "../lib/api";
 
 export function useSyncPreview(
   installationId: string,
@@ -113,6 +66,7 @@ export function SyncDialog({
   const [expandedFile, setExpandedFile] = useState<string | null>(null);
   const preview = useSyncPreview(installationId, mode, selection);
   const apply = useSyncApply();
+  const selectionScoped = !!selection;
 
   const ACTION_COLORS: Record<string, string> = {
     add: "bg-green-100 text-green-700",
@@ -129,16 +83,28 @@ export function SyncDialog({
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/30">
-      <div className="flex max-h-[85vh] w-full max-w-3xl flex-col rounded bg-slate-800 shadow-xl">
+      <div
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="sync-dialog-title"
+        className="flex max-h-[85vh] w-full max-w-3xl flex-col rounded bg-slate-800 shadow-xl"
+      >
         <div className="flex items-center justify-between border-b p-4">
           <div>
-            <h2 className="font-medium">Sync {harnessType}</h2>
+            <h2 id="sync-dialog-title" className="font-medium">
+              Sync {harnessType}
+            </h2>
             <p className="text-xs text-slate-400">
               Preview of what would change in this harness's config files.
               Nothing is written until you press Apply.
             </p>
           </div>
-          <button onClick={onClose} className="text-slate-400">
+          <button
+            type="button"
+            onClick={onClose}
+            aria-label="Close sync dialog"
+            className="text-slate-400"
+          >
             ✕
           </button>
         </div>
@@ -152,15 +118,24 @@ export function SyncDialog({
               />
               Append/update
             </label>
-            <label className="flex items-center gap-1">
-              <input
-                type="radio"
-                checked={mode === "replaceManaged"}
-                onChange={() => setMode("replaceManaged")}
-              />
-              Replace managed
-            </label>
+            {!selectionScoped && (
+              <label className="flex items-center gap-1">
+                <input
+                  type="radio"
+                  checked={mode === "replaceManaged"}
+                  onChange={() => setMode("replaceManaged")}
+                />
+                Replace managed
+              </label>
+            )}
           </div>
+          {selectionScoped && (
+            <p className="mt-2 text-xs text-slate-500">
+              This is a selection-scoped sync, so it only appends or updates
+              the chosen resources. Replace Managed is available when syncing
+              the full library.
+            </p>
+          )}
           {preview.isLoading && <p className="mt-3 text-sm" role="status">Computing diff…</p>}
           {preview.isError && (
             <p className="mt-3 text-sm text-red-600">{preview.error.message}</p>
@@ -247,6 +222,7 @@ export function SyncDialog({
         </div>
         <div className="flex justify-end gap-2 border-t p-4">
           <button
+            type="button"
             onClick={onClose}
             className="rounded border border-slate-600 px-3 py-1 text-sm"
           >

@@ -12,7 +12,7 @@ export default function ProvidersScreen() {
   const navigate = useNavigate();
   const { confirm, confirmDialog } = useConfirm();
   const { data: providers, isLoading } = useProviders();
-  const summaries = useProviderSummaries(providers);
+  const summaries = useProviderSummaries();
   const create = useCreateProvider();
   const del = useDeleteProvider();
   const [name, setName] = useState("");
@@ -87,8 +87,8 @@ export default function ProvidersScreen() {
 
       {isLoading && <p className="mt-4">Loading…</p>}
       <ul className="mt-4 space-y-2">
-        {(providers ?? []).map((p, index) => {
-          const summary = summaries[index]?.data;
+        {(providers ?? []).map((p) => {
+          const summary = summaries.byProvider.get(p.id);
           return (
           <li
             key={p.id}
@@ -129,7 +129,7 @@ export default function ProvidersScreen() {
                   confirm(
                     `Delete ${p.display_name}?`,
                     "This deletes the provider and ALL its endpoints, models, and bindings. This cannot be undone.",
-                    () => del.mutateAsync(p.id).then(() => undefined),
+                    () => del.mutateAsync(p.id),
                     "Delete",
                   )
                 }

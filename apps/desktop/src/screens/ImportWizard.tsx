@@ -1,7 +1,7 @@
 import { useMemo, useState } from "react";
 import { Link } from "react-router-dom";
 import { useQueries } from "@tanstack/react-query";
-import { TIER1_HARNESSES } from "../lib/api";
+import { readHarnessState, TIER1_HARNESSES } from "../lib/api";
 import { useInstallations, useScanHarnesses } from "../hooks/useHarnesses";
 import { useImportHarnessState } from "../hooks/useImport";
 import type { ImportOptions, ImportReport } from "../lib/api";
@@ -33,7 +33,7 @@ export default function ImportWizard() {
   const reviews = useQueries({
     queries: selected.map((installationId) => ({
       queryKey: ["harness-state", installationId],
-      queryFn: () => import("../lib/api").then(({ readHarnessState }) => readHarnessState(installationId)),
+      queryFn: () => readHarnessState(installationId),
       enabled: step === "review" || step === "done",
     })),
   });
@@ -50,7 +50,13 @@ export default function ImportWizard() {
       prev.includes(id) ? prev.filter((x) => x !== id) : [...prev, id],
     );
 
+  const reviewComplete =
+    selected.length > 0 &&
+    reviews.length === selected.length &&
+    reviews.every((review) => review.isSuccess);
+
   const doImport = async () => {
+    if (!reviewComplete) return;
     setImporting(true);
     setImportError(null);
     const options: ImportOptions = {
@@ -59,6 +65,7 @@ export default function ImportWizard() {
       importSkills: includeSkills,
     };
     const results = [];
+    const errors: string[] = [];
     for (const id of selected) {
       setRunStatus((previous) => ({ ...previous, [id]: "pending" }));
       try {
@@ -66,13 +73,18 @@ export default function ImportWizard() {
         setRunStatus((previous) => ({ ...previous, [id]: "succeeded" }));
       } catch (e) {
         setRunStatus((previous) => ({ ...previous, [id]: "failed" }));
-        setImportError(e instanceof Error ? e.message : String(e));
-        break;
+        const harness = tier1.find((installation) => installation.id === id);
+        errors.push(
+          (harness?.harness_type ?? id) +
+            ": " +
+            (e instanceof Error ? e.message : String(e)),
+        );
       }
     }
     setReports(results);
     setImporting(false);
-    if (results.length > 0) setStep("done");
+    setImportError(errors.length > 0 ? errors.join(" · ") : null);
+    if (results.length > 0 || errors.length > 0) setStep("done");
   };
 
   const reviewed = useMemo(
@@ -200,7 +212,7 @@ export default function ImportWizard() {
           {reviewError && (
             <p className="mt-2 text-red-600">{String(reviewError)}</p>
           )}
-          {reviewed.length > 0 && !reviewLoading && (
+          {reviewComplete && reviewed.length > 0 && !reviewLoading && (
             <>
               <div className="mt-4 grid grid-cols-3 gap-3 text-center">
                 <Card label="Models" value={totalReview.models} />

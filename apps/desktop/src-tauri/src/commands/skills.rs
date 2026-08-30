@@ -6,6 +6,7 @@ use chm_database::repos::harness::list_installations;
 use chm_database::repos::skills::{create_skill, list_skill_bindings, list_skills};
 use serde::Serialize;
 use sqlx::{Pool, Sqlite};
+use std::collections::HashMap;
 use tauri::State;
 use uuid::Uuid;
 
@@ -83,6 +84,11 @@ pub async fn import_skills_core(
 ) -> Result<ImportSkillReport, String> {
     let mut report = ImportSkillReport::default();
     let existing = list_skills(pool).await.map_err(|e| e.to_string())?;
+    // `existing` is a snapshot taken before the batch. Track successful
+    // imports as we go so duplicate paths/content in one request receive the
+    // same non-fatal treatment as duplicates already in the registry.
+    let mut batch_paths = HashMap::<String, String>::new();
+    let mut batch_hashes = std::collections::HashSet::<String>::new();
     for path in paths {
         let hash = crate::skill_lib::hash_directory(std::path::Path::new(path))?;
         let name = std::path::Path::new(path)
@@ -92,6 +98,7 @@ pub async fn import_skills_core(
         if existing
             .iter()
             .any(|sk| sk.content_hash.as_deref() == Some(hash.as_str()))
+            || batch_hashes.contains(&hash)
         {
             report.duplicates.push(format!("skill:{name}"));
             continue;
@@ -99,12 +106,19 @@ pub async fn import_skills_core(
         if existing
             .iter()
             .any(|sk| sk.name == name && sk.canonical_path != *path)
+            || batch_paths
+                .get(&name)
+                .is_some_and(|previous_path| previous_path != path)
         {
             // same name, different content at a different location = conflict
             report.conflicts.push(format!("skill:{name}"));
             continue;
         }
         if existing.iter().any(|sk| sk.canonical_path == *path) {
+            report.duplicates.push(format!("skill:{name}"));
+            continue;
+        }
+        if batch_paths.contains_key(&name) {
             report.duplicates.push(format!("skill:{name}"));
             continue;
         }
@@ -115,11 +129,11 @@ pub async fn import_skills_core(
             .unwrap_or_else(|| "folder".into());
         let skill = Skill {
             id: Uuid::new_v4(),
-            name,
+            name: name.clone(),
             canonical_path: path.clone(),
             source_type: chm_core::domain::skills::SkillSourceType::Folder,
             source_url: None,
-            content_hash: Some(hash),
+            content_hash: Some(hash.clone()),
             provenance: serde_json::json!({
                 "source": source_dir,
                 "imported_at": chrono::Utc::now().to_rfc3339(),
@@ -131,6 +145,8 @@ pub async fn import_skills_core(
         create_skill(pool, &skill)
             .await
             .map_err(|e| e.to_string())?;
+        batch_paths.insert(name, path.clone());
+        batch_hashes.insert(hash);
         report.imported += 1;
     }
     Ok(report)
@@ -175,14 +191,9 @@ async fn bind_skill_core(
     skill_id: &str,
     home: &std::path::Path,
 ) -> Result<BindOutcome, String> {
-    let iid = Uuid::parse_str(installation_id).map_err(|e| e.to_string())?;
     let sid = Uuid::parse_str(skill_id).map_err(|e| e.to_string())?;
-    let inst = list_installations(pool)
-        .await
-        .map_err(|e| e.to_string())?
-        .into_iter()
-        .find(|i| i.id == iid)
-        .ok_or("installation not found")?;
+    let inst = crate::commands::find_installation(pool, installation_id).await?;
+    let iid = inst.id;
     let skill = list_skills(pool)
         .await
         .map_err(|e| e.to_string())?

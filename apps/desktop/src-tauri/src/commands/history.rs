@@ -2,10 +2,10 @@
 
 use chm_core::domain::history::{TransactionStatus, TransactionType};
 use chm_database::repos::history::{
-    add_snapshot, begin_transaction, finish_transaction, list_snapshots, list_transactions,
+    add_snapshot, begin_transaction, finish_transaction, list_snapshots,
+    list_snapshots_for_transactions, list_transactions, list_transactions_limited,
 };
 use serde::Serialize;
-use sha2::{Digest, Sha256};
 use sqlx::{Pool, Sqlite};
 use tauri::State;
 use uuid::Uuid;
@@ -34,7 +34,7 @@ pub struct HistoryEntry {
 }
 
 fn content_hash(content: Option<&str>) -> Option<String> {
-    content.map(|value| format!("{:x}", Sha256::digest(value.as_bytes())))
+    content.map(crate::drift::sha256_hex)
 }
 
 fn current_content(path: &str) -> Result<Option<String>, String> {
@@ -45,16 +45,34 @@ fn current_content(path: &str) -> Result<Option<String>, String> {
     }
 }
 
+fn restore_content(path: &str, content: Option<&String>) -> Result<(), String> {
+    match content {
+        Some(value) => chm_filesystem::atomic_write(std::path::Path::new(path), value)
+            .map_err(|e| e.to_string()),
+        None => match std::fs::remove_file(path) {
+            Ok(()) => Ok(()),
+            Err(error) if error.kind() == std::io::ErrorKind::NotFound => Ok(()),
+            Err(error) => Err(error.to_string()),
+        },
+    }
+}
+
 fn rollback_eligibility(
     status: TransactionStatus,
     transaction_type: TransactionType,
     snapshot_count: usize,
 ) -> (bool, Option<String>) {
     if transaction_type == TransactionType::Rollback {
-        return (false, Some("rollback transactions cannot be rolled back".into()));
+        return (
+            false,
+            Some("rollback transactions cannot be rolled back".into()),
+        );
     }
     if status != TransactionStatus::Succeeded {
-        return (false, Some("only successful transactions can be rolled back".into()));
+        return (
+            false,
+            Some("only successful transactions can be rolled back".into()),
+        );
     }
     if snapshot_count == 0 {
         return (false, Some("transaction has no file snapshots".into()));
@@ -68,12 +86,20 @@ pub async fn list_history_cmd(
     limit: Option<u32>,
 ) -> Result<Vec<HistoryEntry>, String> {
     let pool = &state.pool;
-    let txs = list_transactions(pool).await.map_err(|e| e.to_string())?;
+    let limit = limit.unwrap_or(100).max(1);
+    let txs = list_transactions_limited(pool, limit)
+        .await
+        .map_err(|e| e.to_string())?;
+    let transaction_ids: Vec<Uuid> = txs.iter().map(|tx| tx.id).collect();
+    let snapshots_by_transaction = list_snapshots_for_transactions(pool, &transaction_ids)
+        .await
+        .map_err(|e| e.to_string())?;
     let mut entries = Vec::new();
-    for tx in txs.into_iter().take(limit.unwrap_or(100).max(1) as usize) {
-        let snaps = list_snapshots(pool, tx.id)
-            .await
-            .map_err(|e| e.to_string())?;
+    for tx in txs {
+        let snaps = snapshots_by_transaction
+            .get(&tx.id)
+            .cloned()
+            .unwrap_or_default();
         let (can_rollback, rollback_reason) =
             rollback_eligibility(tx.status, tx.transaction_type, snaps.len());
         entries.push(HistoryEntry {
@@ -156,7 +182,7 @@ pub async fn rollback_transaction_core(
     .await
     .map_err(|e| e.to_string())?;
     for (snap, before_restore) in snaps.iter().zip(current.iter()) {
-        add_snapshot(
+        if let Err(error) = add_snapshot(
             pool,
             &chm_core::domain::history::ConfigSnapshot {
                 id: Uuid::new_v4(),
@@ -170,31 +196,64 @@ pub async fn rollback_transaction_core(
             },
         )
         .await
-        .map_err(|e| e.to_string())?;
+        {
+            let message = format!("could not record rollback snapshot: {error}");
+            let _ = finish_transaction(
+                pool,
+                rollback_tx.id,
+                TransactionStatus::Failed,
+                None,
+                Some(message.clone()),
+            )
+            .await;
+            return Err(message);
+        }
     }
     let mut files_restored = Vec::new();
-    for snap in &snaps {
-        match &snap.before_content {
-            Some(before) => {
-                chm_filesystem::atomic_write(std::path::Path::new(&snap.path), before)
-                    .map_err(|e| e.to_string())?;
-                files_restored.push(snap.path.clone());
-            }
-            None => {
-                // no backup = file was CREATED by this transaction — remove it
-                let path = std::path::Path::new(&snap.path);
-                if path.exists() {
-                    std::fs::remove_file(path).map_err(|e| e.to_string())?;
-                    files_restored.push(snap.path.clone());
+    for (index, snap) in snaps.iter().enumerate() {
+        if let Err(error) = restore_content(&snap.path, snap.before_content.as_ref()) {
+            // A failure halfway through a multi-file restore must not leave a
+            // mix of old and new config. Put every touched path back to the
+            // exact state observed before rollback, then close the audit row
+            // as Failed so it is never stuck in Running.
+            let mut recovery_errors = Vec::new();
+            for (recovery_snap, before_restore) in snaps.iter().zip(current.iter()).take(index + 1)
+            {
+                if let Err(recovery_error) =
+                    restore_content(&recovery_snap.path, before_restore.as_ref())
+                {
+                    recovery_errors.push(format!("{}: {recovery_error}", recovery_snap.path));
                 }
             }
+            let detail = if recovery_errors.is_empty() {
+                error.to_string()
+            } else {
+                format!(
+                    "{error}; recovery also failed: {}",
+                    recovery_errors.join("; ")
+                )
+            };
+            let _ = finish_transaction(
+                pool,
+                rollback_tx.id,
+                TransactionStatus::Failed,
+                None,
+                Some(detail.clone()),
+            )
+            .await;
+            return Err(format!("rollback failed: {detail}"));
         }
+        files_restored.push(snap.path.clone());
     }
     finish_transaction(
         pool,
         rollback_tx.id,
         TransactionStatus::Succeeded,
-        Some(format!("rolled back {} (reverses {})", files_restored.len(), id)),
+        Some(format!(
+            "rolled back {} (reverses {})",
+            files_restored.len(),
+            id
+        )),
         None,
     )
     .await
@@ -221,26 +280,62 @@ pub async fn rollback_transaction_cmd(
 }
 
 #[tauri::command]
-pub async fn purge_old_snapshots_cmd(state: State<'_, AppState>) -> Result<usize, String> {
+pub async fn purge_old_snapshots_core(pool: &Pool<Sqlite>) -> Result<usize, String> {
     let cutoff = (chrono::Utc::now() - chrono::Duration::days(90)).to_rfc3339();
     // count first
     let count_row: (i64,) =
         sqlx::query_as("SELECT COUNT(*) FROM config_snapshots WHERE transaction_id IN (SELECT id FROM sync_transactions WHERE started_at < ?)")
             .bind(cutoff.clone())
-            .fetch_one(&state.pool)
+            .fetch_one(pool)
             .await
             .map_err(|e| e.to_string())?;
     sqlx::query("DELETE FROM config_snapshots WHERE transaction_id IN (SELECT id FROM sync_transactions WHERE started_at < ?)")
         .bind(cutoff.clone())
-        .execute(&state.pool)
+        .execute(pool)
         .await
         .map_err(|e| e.to_string())?;
     sqlx::query("DELETE FROM sync_transactions WHERE started_at < ?")
         .bind(cutoff)
-        .execute(&state.pool)
+        .execute(pool)
         .await
         .map_err(|e| e.to_string())?;
     Ok(count_row.0 as usize)
+}
+
+#[tauri::command]
+pub async fn purge_old_snapshots_cmd(state: State<'_, AppState>) -> Result<usize, String> {
+    let audit = begin_transaction(
+        &state.pool,
+        TransactionType::Manual,
+        serde_json::json!({"action":"purge_old_snapshots", "retention_days":90}),
+    )
+    .await
+    .map_err(|e| e.to_string())?;
+    match purge_old_snapshots_core(&state.pool).await {
+        Ok(count) => {
+            finish_transaction(
+                &state.pool,
+                audit.id,
+                TransactionStatus::Succeeded,
+                Some(format!("purged {count} snapshot(s) older than 90 days")),
+                None,
+            )
+            .await
+            .map_err(|e| e.to_string())?;
+            Ok(count)
+        }
+        Err(error) => {
+            let _ = finish_transaction(
+                &state.pool,
+                audit.id,
+                TransactionStatus::Failed,
+                None,
+                Some(error.clone()),
+            )
+            .await;
+            Err(error)
+        }
+    }
 }
 
 #[cfg(test)]
@@ -256,7 +351,9 @@ mod tests {
         assert!(!rollback_eligibility(TransactionStatus::Failed, TransactionType::Sync, 1).0);
         assert!(!rollback_eligibility(TransactionStatus::Running, TransactionType::Sync, 1).0);
         assert!(!rollback_eligibility(TransactionStatus::Succeeded, TransactionType::Sync, 0).0);
-        assert!(!rollback_eligibility(TransactionStatus::Succeeded, TransactionType::Rollback, 1).0);
+        assert!(
+            !rollback_eligibility(TransactionStatus::Succeeded, TransactionType::Rollback, 1).0
+        );
     }
 
     #[test]

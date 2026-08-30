@@ -83,16 +83,18 @@ pub async fn run_import(
     let existing_skills = list_skills(pool).await.map_err(|e| e.to_string())?;
     let mut endpoint_by_native_provider: std::collections::HashMap<String, Uuid> =
         std::collections::HashMap::new();
-    // pre-seed from already-registered providers so a re-import links routes
-    // to the SAME endpoint instead of minting junk placeholder ones
+    let mut endpoints_by_provider: std::collections::HashMap<Uuid, Vec<ProviderEndpoint>> =
+        std::collections::HashMap::new();
+    // Preload every endpoint. Re-imports must match a harness-declared base
+    // URL rather than whichever endpoint happens to sort first; providers can
+    // legitimately expose several gateways.
     for p in &existing_providers {
-        if let Ok(endpoints) = list_endpoints(pool, p.id).await
-            && let Some(e) = endpoints.first()
-        {
-            endpoint_by_native_provider.insert(p.name.clone(), e.id);
-        }
+        let endpoints = list_endpoints(pool, p.id)
+            .await
+            .map_err(|e| e.to_string())?;
+        endpoints_by_provider.insert(p.id, endpoints);
     }
-    let mut created_in_batch: std::collections::HashSet<String> = Default::default();
+    let mut processed_providers: std::collections::HashSet<String> = Default::default();
     // track names/paths seen within THIS batch: duplicates are reported, not fatal
     let mut batch_mcp: std::collections::HashSet<String> = Default::default();
     let mut batch_skills: std::collections::HashSet<String> = Default::default();
@@ -108,15 +110,20 @@ pub async fn run_import(
         if name.starts_with('_') {
             continue; // internal marker entries (__schema__, __mcp_imports__)
         }
-        if existing_providers.iter().any(|p| p.name == name) || created_in_batch.contains(name) {
+        if !processed_providers.insert(name.to_string()) {
             report.duplicates.push(format!("provider:{name}"));
             continue;
         }
-        let provider = create_provider(&mut *tx, name, name)
-            .await
-            .map_err(|e| e.to_string())?;
-        created_in_batch.insert(name.to_string());
-        report.providers_created += 1;
+        let provider = if let Some(existing) = existing_providers.iter().find(|p| p.name == name) {
+            report.duplicates.push(format!("provider:{name}"));
+            existing.clone()
+        } else {
+            let created = create_provider(&mut *tx, name, name)
+                .await
+                .map_err(|e| e.to_string())?;
+            report.providers_created += 1;
+            created
+        };
 
         let base_url = pv
             .get("base_url")
@@ -126,15 +133,34 @@ pub async fn run_import(
             .get("env_key")
             .or_else(|| pv.get("env_reference"))
             .and_then(|v| v.as_str());
-        let credential_ref: Option<CredentialRef> = match env_key {
-            Some(key) => Some(
-                create_credential_ref(&mut *tx, CredentialKind::Env, key)
-                    .await
-                    .map_err(|e| e.to_string())?,
-            ),
-            None => None,
-        };
-        if let Some(base_url) = base_url {
+        let endpoints = endpoints_by_provider.entry(provider.id).or_default();
+        let matching_endpoint = base_url.as_deref().and_then(|base| {
+            endpoints
+                .iter()
+                .find(|endpoint| {
+                    crate::services::normalize_base_url(&endpoint.base_url)
+                        == crate::services::normalize_base_url(base)
+                })
+                .cloned()
+        });
+        let matching_endpoint = matching_endpoint.or_else(|| {
+            if base_url.is_none() {
+                endpoints.first().cloned()
+            } else {
+                None
+            }
+        });
+        let endpoint = if let Some(endpoint) = matching_endpoint {
+            endpoint
+        } else if let Some(base_url) = base_url {
+            let credential_ref: Option<CredentialRef> = match env_key {
+                Some(key) => Some(
+                    create_credential_ref(&mut *tx, CredentialKind::Env, key)
+                        .await
+                        .map_err(|e| e.to_string())?,
+                ),
+                None => None,
+            };
             let endpoint = ProviderEndpoint {
                 id: Uuid::new_v4(),
                 provider_id: provider.id,
@@ -161,8 +187,15 @@ pub async fn run_import(
             create_endpoint(&mut *tx, &endpoint)
                 .await
                 .map_err(|e| e.to_string())?;
-            endpoint_by_native_provider.insert(name.to_string(), endpoint.id);
-        }
+            endpoints.push(endpoint.clone());
+            endpoint
+        } else {
+            // A provider with no declared base URL cannot be safely mapped to
+            // a new gateway. Models will use the shared disabled placeholder
+            // endpoint below, preserving the import without inventing a URL.
+            continue;
+        };
+        endpoint_by_native_provider.insert(name.to_string(), endpoint.id);
     }
 
     if import_models {
@@ -305,12 +338,24 @@ async fn imported_endpoint_id(
     inst: &HarnessInstallation,
 ) -> Result<Uuid, String> {
     // NOTE: reached at most once per import (caller caches the placeholder).
-    // Safe against UNIQUE because this path only runs when no "imported"
-    // provider existed in the hoisted pre-seed.
-    let provider = create_provider(&mut *tx, "imported", "Imported (needs setup)")
-        .await
-        .map_err(|e| e.to_string())?;
-    let endpoints = list_endpoints(&mut *tx, provider.id)
+    // Reuse an existing placeholder provider when a previous import created
+    // it without an endpoint; otherwise a second import would hit the unique
+    // provider-name constraint instead of remaining idempotent.
+    let provider_id =
+        sqlx::query_scalar::<_, String>("SELECT id FROM providers WHERE name = 'imported' LIMIT 1")
+            .fetch_optional(&mut *tx)
+            .await
+            .map_err(|e| e.to_string())?;
+    let provider_id = match provider_id {
+        Some(id) => Uuid::parse_str(&id).map_err(|e| e.to_string())?,
+        None => {
+            create_provider(&mut *tx, "imported", "Imported (needs setup)")
+                .await
+                .map_err(|e| e.to_string())?
+                .id
+        }
+    };
+    let endpoints = list_endpoints(&mut *tx, provider_id)
         .await
         .map_err(|e| e.to_string())?;
     if let Some(e) = endpoints.first() {
@@ -318,7 +363,7 @@ async fn imported_endpoint_id(
     }
     let endpoint = ProviderEndpoint {
         id: Uuid::new_v4(),
-        provider_id: provider.id,
+        provider_id,
         name: format!("{}-imported", inst.harness_type.as_str()),
         base_url: String::new(),
         protocol: Protocol::Custom,

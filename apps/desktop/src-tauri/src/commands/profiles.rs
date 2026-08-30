@@ -3,7 +3,7 @@
 use chm_core::domain::harness::HarnessType;
 use chm_core::domain::profiles::{LaunchProfile, RoleMapping};
 use chm_database::repos::models::list_routes;
-use chm_database::repos::profiles::{create_profile, list_profiles};
+use chm_database::repos::profiles::{create_profile, list_profiles, update_profile};
 use chm_database::repos::providers::{list_endpoints, list_providers};
 use serde::{Deserialize, Serialize};
 use sqlx::{Pool, Sqlite};
@@ -104,30 +104,33 @@ pub async fn create_profile_cmd(
     state: State<'_, AppState>,
     input: ProfileInput,
 ) -> Result<String, String> {
-    let now = chrono::Utc::now();
-    let profile = LaunchProfile {
-        id: Uuid::new_v4(),
-        name: input.name,
-        harness_type: HarnessType::parse_str(&input.harness_type),
-        model_route_id: parse_opt(input.model_route_id)?,
-        provider_endpoint_id: parse_opt(input.provider_endpoint_id)?,
-        env: input.env,
-        role_mappings: input
-            .role_mappings
-            .into_iter()
-            .map(|rm| RoleMapping {
-                role: rm.role,
-                model: rm.model,
-            })
-            .collect(),
-        native_overrides: serde_json::json!({}),
-        created_at: now,
-        updated_at: now,
-    };
+    let profile = profile_from_input(Uuid::new_v4(), input)?;
     create_profile(&state.pool, &profile)
         .await
         .map_err(|e| e.to_string())?;
     Ok(profile.id.to_string())
+}
+
+#[tauri::command]
+pub async fn update_profile_cmd(
+    state: State<'_, AppState>,
+    id: String,
+    input: ProfileInput,
+) -> Result<(), String> {
+    let profile_id = Uuid::parse_str(&id).map_err(|e| e.to_string())?;
+    let existing = list_profiles(&state.pool)
+        .await
+        .map_err(|e| e.to_string())?
+        .into_iter()
+        .find(|profile| profile.id == profile_id)
+        .ok_or_else(|| format!("profile {id} not found"))?;
+    let mut profile = profile_from_input(profile_id, input)?;
+    profile.created_at = existing.created_at;
+    profile.native_overrides = existing.native_overrides;
+    update_profile(&state.pool, &profile)
+        .await
+        .map_err(|e| e.to_string())?;
+    Ok(())
 }
 
 #[tauri::command]
@@ -146,6 +149,35 @@ fn parse_opt(s: Option<String>) -> Result<Option<Uuid>, String> {
         Some(v) => Ok(Some(Uuid::parse_str(&v).map_err(|e| e.to_string())?)),
         None => Ok(None),
     }
+}
+
+fn profile_from_input(id: Uuid, input: ProfileInput) -> Result<LaunchProfile, String> {
+    if input.name.trim().is_empty() {
+        return Err("profile name cannot be empty".into());
+    }
+    if input.harness_type.trim().is_empty() {
+        return Err("choose a harness for the profile".into());
+    }
+    let now = chrono::Utc::now();
+    Ok(LaunchProfile {
+        id,
+        name: input.name.trim().to_string(),
+        harness_type: HarnessType::parse_str(&input.harness_type),
+        model_route_id: parse_opt(input.model_route_id)?,
+        provider_endpoint_id: parse_opt(input.provider_endpoint_id)?,
+        env: input.env,
+        role_mappings: input
+            .role_mappings
+            .into_iter()
+            .map(|rm| RoleMapping {
+                role: rm.role.trim().to_string(),
+                model: rm.model.trim().to_string(),
+            })
+            .collect(),
+        native_overrides: serde_json::json!({}),
+        created_at: now,
+        updated_at: now,
+    })
 }
 use std::collections::HashMap;
 

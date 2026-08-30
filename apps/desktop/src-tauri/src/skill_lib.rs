@@ -1,11 +1,10 @@
 //! Pure skill logic: hashing, scanning, dedup.
 
-use sha2::{Digest, Sha256};
 use std::path::Path;
 
 pub fn hash_file(path: &Path) -> Result<String, String> {
     let bytes = std::fs::read(path).map_err(|e| e.to_string())?;
-    Ok(format!("{:x}", Sha256::digest(&bytes)))
+    Ok(crate::drift::sha256_hex_bytes(&bytes))
 }
 
 /// Content hash of a directory tree: SHA-256 over sorted
@@ -17,12 +16,12 @@ pub fn hash_directory(dir: &Path) -> Result<String, String> {
     let mut lines = Vec::new();
     collect_hashes(dir, dir, &mut lines)?;
     lines.sort();
-    let mut hasher = Sha256::new();
+    let mut bytes = Vec::new();
     for line in lines {
-        hasher.update(line.as_bytes());
-        hasher.update(b"\n");
+        bytes.extend_from_slice(line.as_bytes());
+        bytes.push(b'\n');
     }
-    Ok(format!("{:x}", hasher.finalize()))
+    Ok(crate::drift::sha256_hex_bytes(&bytes))
 }
 
 fn collect_hashes(root: &Path, dir: &Path, out: &mut Vec<String>) -> Result<(), String> {

@@ -38,9 +38,7 @@ pub struct DetectedSkill {
 fn adapter_for(
     harness_type: &str,
 ) -> Option<Box<dyn chm_harness_sdk::adapter::types::HarnessAdapter>> {
-    all_adapters()
-        .into_iter()
-        .find(|a| a.id() == harness_type)
+    all_adapters().into_iter().find(|a| a.id() == harness_type)
 }
 
 async fn collect_states(
@@ -63,9 +61,7 @@ async fn collect_states(
 }
 
 #[tauri::command]
-pub async fn detect_mcp_cmd(
-    state: State<'_, AppState>,
-) -> Result<Vec<DetectedMcp>, String> {
+pub async fn detect_mcp_cmd(state: State<'_, AppState>) -> Result<Vec<DetectedMcp>, String> {
     let library = chm_database::repos::mcp::list_mcp_servers(&state.pool)
         .await
         .map_err(|e| e.to_string())?;
@@ -80,7 +76,11 @@ pub async fn detect_mcp_cmd(
                 "{}|{}|{}",
                 m.native_name.to_lowercase(),
                 m.server.transport.as_str(),
-                m.server.command.clone().or(m.server.url.clone()).unwrap_or_default()
+                m.server
+                    .command
+                    .clone()
+                    .or(m.server.url.clone())
+                    .unwrap_or_default()
             );
             let entry = found.entry(key).or_insert_with(|| DetectedMcp {
                 name: m.native_name.clone(),
@@ -103,9 +103,7 @@ pub async fn detect_mcp_cmd(
 }
 
 #[tauri::command]
-pub async fn detect_skills_cmd(
-    state: State<'_, AppState>,
-) -> Result<Vec<DetectedSkill>, String> {
+pub async fn detect_skills_cmd(state: State<'_, AppState>) -> Result<Vec<DetectedSkill>, String> {
     let library = chm_database::repos::skills::list_skills(&state.pool)
         .await
         .map_err(|e| e.to_string())?;

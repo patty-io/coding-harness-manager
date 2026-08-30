@@ -2,9 +2,8 @@
 
 use chm_core::domain::harness::HarnessMcpBinding;
 use chm_core::domain::mcp::{McpServer, McpTransport, ScopeType};
-use chm_database::repos::harness::list_installations;
 use chm_database::repos::mcp::{
-    create_mcp_binding, create_mcp_server, list_mcp_bindings, list_mcp_servers,
+    create_mcp_server, list_mcp_bindings_for_server, list_mcp_servers, upsert_mcp_binding,
 };
 use serde::{Deserialize, Serialize};
 use sqlx::{Pool, Sqlite};
@@ -93,24 +92,17 @@ pub async fn mcp_detail_cmd(
         .into_iter()
         .find(|s| s.id == id)
         .ok_or("mcp server not found")?;
-    let installs = list_installations(&state.pool)
-        .await
-        .map_err(|e| e.to_string())?;
     let mut bindings = Vec::new();
-    for inst in &installs {
-        for b in list_mcp_bindings(&state.pool, inst.id)
-            .await
-            .map_err(|e| e.to_string())?
-        {
-            if b.mcp_server_id == id {
-                bindings.push(BindingView {
-                    installation_id: inst.id.to_string(),
-                    harness_type: inst.harness_type.as_str().to_string(),
-                    native_name: b.native_name.clone(),
-                    managed: b.managed,
-                });
-            }
-        }
+    for (binding, harness_type) in list_mcp_bindings_for_server(&state.pool, id)
+        .await
+        .map_err(|e| e.to_string())?
+    {
+        bindings.push(BindingView {
+            installation_id: binding.harness_installation_id.to_string(),
+            harness_type: harness_type.as_str().to_string(),
+            native_name: binding.native_name,
+            managed: binding.managed,
+        });
     }
     Ok(McpDetail { server, bindings })
 }
@@ -123,14 +115,8 @@ pub async fn bind_mcp_cmd(
     installation_id: String,
     mcp_id: String,
 ) -> Result<(), String> {
-    let iid = Uuid::parse_str(&installation_id).map_err(|e| e.to_string())?;
     let mid = Uuid::parse_str(&mcp_id).map_err(|e| e.to_string())?;
-    let inst = list_installations(&state.pool)
-        .await
-        .map_err(|e| e.to_string())?
-        .into_iter()
-        .find(|i| i.id == iid)
-        .ok_or("installation not found")?;
+    let inst = crate::commands::find_installation(&state.pool, &installation_id).await?;
     let server = list_mcp_servers(&state.pool)
         .await
         .map_err(|e| e.to_string())?
@@ -141,11 +127,11 @@ pub async fn bind_mcp_cmd(
     // write into the harness config through the sync engine (append, mcp only)
     crate::commands::sync::bind_mcp_sync(&state.pool, &inst, &server).await?;
 
-    create_mcp_binding(
+    upsert_mcp_binding(
         &state.pool,
         &HarnessMcpBinding {
             id: Uuid::new_v4(),
-            harness_installation_id: iid,
+            harness_installation_id: inst.id,
             mcp_server_id: mid,
             native_name: server.name.clone(),
             native_config: serde_json::json!({"command": server.command, "args": server.args}),
@@ -295,16 +281,27 @@ pub async fn mcp_list_servers_for_doctor(
     pool: &Pool<Sqlite>,
 ) -> Result<Vec<crate::commands::doctor::CheckResult>, String> {
     let servers = list_mcp_servers(pool).await.map_err(|e| e.to_string())?;
-    Ok(servers
-        .into_iter()
-        .map(|s| crate::commands::doctor::CheckResult {
-            check: format!("mcp registered: {}", s.name),
-            passed: s.enabled,
-            detail: if s.enabled {
-                "enabled".into()
-            } else {
-                "disabled".into()
-            },
-        })
-        .collect())
+    let mut checks = Vec::new();
+    for server in servers {
+        if !server.enabled {
+            checks.push(crate::commands::doctor::CheckResult {
+                check: format!("mcp enabled: {}", server.name),
+                passed: false,
+                detail: "disabled".into(),
+            });
+            continue;
+        }
+        match run_mcp_diagnostics_core(pool, &server.id.to_string()).await {
+            Ok(server_checks) => checks.extend(server_checks.into_iter().map(|mut check| {
+                check.check = format!("{}: {}", server.name, check.check);
+                check
+            })),
+            Err(error) => checks.push(crate::commands::doctor::CheckResult {
+                check: format!("mcp diagnostics: {}", server.name),
+                passed: false,
+                detail: error,
+            }),
+        }
+    }
+    Ok(checks)
 }

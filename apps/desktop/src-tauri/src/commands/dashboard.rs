@@ -15,6 +15,18 @@ pub struct DashboardStats {
     pub mcp: usize,
     pub skills: usize,
     pub drifted: usize,
+    pub harness_details: Vec<DashboardHarnessSummary>,
+}
+
+#[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct DashboardHarnessSummary {
+    pub installation_id: String,
+    pub models: Option<usize>,
+    pub mcp: Option<usize>,
+    pub skills: Option<usize>,
+    pub drifted: bool,
+    pub state_error: Option<String>,
 }
 
 #[tauri::command]
@@ -38,12 +50,34 @@ pub async fn dashboard_stats(state: State<'_, AppState>) -> Result<DashboardStat
         .await
         .map_err(|e| e.to_string())?;
     let mut drifted = 0usize;
+    let mut harness_details = Vec::with_capacity(installations.len());
     for inst in &installations {
         let (_, is_drifted, _, _) = crate::commands::drift::installation_drifted(pool, inst)
             .await
             .unwrap_or((false, false, None, None));
         if is_drifted {
             drifted += 1;
+        }
+        let state = crate::commands::sync::adapter_for(inst.harness_type.as_str())
+            .ok_or_else(|| format!("no adapter for {}", inst.harness_type.as_str()))
+            .and_then(|adapter| adapter.read_state(inst).map_err(|e| e.to_string()));
+        match state {
+            Ok(parsed) => harness_details.push(DashboardHarnessSummary {
+                installation_id: inst.id.to_string(),
+                models: Some(parsed.models.len()),
+                mcp: Some(parsed.mcp.len()),
+                skills: Some(parsed.skills.len()),
+                drifted: is_drifted,
+                state_error: None,
+            }),
+            Err(error) => harness_details.push(DashboardHarnessSummary {
+                installation_id: inst.id.to_string(),
+                models: None,
+                mcp: None,
+                skills: None,
+                drifted: is_drifted,
+                state_error: Some(error),
+            }),
         }
     }
 
@@ -54,5 +88,6 @@ pub async fn dashboard_stats(state: State<'_, AppState>) -> Result<DashboardStat
         mcp: counts.get::<i64, _>(3) as usize,
         skills: counts.get::<i64, _>(4) as usize,
         drifted,
+        harness_details,
     })
 }

@@ -47,7 +47,7 @@ export default function HarnessProviderDetailScreen() {
           onClick={() => confirm(
             `Add ${p.providerName} to Providers?`,
             `This creates a registry provider and API endpoint using ${p.baseUrl ?? "the harness configuration"}.`,
-            () => add.mutateAsync().then(() => undefined),
+            () => add.mutateAsync(),
             "Add to Providers",
           )}
           disabled={add.isPending}

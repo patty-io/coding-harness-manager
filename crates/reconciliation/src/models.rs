@@ -35,7 +35,9 @@ pub fn reconcile_models(
         match actual_by_identity.get(&(provider, native_id)) {
             None => {
                 let alias_hit = actual.iter().find(|a| {
-                    a.route.remote_model_id == d.remote_model_id && a.native_id != native_id
+                    a.route.remote_model_id == d.remote_model_id
+                        && a.native_id != native_id
+                        && native_identity(a).0 == provider
                 });
                 if let Some(hit) = alias_hit {
                     actions.push(PlanAction::Conflict(ConflictAction {
@@ -95,7 +97,9 @@ pub fn reconcile_models(
             if !is_managed {
                 continue;
             }
-            let still_desired = desired.iter().any(|d| d.remote_model_id == a.native_id);
+            let still_desired = desired.iter().any(|d| {
+                d.remote_model_id == a.native_id && route_provider(d) == native_identity(a).0
+            });
             if !still_desired {
                 actions.push(PlanAction::Remove(RemoveAction {
                     kind: "model".into(),
@@ -114,6 +118,16 @@ fn route_provider(route: &ModelRoute) -> Option<&str> {
         .overrides
         .get("native_provider_id")
         .and_then(|v| v.as_str())
+        .or_else(|| {
+            // Imports retain the adapter's native overrides under `native`
+            // alongside provenance. Keep those routes provider-scoped when
+            // reconciling them after they have been persisted.
+            route
+                .overrides
+                .get("native")
+                .and_then(|native| native.get("native_provider_id"))
+                .and_then(|v| v.as_str())
+        })
 }
 
 fn native_identity(model: &HarnessModel) -> (Option<&str>, &str) {

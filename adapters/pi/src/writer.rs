@@ -19,19 +19,21 @@ fn provider_has_configuration(provider: &Value) -> bool {
 pub fn parse_document(raw: &str) -> Result<Value, String> {
     let mut doc: Value =
         serde_json::from_str(raw).map_err(|e| format!("models.json is not valid JSON: {e}"))?;
-    if !doc.is_object() {
-        return Err("models.json must be an object".into());
-    }
-    let providers = doc
+    let root = doc
         .as_object_mut()
-        .unwrap()
+        .ok_or_else(|| "models.json must be an object".to_string())?;
+    let providers = root
         .entry("providers")
         .or_insert_with(|| Value::Object(Map::new()))
         .as_object_mut()
-        .unwrap();
-    for pv in providers.values_mut() {
-        if let Some(obj) = pv.as_object_mut() {
-            obj.entry("models").or_insert_with(|| Value::Array(vec![]));
+        .ok_or_else(|| "models.json providers must be an object".to_string())?;
+    for (name, pv) in providers.iter_mut() {
+        let obj = pv
+            .as_object_mut()
+            .ok_or_else(|| format!("provider {name} must be an object"))?;
+        let models = obj.entry("models").or_insert_with(|| Value::Array(vec![]));
+        if !models.is_array() {
+            return Err(format!("provider {name} models must be an array"));
         }
     }
     Ok(doc)

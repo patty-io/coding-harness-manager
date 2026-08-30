@@ -2,9 +2,12 @@
 
 use chm_core::domain::sets::SetItemType;
 use chm_database::repos::models::list_routes;
-use chm_database::repos::profiles::{add_set_item, list_set_items, list_sets};
+use chm_database::repos::profiles::{
+    add_set_item, delete_set, list_set_items, list_set_items_for_sets, list_sets, remove_set_item,
+};
 use serde::Serialize;
 use sqlx::{Pool, Sqlite};
+use std::collections::HashSet;
 use tauri::State;
 use uuid::Uuid;
 
@@ -30,11 +33,13 @@ pub struct SetView {
 pub async fn list_sets_cmd(state: State<'_, AppState>) -> Result<Vec<SetView>, String> {
     let pool = &state.pool;
     let sets = list_sets(pool).await.map_err(|e| e.to_string())?;
+    let set_ids: Vec<_> = sets.iter().map(|set| set.id).collect();
+    let items_by_set = list_set_items_for_sets(pool, &set_ids)
+        .await
+        .map_err(|e| e.to_string())?;
     let mut views = Vec::new();
     for s in sets {
-        let items = list_set_items(pool, s.id)
-            .await
-            .map_err(|e| e.to_string())?;
+        let items = items_by_set.get(&s.id).cloned().unwrap_or_default();
         views.push(SetView {
             id: s.id.to_string(),
             name: s.name,
@@ -66,12 +71,9 @@ pub async fn create_set_cmd(
 #[tauri::command]
 pub async fn delete_set_cmd(state: State<'_, AppState>, set_id: String) -> Result<(), String> {
     let set_id = Uuid::parse_str(&set_id).map_err(|e| e.to_string())?;
-    sqlx::query("DELETE FROM configuration_sets WHERE id = ?")
-        .bind(set_id.to_string())
-        .execute(&state.pool)
+    delete_set(&state.pool, set_id)
         .await
-        .map_err(|e| e.to_string())?;
-    Ok(())
+        .map_err(|e| e.to_string())
 }
 
 #[tauri::command]
@@ -83,14 +85,16 @@ pub async fn add_set_item_cmd(
 ) -> Result<(), String> {
     let set_id = Uuid::parse_str(&set_id).map_err(|e| e.to_string())?;
     let item_id = Uuid::parse_str(&item_id).map_err(|e| e.to_string())?;
-    add_set_item(
-        &state.pool,
-        set_id,
-        SetItemType::parse_str(&item_type),
-        item_id,
-    )
-    .await
-    .map_err(|e| e.to_string())
+    let item_type = SetItemType::parse_str(&item_type);
+    if item_type == SetItemType::LaunchProfile {
+        return Err(
+            "configuration sets contain models, MCP servers, and skills; launch profiles are launched separately"
+                .into(),
+        );
+    }
+    add_set_item(&state.pool, set_id, item_type, item_id)
+        .await
+        .map_err(|e| e.to_string())
 }
 
 #[tauri::command]
@@ -104,18 +108,9 @@ pub async fn remove_set_item_cmd(
     let sid = Uuid::parse_str(&set_id).map_err(|e| e.to_string())?;
     let iid = Uuid::parse_str(&item_id).map_err(|e| e.to_string())?;
     let itype = SetItemType::parse_str(&item_type);
-    let items = list_set_items(pool, sid).await.map_err(|e| e.to_string())?;
-    for item in items {
-        if item.item_type == itype && item.item_id == iid {
-            sqlx::query("DELETE FROM configuration_set_items WHERE id = ?")
-                .bind(item.id.to_string())
-                .execute(pool)
-                .await
-                .map_err(|e| e.to_string())?;
-            return Ok(());
-        }
-    }
-    Ok(())
+    remove_set_item(pool, sid, itype, iid)
+        .await
+        .map_err(|e| e.to_string())
 }
 
 /// DesiredState limited to the set's members (testable core).
@@ -125,6 +120,15 @@ pub async fn set_filtered_desired(
 ) -> Result<chm_harness_sdk::adapter::plan::DesiredState, String> {
     let sid = Uuid::parse_str(set_id).map_err(|e| e.to_string())?;
     let items = list_set_items(pool, sid).await.map_err(|e| e.to_string())?;
+    if items
+        .iter()
+        .any(|item| item.item_type == SetItemType::LaunchProfile)
+    {
+        return Err(
+            "this set contains a launch profile, which cannot be applied as a resource set; remove it first"
+                .into(),
+        );
+    }
     let routes = list_routes(pool).await.map_err(|e| e.to_string())?;
     let mcp = chm_database::repos::mcp::list_mcp_servers(pool)
         .await
@@ -132,103 +136,62 @@ pub async fn set_filtered_desired(
     let skills = chm_database::repos::skills::list_skills(pool)
         .await
         .map_err(|e| e.to_string())?;
+    // A set can contain many entries, and each collection is filtered once.
+    // Build membership indexes up front instead of scanning the full item
+    // list for every route/server/skill (which made preview cost O(n*m)).
+    let model_ids: HashSet<Uuid> = items
+        .iter()
+        .filter(|i| i.item_type == SetItemType::ModelRoute)
+        .map(|i| i.item_id)
+        .collect();
+    let mcp_ids: HashSet<Uuid> = items
+        .iter()
+        .filter(|i| i.item_type == SetItemType::McpServer)
+        .map(|i| i.item_id)
+        .collect();
+    let skill_ids: HashSet<Uuid> = items
+        .iter()
+        .filter(|i| i.item_type == SetItemType::Skill)
+        .map(|i| i.item_id)
+        .collect();
 
     Ok(chm_harness_sdk::adapter::plan::DesiredState {
         routes: routes
             .into_iter()
-            .filter(|r| {
-                items
-                    .iter()
-                    .any(|i| i.item_type == SetItemType::ModelRoute && i.item_id == r.id)
-            })
+            .filter(|r| r.enabled)
+            .filter(|r| model_ids.contains(&r.id))
             .collect(),
         mcp_servers: mcp
             .into_iter()
-            .filter(|s| {
-                items
-                    .iter()
-                    .any(|i| i.item_type == SetItemType::McpServer && i.item_id == s.id)
-            })
+            .filter(|s| s.enabled)
+            .filter(|s| mcp_ids.contains(&s.id))
             .collect(),
         skills: skills
             .into_iter()
-            .filter(|sk| {
-                items
-                    .iter()
-                    .any(|i| i.item_type == SetItemType::Skill && i.item_id == sk.id)
-            })
+            .filter(|sk| sk.enabled)
+            .filter(|sk| skill_ids.contains(&sk.id))
             .collect(),
     })
 }
 /// Preview applying a set: same machinery as sync_preview with set-filtered desired.
-use chm_harness_sdk::adapter::plan::Mode;
-
 #[tauri::command]
 pub async fn apply_set_preview_cmd(
     state: State<'_, AppState>,
     set_id: String,
     installation_id: String,
+    mode: String,
 ) -> Result<crate::commands::sync::PreviewReport, String> {
     let pool = &state.pool;
-    let inst = chm_database::repos::harness::list_installations(pool)
-        .await
-        .map_err(|e| e.to_string())?
-        .into_iter()
-        .find(|i| i.id.to_string() == installation_id)
-        .ok_or("installation not found")?;
-    let adapter =
-        crate::commands::sync::adapter_for(inst.harness_type.as_str()).ok_or("no adapter")?;
-    let parsed = adapter.read_state(&inst).map_err(|e| e.to_string())?;
     let desired = set_filtered_desired(pool, &set_id).await?;
-    let actual = chm_harness_sdk::adapter::plan::ActualState {
-        routes: parsed.models.clone(),
-        mcp: parsed.mcp.clone(),
-        skills: parsed.skills.clone(),
-        managed_flags: Default::default(),
-    };
-    let plan = chm_reconciliation::engine::reconcile(&desired, &actual, Mode::Append)
-        .map_err(|e| e.to_string())?;
-    let plan = chm_reconciliation::engine::filter_unsupported(plan, &adapter.capabilities());
-    let native_plan = adapter.plan(&plan, &inst).map_err(|e| e.to_string())?;
-    Ok(crate::commands::sync::PreviewReport {
-        summary: plan.summary(),
-        actions: plan
-            .actions
-            .iter()
-            .map(|a| match a {
-                chm_harness_sdk::adapter::plan::PlanAction::Add(x) => {
-                    crate::commands::sync::ActionView {
-                        kind: x.kind.clone(),
-                        identity: x.identity.clone(),
-                        action: "add".into(),
-                    }
-                }
-                _ => crate::commands::sync::ActionView {
-                    kind: String::new(),
-                    identity: String::new(),
-                    action: "noop".into(),
-                },
-            })
-            .collect(),
-        files: native_plan
-            .changes
-            .iter()
-            .map(|c| crate::commands::sync::FilePreview {
-                path: c.file_path.clone(),
-                before: c.before.clone(),
-                after: c.after.clone(),
-            })
-            .collect(),
-        plan_hash: crate::commands::sync::plan_hash(&plan, &native_plan)?,
-        writable_changes: native_plan.changes.len(),
-        has_blockers: plan.actions.iter().any(|a| {
-            matches!(
-                a,
-                chm_harness_sdk::adapter::plan::PlanAction::Conflict(_)
-                    | chm_harness_sdk::adapter::plan::PlanAction::Unsupported(_)
-            )
-        }),
-    })
+    let mode = crate::commands::sync::parse_mode(&mode);
+    let (_, _adapter, plan, native_plan) = crate::commands::sync::build_native_plan_for_desired(
+        pool,
+        &installation_id,
+        &mode,
+        desired,
+    )
+    .await?;
+    crate::commands::sync::preview_report(&plan, &native_plan)
 }
 
 #[tauri::command]
@@ -237,143 +200,19 @@ pub async fn apply_set_cmd(
     set_id: String,
     installation_id: String,
     mode: String,
+    plan_hash: String,
 ) -> Result<crate::commands::sync::ApplyReport, String> {
-    // reuse execute_sync but with set-filtered desired state: simplest correct
-    // approach is to run execute_sync after narrowing enabled routes — V1 runs
-    // a scoped rebuild inline here.
     let pool = &state.pool;
-    let m = match mode.as_str() {
-        "replaceManaged" => Mode::ReplaceManaged,
-        _ => Mode::Append,
-    };
-    let inst = chm_database::repos::harness::list_installations(pool)
-        .await
-        .map_err(|e| e.to_string())?
-        .into_iter()
-        .find(|i| i.id.to_string() == installation_id)
-        .ok_or("installation not found")?;
-    let adapter =
-        crate::commands::sync::adapter_for(inst.harness_type.as_str()).ok_or("no adapter")?;
-    let parsed = adapter.read_state(&inst).map_err(|e| e.to_string())?;
+    let m = crate::commands::sync::parse_mode(&mode);
     let desired = set_filtered_desired(pool, &set_id).await?;
-    let actual = chm_harness_sdk::adapter::plan::ActualState {
-        routes: parsed.models.clone(),
-        mcp: parsed.mcp.clone(),
-        skills: parsed.skills.clone(),
-        managed_flags: Default::default(),
-    };
-    let plan =
-        chm_reconciliation::engine::reconcile(&desired, &actual, m).map_err(|e| e.to_string())?;
-    let plan = chm_reconciliation::engine::filter_unsupported(plan, &adapter.capabilities());
-    let native_plan = adapter.plan(&plan, &inst).map_err(|e| e.to_string())?;
-
-    use chm_core::domain::history::{ConfigSnapshot, TransactionStatus, TransactionType};
-    use chm_database::repos::history::{add_snapshot, begin_transaction, finish_transaction};
-    let tx = begin_transaction(pool, TransactionType::Sync, serde_json::json!(native_plan))
-        .await
-        .map_err(|e| e.to_string())?;
-    let mut backups = Vec::new();
-    for change in &native_plan.changes {
-        match chm_filesystem::backup_file(std::path::Path::new(&change.file_path)) {
-            Ok(b) => backups.push((change.file_path.clone(), b)),
-            Err(e) => {
-                finish_transaction(
-                    pool,
-                    tx.id,
-                    TransactionStatus::Failed,
-                    None,
-                    Some(e.to_string()),
-                )
-                .await
-                .map_err(|err| err.to_string())?;
-                return Err(e.to_string());
-            }
-        }
-    }
-    if let Err(e) = adapter.apply(&inst, &native_plan) {
-        rollback_set(
-            pool,
-            tx.id,
-            &*adapter,
-            &inst,
-            &native_plan,
-            &backups,
-            &[e.to_string()],
-        )
-        .await?;
-        return Err(format!("apply failed: {e}"));
-    }
-    let validation = adapter.validate(&inst).map_err(|e| e.to_string())?;
-    if !validation.ok {
-        rollback_set(
-            pool,
-            tx.id,
-            &*adapter,
-            &inst,
-            &native_plan,
-            &backups,
-            &validation.errors,
-        )
-        .await?;
-        return Err(format!("validation failed: {:?}", validation.errors));
-    }
-    for (file, backup) in &backups {
-        let _ = add_snapshot(
-            pool,
-            &ConfigSnapshot {
-                id: Uuid::new_v4(),
-                transaction_id: tx.id,
-                harness_installation_id: inst.id,
-                path: file.clone(),
-                before_content: std::fs::read_to_string(backup).ok(),
-                after_content: std::fs::read_to_string(file).ok(),
-                before_hash: None,
-                after_hash: None,
-            },
-        )
-        .await;
-    }
-    finish_transaction(
+    crate::commands::sync::execute_desired_with_plan(
         pool,
-        tx.id,
-        TransactionStatus::Succeeded,
-        Some(format!("set applied to {}", inst.harness_type.as_str())),
+        &installation_id,
+        &m,
+        false,
+        Some(&plan_hash),
         None,
+        desired,
     )
     .await
-    .map_err(|e| e.to_string())?;
-    Ok(crate::commands::sync::ApplyReport {
-        summary: format!("{} files written", backups.len()),
-        files_written: backups.into_iter().map(|(f, _)| f).collect(),
-        links_created: vec![],
-        transaction_id: tx.id.to_string(),
-        validation,
-    })
-}
-
-use chm_core::domain::history::TransactionStatus;
-use chm_database::repos::history::finish_transaction;
-
-async fn rollback_set(
-    pool: &Pool<Sqlite>,
-    tx_id: Uuid,
-    adapter: &dyn chm_harness_sdk::adapter::types::HarnessAdapter,
-    inst: &chm_core::domain::harness::HarnessInstallation,
-    native_plan: &chm_harness_sdk::adapter::types::NativePlan,
-    backups: &[(String, std::path::PathBuf)],
-    errors: &[String],
-) -> Result<(), String> {
-    let _ = adapter.rollback(inst, native_plan);
-    for (file, backup) in backups {
-        let _ = chm_filesystem::restore_backup(backup, std::path::Path::new(file));
-    }
-    finish_transaction(
-        pool,
-        tx_id,
-        TransactionStatus::Failed,
-        None,
-        Some(errors.join("; ")),
-    )
-    .await
-    .map_err(|e| e.to_string())
 }

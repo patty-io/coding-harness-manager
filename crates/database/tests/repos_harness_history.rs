@@ -30,6 +30,31 @@ async fn installation_upsert_is_idempotent() {
 }
 
 #[tokio::test]
+async fn find_installation_uses_the_stable_id() {
+    let pool = connect_test().await.unwrap();
+    let installation = HarnessInstallation {
+        id: uuid::Uuid::new_v4(),
+        harness_type: HarnessType::Pi,
+        executable_path: Some("/usr/local/bin/pi".into()),
+        version: Some("0.84.3".into()),
+        config_path: Some("/Users/me/.pi/agent/models.json".into()),
+        detected_at: chrono::Utc::now(),
+        last_scanned_at: None,
+        status: InstallationStatus::Installed,
+    };
+    let stored = upsert_installation(&pool, &installation).await.unwrap();
+
+    assert_eq!(
+        find_installation(&pool, stored.id).await.unwrap().id,
+        stored.id
+    );
+    let missing = find_installation(&pool, uuid::Uuid::new_v4())
+        .await
+        .unwrap_err();
+    assert!(matches!(missing, chm_database::DbError::NotFound(_)));
+}
+
+#[tokio::test]
 async fn upsert_returns_stable_stored_id_across_rescans() {
     let pool = connect_test().await.unwrap();
     let now = chrono::Utc::now();

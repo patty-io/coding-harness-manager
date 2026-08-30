@@ -8,6 +8,7 @@ use chm_database::repos::providers::{list_endpoints, list_providers};
 use chm_models_dev::match_bundled;
 use serde::{Deserialize, Serialize};
 use sqlx::{Pool, Sqlite};
+use std::collections::HashMap;
 use tauri::State;
 use uuid::Uuid;
 
@@ -225,12 +226,14 @@ pub async fn list_catalog_all(state: State<'_, AppState>) -> Result<Vec<CatalogV
     // "in My Models" when it is routed on ANY endpoint of its provider.
     let routes = list_routes(&state.pool).await.map_err(|e| e.to_string())?;
     let mut endpoint_provider: HashMap<uuid::Uuid, uuid::Uuid> = HashMap::new();
+    let mut provider_endpoints = Vec::new();
     for p in &providers {
         for e in list_endpoints(&state.pool, p.id)
             .await
             .map_err(|e| e.to_string())?
         {
             endpoint_provider.insert(e.id, p.id);
+            provider_endpoints.push((p.id, p.display_name.clone(), e));
         }
     }
     let routed: std::collections::HashSet<(uuid::Uuid, String)> = routes
@@ -242,36 +245,33 @@ pub async fn list_catalog_all(state: State<'_, AppState>) -> Result<Vec<CatalogV
         })
         .collect();
 
-    use std::collections::HashMap;
-    let mut best: HashMap<(String, String), (i32, CatalogView)> = HashMap::new();
-    for p in &providers {
-        for e in list_endpoints(&state.pool, p.id)
+    // Provider identity is the stable key. Display names are user-editable
+    // and need not be unique, so using them here could collapse catalogs from
+    // two distinct providers into one row.
+    let mut best: HashMap<(Uuid, String), (i32, CatalogView)> = HashMap::new();
+    for (provider_id, provider_name, e) in provider_endpoints {
+        let rank = proto_rank(e.protocol.as_str()) as i32;
+        for m in list_catalog_models(&state.pool, e.id)
             .await
             .map_err(|e| e.to_string())?
         {
-            let rank = proto_rank(e.protocol.as_str()) as i32;
-            for m in list_catalog_models(&state.pool, e.id)
-                .await
-                .map_err(|e| e.to_string())?
-            {
-                let key = (p.display_name.clone(), m.remote_model_id.clone());
-                let in_my = routed.contains(&(p.id, m.remote_model_id.to_lowercase()));
-                let view = CatalogView {
-                    id: m.id.to_string(),
-                    endpoint_id: e.id.to_string(),
-                    provider_name: p.display_name.clone(),
-                    endpoint_name: e.name.clone(),
-                    remote_model_id: m.remote_model_id.clone(),
-                    status: m.status.as_str().to_string(),
-                    match_confidence: m.match_confidence,
-                    identity_name: None,
-                    in_my_models: in_my,
-                };
-                match best.get(&key) {
-                    Some((existing_rank, _)) if *existing_rank <= rank => {}
-                    _ => {
-                        best.insert(key, (rank, view));
-                    }
+            let key = (provider_id, m.remote_model_id.to_lowercase());
+            let in_my = routed.contains(&(provider_id, m.remote_model_id.to_lowercase()));
+            let view = CatalogView {
+                id: m.id.to_string(),
+                endpoint_id: e.id.to_string(),
+                provider_name: provider_name.clone(),
+                endpoint_name: e.name.clone(),
+                remote_model_id: m.remote_model_id.clone(),
+                status: m.status.as_str().to_string(),
+                match_confidence: m.match_confidence,
+                identity_name: None,
+                in_my_models: in_my,
+            };
+            match best.get(&key) {
+                Some((existing_rank, _)) if *existing_rank <= rank => {}
+                _ => {
+                    best.insert(key, (rank, view));
                 }
             }
         }

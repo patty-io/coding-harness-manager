@@ -5,13 +5,11 @@
 //! user edits a harness config by hand, the app must say so instead of
 //! silently overwriting on the next apply.
 
-use chm_core::domain::history::{ConfigSnapshot, TransactionType, TransactionStatus};
-use chm_database::repos::harness::list_installations;
+use chm_core::domain::history::{ConfigSnapshot, TransactionStatus, TransactionType};
 use chm_database::repos::history::{
     add_snapshot, begin_transaction, finish_transaction, latest_snapshot_content,
 };
 use serde::Serialize;
-use sha2::Digest;
 use tauri::State;
 use uuid::Uuid;
 
@@ -31,20 +29,7 @@ pub struct DriftReport {
 }
 
 fn content_hash(s: &str) -> String {
-    format!("{:x}", sha2::Sha256::digest(s.as_bytes()))
-}
-
-async fn find_installation(
-    state: &AppState,
-    installation_id: &str,
-) -> Result<chm_core::domain::harness::HarnessInstallation, String> {
-    let id = Uuid::parse_str(installation_id).map_err(|e| e.to_string())?;
-    list_installations(&state.pool)
-        .await
-        .map_err(|e| e.to_string())?
-        .into_iter()
-        .find(|i| i.id == id)
-        .ok_or_else(|| format!("installation {installation_id} not found"))
+    crate::drift::sha256_hex(s)
 }
 
 /// Shared drift computation: true when the config on disk differs from the
@@ -75,7 +60,7 @@ pub async fn harness_drift_cmd(
     state: State<'_, AppState>,
     installation_id: String,
 ) -> Result<DriftReport, String> {
-    let inst = find_installation(&state, &installation_id).await?;
+    let inst = crate::commands::find_installation(&state.pool, &installation_id).await?;
     let (ever_synced, drifted, current, last_written) =
         installation_drifted(&state.pool, &inst).await?;
     Ok(DriftReport {
@@ -96,8 +81,11 @@ pub async fn record_manual_snapshot_cmd(
     state: State<'_, AppState>,
     installation_id: String,
 ) -> Result<(), String> {
-    let inst = find_installation(&state, &installation_id).await?;
-    let path = inst.config_path.clone().ok_or("harness has no config path")?;
+    let inst = crate::commands::find_installation(&state.pool, &installation_id).await?;
+    let path = inst
+        .config_path
+        .clone()
+        .ok_or("harness has no config path")?;
     let current = std::fs::read_to_string(&path).ok();
     let tx = begin_transaction(
         &state.pool,
@@ -122,17 +110,15 @@ pub async fn record_manual_snapshot_cmd(
     )
     .await;
     match result {
-        Ok(_) => {
-            finish_transaction(
-                &state.pool,
-                tx.id,
-                TransactionStatus::Succeeded,
-                Some("re-baselined from disk".into()),
-                None,
-            )
-            .await
-            .map_err(|e| e.to_string())
-        }
+        Ok(_) => finish_transaction(
+            &state.pool,
+            tx.id,
+            TransactionStatus::Succeeded,
+            Some("re-baselined from disk".into()),
+            None,
+        )
+        .await
+        .map_err(|e| e.to_string()),
         Err(e) => {
             let _ = finish_transaction(
                 &state.pool,

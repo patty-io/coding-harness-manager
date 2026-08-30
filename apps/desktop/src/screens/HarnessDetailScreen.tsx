@@ -7,6 +7,7 @@ import {
   harnessModelsView,
   launchProfile,
   listEndpointOptions,
+  listProfiles,
   listRoutes,
   readHarnessRawConfig,
   readHarnessState,
@@ -58,7 +59,6 @@ function Row({ label, children }: { label: string; children: React.ReactNode }) 
 async function listProfilesForHarness(): Promise<
   { id: string; name: string; harnessType: string; modelDisplay: string | null }[]
 > {
-  const { listProfiles } = await import("../lib/api");
   const all = await listProfiles();
   return all.map((p) => ({
     id: p.id,
@@ -153,8 +153,8 @@ export default function HarnessDetailScreen() {
     enabled: adopting !== null,
   });
   const adopt = useMutation({
-    mutationFn: (vars: { nativeId: string; endpointId: string }) =>
-      adoptHarnessModel(id!, vars.nativeId, vars.endpointId),
+    mutationFn: (vars: { nativeId: string; endpointId: string; nativeProviderId?: string | null }) =>
+      adoptHarnessModel(id!, vars.nativeId, vars.endpointId, vars.nativeProviderId),
     onSuccess: () => {
       setAdopting(null);
       void qc.invalidateQueries({ queryKey: ["harness-models", id] });
@@ -173,7 +173,7 @@ export default function HarnessDetailScreen() {
   const smartImport = async (m: HarnessModelRow) => {
     setRowNote(null);
     try {
-      const r = await smartAdoptHarnessModel(id!, m.nativeId);
+      const r = await smartAdoptHarnessModel(id!, m.nativeId, m.nativeProviderId);
       setRowNote(
         r.routeCreated
           ? `Imported ${m.remoteModelId} into My Models${r.providerName ? ` via ${r.providerName}` : ""}.`
@@ -286,7 +286,7 @@ export default function HarnessDetailScreen() {
                   if (mine.length === 0) {
                     return (
                       <p className="px-3 py-2 text-xs text-slate-500">
-                        No presets for this harness yet.{" "}
+                        No profiles for this harness yet.{" "}
                         <Link to="/profiles" className="text-blue-400 hover:underline">
                           Create one →
                         </Link>
@@ -833,6 +833,23 @@ export default function HarnessDetailScreen() {
                     inputMode="numeric"
                     className="mt-1 w-full rounded border border-slate-600 bg-slate-900 px-2 py-1.5 text-sm text-slate-200"
                   />
+                  <div className="mt-4 rounded border border-slate-700 bg-slate-900/60 p-3 text-xs">
+                    <p className="font-medium uppercase tracking-wide text-slate-500">
+                      Preview changes
+                    </p>
+                    <dl className="mt-2 grid grid-cols-[auto,1fr] gap-x-3 gap-y-1 text-slate-400">
+                      <dt>Display name</dt>
+                      <dd className="text-slate-200">{editing.displayName} → {editName || "(empty)"}</dd>
+                      <dt>Remote id</dt>
+                      <dd className="font-mono text-slate-200">{editing.remoteModelId} → {editRemote || "(empty)"}</dd>
+                      <dt>Context</dt>
+                      <dd className="text-slate-200">{editing.contextWindow ?? "—"} → {editContext || "—"}</dd>
+                    </dl>
+                    <p className="mt-2 text-slate-500">
+                      Nothing is written until you apply this preview. A backup
+                      and history snapshot are created first.
+                    </p>
+                  </div>
                   <div className="mt-4 flex justify-end gap-2">
                     <button
                       onClick={() => setEditing(null)}
@@ -857,7 +874,7 @@ export default function HarnessDetailScreen() {
                       }}
                       className="rounded bg-blue-600 px-3 py-1 text-sm text-white hover:bg-blue-500"
                     >
-                      Save changes
+                      Apply reviewed changes
                     </button>
                   </div>
                 </div>
@@ -911,6 +928,7 @@ export default function HarnessDetailScreen() {
                         adopt.mutate({
                           nativeId: adopting.nativeId,
                           endpointId: adoptEndpoint,
+                          nativeProviderId: adopting.nativeProviderId,
                         })
                       }
                       disabled={!adoptEndpoint || adopt.isPending}

@@ -8,6 +8,7 @@ pub mod skill_lib;
 use chm_database::connect;
 use chm_secrets::SecretStore;
 use sqlx::{Pool, Sqlite};
+use std::path::PathBuf;
 use tauri::Manager;
 
 pub struct AppState {
@@ -16,26 +17,45 @@ pub struct AppState {
     pub http: reqwest::Client,
 }
 
+pub fn app_data_dir() -> PathBuf {
+    std::env::var_os("CHM_DATA_DIR")
+        .map(PathBuf::from)
+        .or_else(|| {
+            std::env::var_os("HOME").map(|home| PathBuf::from(home).join(".coding-harness-manager"))
+        })
+        .or_else(|| {
+            std::env::var_os("USERPROFILE")
+                .map(|home| PathBuf::from(home).join(".coding-harness-manager"))
+        })
+        .unwrap_or_else(|| PathBuf::from(".coding-harness-manager"))
+}
+
+pub fn expand_user_path(value: &str) -> PathBuf {
+    if value == "~" {
+        return home_dir();
+    }
+    if let Some(rest) = value.strip_prefix("~/") {
+        return home_dir().join(rest);
+    }
+    PathBuf::from(value)
+}
+
+fn home_dir() -> PathBuf {
+    std::env::var_os("HOME")
+        .or_else(|| std::env::var_os("USERPROFILE"))
+        .map(PathBuf::from)
+        .unwrap_or_else(|| PathBuf::from("."))
+}
+
 fn db_path() -> String {
-    let dir = std::env::var_os("CHM_DATA_DIR")
-        .map(std::path::PathBuf::from)
-        .unwrap_or_else(|| {
-            let home = std::env::var_os("HOME").unwrap_or_default();
-            std::path::PathBuf::from(home).join(".coding-harness-manager")
-        });
+    let dir = app_data_dir();
     std::fs::create_dir_all(&dir).expect("create data directory");
     dir.join("chm.sqlite").display().to_string()
 }
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 fn init_logging() {
-    let log_dir = std::env::var_os("CHM_DATA_DIR")
-        .map(std::path::PathBuf::from)
-        .unwrap_or_else(|| {
-            let home = std::env::var_os("HOME").unwrap_or_default();
-            std::path::PathBuf::from(home).join(".coding-harness-manager")
-        })
-        .join("logs");
+    let log_dir = app_data_dir().join("logs");
     let _ = std::fs::create_dir_all(&log_dir);
     let file_appender = tracing_appender::rolling::daily(&log_dir, "chm.log");
     let (writer, guard) = tracing_appender::non_blocking(file_appender);
@@ -73,6 +93,12 @@ pub fn run() {
             Ok(())
         })
         .invoke_handler(tauri::generate_handler![
+            commands::backup::backup_now_cmd,
+            commands::backup::list_backups_cmd,
+            commands::backup::restore_backup_cmd,
+            commands::backup::export_config_cmd,
+            commands::backup::preview_import_cmd,
+            commands::backup::import_config_cmd,
             commands::scan::scan_harnesses,
             commands::scan::list_installations_cmd,
             commands::import::read_harness_state,
@@ -105,6 +131,7 @@ pub fn run() {
             commands::provider_actions::list_provider_catalog_cmd,
             commands::provider_actions::list_catalog_models_cmd,
             commands::provider_actions::provider_summary,
+            commands::provider_actions::provider_summaries,
             commands::models::list_routes_cmd,
             commands::models::update_route_cmd,
             commands::models::delete_route_cmd,
@@ -130,6 +157,7 @@ pub fn run() {
             commands::skills::unbind_skill_cmd,
             commands::profiles::list_profiles_cmd,
             commands::profiles::create_profile_cmd,
+            commands::profiles::update_profile_cmd,
             commands::profiles::delete_profile_cmd,
             commands::profiles::launch_profile_cmd,
             commands::sets::list_sets_cmd,

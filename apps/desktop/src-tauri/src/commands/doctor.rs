@@ -1,11 +1,15 @@
 //! Doctor diagnostics + redaction (Phase 13).
 
 use chm_database::repos::harness::list_installations;
+use chm_database::repos::history::{begin_transaction, finish_transaction};
 use chm_database::repos::providers::{list_endpoints, list_providers};
 use chm_database::repos::skills::list_skills;
+use chm_core::domain::history::{TransactionStatus, TransactionType};
 use chm_providers::{discover_models, health_check, resolve_credential};
+use chrono::Utc;
 use regex::Regex;
 use serde::Serialize;
+use serde_json::json;
 use sqlx::{Pool, Sqlite};
 use tauri::State;
 
@@ -36,6 +40,7 @@ pub struct DoctorReport {
     pub provider_checks: Vec<ProviderCheckGroup>,
     pub mcp_checks: Vec<crate::commands::mcp::CheckResult>,
     pub skill_checks: Vec<CheckResult>,
+    pub system_checks: Vec<CheckResult>,
     pub summary: String,
 }
 
@@ -47,6 +52,8 @@ pub fn redact(text: &str) -> String {
         r"github_pat_[A-Za-z0-9_]{20,}",
         r"Bearer [A-Za-z0-9._\-]{8,}",
         r#"x-api-key["'\s:=]+[A-Za-z0-9._\-]{8,}"#,
+        r#"(?i)([?&](?:api[_-]?key|access[_-]?token|token|secret|password)=)[^&\s"']+"#,
+        r"(?i)(https?://[^/\s:@]+:)[^@/\s]+(@)",
     ];
     for pat in patterns {
         if let Ok(re) = Regex::new(pat) {
@@ -97,6 +104,40 @@ async fn harness_checks(pool: &Pool<Sqlite>) -> Result<Vec<HarnessCheckGroup>, S
                         detail: e.to_string(),
                     }),
                 }
+                let parse_result = crate::commands::sync::adapter_for(inst.harness_type.as_str())
+                    .ok_or_else(|| format!("no adapter for {}", inst.harness_type.as_str()))
+                    .and_then(|adapter| adapter.read_state(inst).map_err(|e| e.to_string()));
+                checks.push(CheckResult {
+                    check: "config parses".into(),
+                    passed: parse_result.is_ok(),
+                    detail: parse_result
+                        .err()
+                        .unwrap_or_else(|| "adapter parsed the installed state".into()),
+                });
+                let config_path = std::path::Path::new(path);
+                let writable = std::fs::metadata(config_path)
+                    .map(|meta| !meta.permissions().readonly())
+                    .unwrap_or(false);
+                checks.push(CheckResult {
+                    check: "config writable".into(),
+                    passed: writable,
+                    detail: if writable {
+                        "file permissions allow updates".into()
+                    } else {
+                        "file is missing or read-only".into()
+                    },
+                });
+                let backup_dir = config_path
+                    .parent()
+                    .unwrap_or_else(|| std::path::Path::new("."));
+                let backup_ready = std::fs::metadata(backup_dir)
+                    .map(|meta| meta.is_dir() && !meta.permissions().readonly())
+                    .unwrap_or(false);
+                checks.push(CheckResult {
+                    check: "backup location ready".into(),
+                    passed: backup_ready,
+                    detail: backup_dir.display().to_string(),
+                });
             }
             None => checks.push(CheckResult {
                 check: "config readable".into(),
@@ -104,6 +145,15 @@ async fn harness_checks(pool: &Pool<Sqlite>) -> Result<Vec<HarnessCheckGroup>, S
                 detail: "no config detected".into(),
             }),
         }
+        let version_ok = inst
+            .version
+            .as_deref()
+            .is_some_and(|v| !v.trim().is_empty());
+        checks.push(CheckResult {
+            check: "version detected".into(),
+            passed: version_ok,
+            detail: inst.version.clone().unwrap_or_else(|| "unknown".into()),
+        });
         groups.push(HarnessCheckGroup {
             harness_type: inst.harness_type.as_str().to_string(),
             version: inst.version.clone(),
@@ -129,7 +179,13 @@ async fn provider_checks(
                 resolve_credential(e.credential_ref.as_ref().unwrap_or(&fake_ref()), secrets);
             let status = health_check(&e, cred.as_deref(), http).await;
             let reachable = !matches!(status, chm_providers::HealthStatus::Unreachable);
-            let auth_ok = !matches!(status, chm_providers::HealthStatus::AuthFailed);
+            let auth_ok = !matches!(
+                status,
+                chm_providers::HealthStatus::AuthFailed
+                    | chm_providers::HealthStatus::Unreachable
+                    | chm_providers::HealthStatus::MalformedResponse
+                    | chm_providers::HealthStatus::Unknown
+            );
             let mut checks = vec![
                 CheckResult {
                     check: "endpoint reachable".into(),
@@ -157,7 +213,7 @@ async fn provider_checks(
                     }),
                     Err(err) => checks.push(CheckResult {
                         check: "discovery works".into(),
-                        passed: matches!(err, chm_providers::ProviderError::Unreachable),
+                        passed: false,
                         detail: format!("discovery error: {err}"),
                     }),
                 }
@@ -191,19 +247,83 @@ pub async fn run_doctor_core(
     let harness = harness_checks(pool).await?;
     let provider = provider_checks(pool, secrets, http).await?;
     let mcp = crate::commands::mcp::mcp_list_servers_for_doctor(pool).await?;
+    let mut system_checks = Vec::new();
+    match sqlx::query_scalar::<_, i64>("SELECT 1")
+        .fetch_one(pool)
+        .await
+    {
+        Ok(1) => system_checks.push(CheckResult {
+            check: "database health".into(),
+            passed: true,
+            detail: "SQLite responded to a health query".into(),
+        }),
+        Ok(value) => system_checks.push(CheckResult {
+            check: "database health".into(),
+            passed: false,
+            detail: format!("unexpected health result {value}; restart the app"),
+        }),
+        Err(error) => system_checks.push(CheckResult {
+            check: "database health".into(),
+            passed: false,
+            detail: format!("{error}; restart the app or restore a database backup"),
+        }),
+    }
+    match secrets.get("__chm_doctor_probe__") {
+        Ok(_) => system_checks.push(CheckResult {
+            check: "secret store available".into(),
+            passed: true,
+            detail: "secret store responded without reading a credential value".into(),
+        }),
+        Err(error) => system_checks.push(CheckResult {
+            check: "secret store available".into(),
+            passed: false,
+            detail: format!("{error}; check the OS keychain or configured environment variables"),
+        }),
+    }
+    let symlink_probe = std::env::temp_dir().join(format!(
+        "chm-symlink-probe-{}-{}",
+        std::process::id(),
+        Utc::now().timestamp_nanos_opt().unwrap_or_default()
+    ));
+    let symlink_target = symlink_probe.with_extension("target");
+    let symlink_ok = std::fs::write(&symlink_target, b"probe")
+        .and_then(|_| {
+            #[cfg(unix)]
+            {
+                std::os::unix::fs::symlink(&symlink_target, &symlink_probe)
+            }
+            #[cfg(windows)]
+            {
+                std::os::windows::fs::symlink_file(&symlink_target, &symlink_probe)
+            }
+        })
+        .is_ok();
+    let _ = std::fs::remove_file(&symlink_probe);
+    let _ = std::fs::remove_file(&symlink_target);
+    system_checks.push(CheckResult {
+        check: "symlink capability".into(),
+        passed: symlink_ok,
+        detail: if symlink_ok {
+            "temporary symlink probe succeeded".into()
+        } else {
+            "cannot create symlinks; use copy bindings or grant filesystem permission".into()
+        },
+    });
     let skill_checks: Vec<CheckResult> = list_skills(pool)
         .await
         .map_err(|e| e.to_string())?
         .into_iter()
         .map(|skill| {
-            let exists = std::path::Path::new(&skill.canonical_path).is_dir();
+            let path = std::path::Path::new(&skill.canonical_path);
+            let exists = path.is_dir();
+            let readable = exists && std::fs::read_dir(path).is_ok();
             CheckResult {
                 check: format!("skill available: {}", skill.name),
-                passed: exists,
-                detail: if exists {
-                    skill.canonical_path
+                passed: readable,
+                detail: if readable {
+                    format!("{} is present and readable", skill.canonical_path)
                 } else {
-                    format!("missing: {}", skill.canonical_path)
+                    format!("missing or unreadable: {}", skill.canonical_path)
                 },
             }
         })
@@ -211,7 +331,8 @@ pub async fn run_doctor_core(
     let total: usize = harness.iter().map(|g| g.checks.len()).sum::<usize>()
         + provider.iter().map(|g| g.checks.len()).sum::<usize>()
         + mcp.len()
-        + skill_checks.len();
+        + skill_checks.len()
+        + system_checks.len();
     let failures: Vec<String> = harness
         .iter()
         .flat_map(|g| {
@@ -233,6 +354,13 @@ pub async fn run_doctor_core(
                 .filter(|c| !c.passed)
                 .map(|c| c.check.clone()),
         )
+        .chain(mcp.iter().filter(|c| !c.passed).map(|c| c.check.clone()))
+        .chain(
+            system_checks
+                .iter()
+                .filter(|c| !c.passed)
+                .map(|c| c.check.clone()),
+        )
         .collect();
     let checks_passed = total - failures.len();
     Ok(DoctorReport {
@@ -242,6 +370,7 @@ pub async fn run_doctor_core(
         provider_checks: provider,
         mcp_checks: mcp,
         skill_checks,
+        system_checks,
         summary: if failures.is_empty() {
             format!("{checks_passed}/{} checks passed", total)
         } else {
@@ -254,7 +383,38 @@ use crate::AppState;
 
 #[tauri::command]
 pub async fn run_doctor_cmd(state: State<'_, AppState>) -> Result<DoctorReport, String> {
-    run_doctor_core(&state.pool, state.secrets.as_ref(), &state.http).await
+    let audit = begin_transaction(
+        &state.pool,
+        TransactionType::Manual,
+        json!({"action":"doctor"}),
+    )
+    .await
+    .map_err(|e| e.to_string())?;
+    match run_doctor_core(&state.pool, state.secrets.as_ref(), &state.http).await {
+        Ok(report) => {
+            finish_transaction(
+                &state.pool,
+                audit.id,
+                TransactionStatus::Succeeded,
+                Some(format!("doctor diagnostics: {}", report.summary)),
+                None,
+            )
+            .await
+            .map_err(|e| e.to_string())?;
+            Ok(report)
+        }
+        Err(error) => {
+            let _ = finish_transaction(
+                &state.pool,
+                audit.id,
+                TransactionStatus::Failed,
+                None,
+                Some(error.clone()),
+            )
+            .await;
+            Err(error)
+        }
+    }
 }
 
 pub async fn export_diagnostics_core(
@@ -266,18 +426,10 @@ pub async fn export_diagnostics_core(
     let report = run_doctor_core(pool, secrets, http).await?;
     let json = serde_json::to_string_pretty(&report).map_err(|e| e.to_string())?;
     let redacted = redact(&json);
-    let destination = if dest_dir.trim().is_empty() || dest_dir.trim() == "~" {
-        std::env::var_os("HOME")
-            .map(std::path::PathBuf::from)
-            .unwrap_or_else(|| std::path::PathBuf::from("."))
-            .join(".coding-harness-manager")
-    } else if let Some(rest) = dest_dir.strip_prefix("~/") {
-        std::env::var_os("HOME")
-            .map(std::path::PathBuf::from)
-            .unwrap_or_else(|| std::path::PathBuf::from("."))
-            .join(rest)
+    let destination = if dest_dir.trim().is_empty() {
+        crate::app_data_dir()
     } else {
-        std::path::PathBuf::from(dest_dir)
+        crate::expand_user_path(dest_dir.trim())
     };
     std::fs::create_dir_all(&destination).map_err(|e| e.to_string())?;
     let stamp = chrono::Utc::now().format("%Y%m%dT%H%M%S");
@@ -291,7 +443,40 @@ pub async fn export_diagnostics_cmd(
     state: State<'_, AppState>,
     dest_dir: String,
 ) -> Result<String, String> {
-    export_diagnostics_core(&state.pool, state.secrets.as_ref(), &state.http, &dest_dir).await
+    let audit = begin_transaction(
+        &state.pool,
+        TransactionType::Manual,
+        json!({"action":"export_diagnostics", "destination": dest_dir}),
+    )
+    .await
+    .map_err(|e| e.to_string())?;
+    match export_diagnostics_core(&state.pool, state.secrets.as_ref(), &state.http, &dest_dir)
+        .await
+    {
+        Ok(path) => {
+            finish_transaction(
+                &state.pool,
+                audit.id,
+                TransactionStatus::Succeeded,
+                Some(format!("diagnostics exported to {path}")),
+                None,
+            )
+            .await
+            .map_err(|e| e.to_string())?;
+            Ok(path)
+        }
+        Err(error) => {
+            let _ = finish_transaction(
+                &state.pool,
+                audit.id,
+                TransactionStatus::Failed,
+                None,
+                Some(error.clone()),
+            )
+            .await;
+            Err(error)
+        }
+    }
 }
 
 #[cfg(test)]
@@ -306,5 +491,14 @@ mod tests {
         assert!(!output.contains("Bearer abcdefghijklmnop"));
         assert!(output.contains("<REDACTED>"));
         assert!(output.contains("demo"));
+    }
+
+    #[test]
+    fn redacts_credentials_embedded_in_urls() {
+        let input = "https://user:password@example.test/v1?api_key=secret-value&mode=fast";
+        let output = redact(input);
+        assert!(!output.contains("password@example"));
+        assert!(!output.contains("api_key=secret-value"));
+        assert!(output.contains("mode=fast"));
     }
 }

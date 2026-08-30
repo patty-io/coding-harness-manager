@@ -8,63 +8,90 @@ use tauri::State;
 use uuid::Uuid;
 
 use crate::AppState;
-use crate::commands::import::read_parsed_state;
+use crate::commands::import::{read_parsed_installation, read_parsed_state};
+
+#[derive(Debug, Clone)]
+struct HarnessProviderDeclaration {
+    name: String,
+    base_url: Option<String>,
+    model_ids: std::collections::HashSet<String>,
+}
+
+/// Read provider declarations from a harness config once. Pi and several
+/// other harnesses expose model lists either as arrays of `{id: ...}` objects
+/// or as id-keyed objects; normalizing both shapes here keeps attribution and
+/// provider-detail views on the same source of truth.
+fn harness_provider_declarations(
+    inst: &chm_core::domain::harness::HarnessInstallation,
+) -> Vec<HarnessProviderDeclaration> {
+    let Some(path) = &inst.config_path else {
+        return Vec::new();
+    };
+    let Ok(text) = std::fs::read_to_string(path) else {
+        return Vec::new();
+    };
+    let Ok(v) = serde_json::from_str::<serde_json::Value>(&text) else {
+        return Vec::new();
+    };
+    let Some(providers) = v.get("providers").and_then(|p| p.as_object()) else {
+        return Vec::new();
+    };
+    providers
+        .iter()
+        .map(|(pname, provider)| {
+            let base_url = provider
+                .get("baseUrl")
+                .or_else(|| provider.get("base_url"))
+                .or_else(|| provider.get("url"))
+                .and_then(|value| value.as_str())
+                .map(str::to_string);
+            let mut model_ids = std::collections::HashSet::new();
+            match provider.get("models") {
+                Some(serde_json::Value::Array(models)) => {
+                    for model in models {
+                        if let Some(id) = model.get("id").and_then(|value| value.as_str()) {
+                            model_ids.insert(id.to_lowercase());
+                        }
+                    }
+                }
+                Some(serde_json::Value::Object(models)) => {
+                    model_ids.extend(models.keys().map(|id| id.to_lowercase()));
+                }
+                _ => {}
+            }
+            HarnessProviderDeclaration {
+                name: pname.clone(),
+                base_url,
+                model_ids,
+            }
+        })
+        .collect()
+}
 
 /// Provider grouping declared by the harness config itself, e.g. Pi's
 /// models.json: providers.<name>.models[] with `id` fields. Returns
-/// (model id -> provider name, provider base url).
+/// (model id -> provider name, provider base url). For duplicate model ids,
+/// retain the first declaration for the legacy providerless fallback; rows
+/// carrying a native provider id use the declarations directly.
 fn harness_provider_map(
     inst: &chm_core::domain::harness::HarnessInstallation,
 ) -> std::collections::HashMap<String, (String, Option<String>)> {
+    let declarations = harness_provider_declarations(inst);
+    harness_provider_map_from_declarations(&declarations)
+}
+
+fn harness_provider_map_from_declarations(
+    declarations: &[HarnessProviderDeclaration],
+) -> std::collections::HashMap<String, (String, Option<String>)> {
     let mut map = std::collections::HashMap::new();
-    let Some(path) = &inst.config_path else {
-        return map;
-    };
-    let Ok(text) = std::fs::read_to_string(path) else {
-        return map;
-    };
-    let Ok(v) = serde_json::from_str::<serde_json::Value>(&text) else {
-        return map;
-    };
-    let Some(providers) = v.get("providers").and_then(|p| p.as_object()) else {
-        return map;
-    };
-    for (pname, p) in providers {
-        let base = p
-            .get("baseUrl")
-            .or_else(|| p.get("base_url"))
-            .or_else(|| p.get("url"))
-            .and_then(|b| b.as_str())
-            .map(|s| s.to_string());
-        let models = match p.get("models") {
-            Some(serde_json::Value::Array(arr)) => arr.clone(),
-            Some(serde_json::Value::Object(obj)) => obj
-                .into_iter()
-                .map(|(k, v)| {
-                    let mut m = serde_json::Map::new();
-                    m.insert("id".into(), serde_json::Value::String(k.clone()));
-                    if let Some(n) = v.get("name") {
-                        m.insert("name".into(), n.clone());
-                    }
-                    serde_json::Value::Object(m)
-                })
-                .collect(),
-            _ => continue,
-        };
-        for m in models {
-            let mid = m
-                .get("id")
-                .and_then(|i| i.as_str())
-                .map(|s| s.to_lowercase());
-            if let Some(mid) = mid {
-                map.entry(mid)
-                    .or_insert_with(|| (pname.clone(), base.clone()));
-            }
+    for declaration in declarations {
+        for model_id in &declaration.model_ids {
+            map.entry(model_id.clone())
+                .or_insert_with(|| (declaration.name.clone(), declaration.base_url.clone()));
         }
     }
     map
 }
-
 
 #[derive(Serialize)]
 #[serde(rename_all = "camelCase")]
@@ -96,26 +123,20 @@ pub async fn harness_models_view_cmd(
     state: State<'_, AppState>,
     installation_id: String,
 ) -> Result<Vec<HarnessModelRow>, String> {
-    let (_id, _htype, parsed) = read_parsed_state(&state.pool, &installation_id).await?;
+    let (inst_for_map, parsed) = read_parsed_installation(&state.pool, &installation_id).await?;
     let routes = list_routes(&state.pool).await.map_err(|e| e.to_string())?;
     let providers = list_providers(&state.pool)
         .await
         .map_err(|e| e.to_string())?;
-    let inst_for_map = list_installations(&state.pool)
-        .await
-        .map_err(|e| e.to_string())?
-        .into_iter()
-        .find(|i| i.id.to_string() == installation_id);
-    let native_providers = inst_for_map
-        .as_ref()
-        .map(harness_provider_map)
-        .unwrap_or_default();
+    let native_provider_declarations = harness_provider_declarations(&inst_for_map);
+    let native_providers = harness_provider_map_from_declarations(&native_provider_declarations);
 
     // endpoint -> (provider id, provider display name); base_url -> provider id.
     let mut endpoint_provider: std::collections::HashMap<uuid::Uuid, (uuid::Uuid, String)> =
         std::collections::HashMap::new();
     let mut base_url_provider: std::collections::HashMap<String, uuid::Uuid> =
         std::collections::HashMap::new();
+    let mut provider_endpoints = Vec::new();
     for p in &providers {
         for e in list_endpoints(&state.pool, p.id)
             .await
@@ -123,8 +144,9 @@ pub async fn harness_models_view_cmd(
         {
             endpoint_provider.insert(e.id, (p.id, p.display_name.clone()));
             base_url_provider
-                .entry(normalize_base(&e.base_url))
+                .entry(crate::services::normalize_base_url(&e.base_url))
                 .or_insert(p.id);
+            provider_endpoints.push((p.id, p.display_name.clone(), e));
         }
     }
 
@@ -142,19 +164,14 @@ pub async fn harness_models_view_cmd(
     // Catalog attribution (remote id across every discovered endpoint).
     let mut catalog_provider: std::collections::HashMap<String, (uuid::Uuid, String)> =
         std::collections::HashMap::new();
-    for p in &providers {
-        for e in list_endpoints(&state.pool, p.id)
+    for (provider_id, provider_name, e) in provider_endpoints {
+        for c in list_catalog_models(&state.pool, e.id)
             .await
             .map_err(|e| e.to_string())?
         {
-            for c in list_catalog_models(&state.pool, e.id)
-                .await
-                .map_err(|e| e.to_string())?
-            {
-                catalog_provider
-                    .entry(c.remote_model_id.to_lowercase())
-                    .or_insert((p.id, p.display_name.clone()));
-            }
+            catalog_provider
+                .entry(c.remote_model_id.to_lowercase())
+                .or_insert((provider_id, provider_name.clone()));
         }
     }
 
@@ -181,9 +198,9 @@ pub async fn harness_models_view_cmd(
         .iter()
         .map(|m| {
             let remote_lower = m.route.remote_model_id.to_lowercase();
-            let match_route = routes.iter().find(|r| {
-                r.remote_model_id.to_lowercase() == remote_lower
-            });
+            let match_route = routes
+                .iter()
+                .find(|r| r.remote_model_id.to_lowercase() == remote_lower);
             let keys = attribution_keys(&m.route.remote_model_id);
             let find_in = |map: &std::collections::HashMap<String, (uuid::Uuid, String)>| {
                 keys.iter().find_map(|k| map.get(k).cloned())
@@ -191,15 +208,36 @@ pub async fn harness_models_view_cmd(
             let (provider_name, provider_match, provider_base_url, provider_id) = {
                 // 1) The harness's own provider grouping is authoritative.
                 let native_lower = m.native_id.to_lowercase();
-                let native = keys
-                    .first()
-                    .and_then(|k| native_providers.get(k))
-                    .or_else(|| native_providers.get(&native_lower))
-                    .cloned();
+                // Prefer the parsed provider id when a harness exposes the
+                // same native id under multiple providers. The fallback map
+                // intentionally keeps the first match for legacy rows that
+                // do not carry provider metadata, but must not shadow a
+                // provider-qualified row.
+                let native = m
+                    .route
+                    .overrides
+                    .get("native_provider_id")
+                    .and_then(|value| value.as_str())
+                    .and_then(|provider| {
+                        harness_provider_for_model(
+                            &native_provider_declarations,
+                            provider,
+                            &m.route.remote_model_id,
+                            &m.native_id,
+                        )
+                    })
+                    .or_else(|| {
+                        keys.first()
+                            .and_then(|k| native_providers.get(k))
+                            .or_else(|| native_providers.get(&native_lower))
+                            .cloned()
+                    });
                 if let Some((pname, base)) = native {
                     let pid = base
                         .as_deref()
-                        .and_then(|b| base_url_provider.get(&normalize_base(b)))
+                        .and_then(|b| {
+                            base_url_provider.get(&crate::services::normalize_base_url(b))
+                        })
                         .copied();
                     (
                         Some(pname),
@@ -207,16 +245,24 @@ pub async fn harness_models_view_cmd(
                         base,
                         pid.map(|p| p.to_string()),
                     )
-                } else if let Some((pid, pn)) = keys
-                    .first()
-                    .and_then(|k| library_provider.get(k).cloned())
+                } else if let Some((pid, pn)) =
+                    keys.first().and_then(|k| library_provider.get(k).cloned())
                 {
-                    (Some(pn), Some("library".to_string()), None, Some(pid.to_string()))
-                } else if let Some((pid, pn)) = keys
-                    .first()
-                    .and_then(|k| catalog_provider.get(k).cloned())
+                    (
+                        Some(pn),
+                        Some("library".to_string()),
+                        None,
+                        Some(pid.to_string()),
+                    )
+                } else if let Some((pid, pn)) =
+                    keys.first().and_then(|k| catalog_provider.get(k).cloned())
                 {
-                    (Some(pn), Some("catalog".to_string()), None, Some(pid.to_string()))
+                    (
+                        Some(pn),
+                        Some("catalog".to_string()),
+                        None,
+                        Some(pid.to_string()),
+                    )
                 } else if let Some((pid, pn)) = find_in(&library_provider) {
                     (
                         Some(pn),
@@ -267,35 +313,45 @@ pub struct AdoptOutcome {
 
 /// Shared adopt core: idempotently create a My Model route for the given
 /// harness row under the chosen endpoint.
-async fn adopt_route(
-    pool: &sqlx::Pool<sqlx::Sqlite>,
-    endpoint: Uuid,
-    remote_model_id: &str,
-    display_name: &str,
+struct AdoptRouteInput<'a> {
+    remote_model_id: &'a str,
+    display_name: &'a str,
     context_window: Option<i64>,
     max_input: Option<i64>,
     max_output: Option<i64>,
+    native_provider_id: Option<&'a str>,
+}
+
+async fn adopt_route(
+    pool: &sqlx::Pool<sqlx::Sqlite>,
+    endpoint: Uuid,
+    input: AdoptRouteInput<'_>,
 ) -> Result<AdoptOutcome, String> {
     let existing = list_routes(pool).await.map_err(|e| e.to_string())?;
-    let remote_lower = remote_model_id.to_lowercase();
-    if let Some(already) = existing.iter().find(|r| {
-        r.endpoint_id == endpoint && r.remote_model_id.to_lowercase() == remote_lower
-    }) {
+    let remote_lower = input.remote_model_id.to_lowercase();
+    if let Some(already) = existing
+        .iter()
+        .find(|r| r.endpoint_id == endpoint && r.remote_model_id.to_lowercase() == remote_lower)
+    {
         return Ok(AdoptOutcome {
             route_id: already.id.to_string(),
             created: false,
         });
     }
+    let mut overrides = serde_json::json!({ "provenance": { "source": "adopted-from-harness" } });
+    if let Some(provider) = input.native_provider_id {
+        overrides["native_provider_id"] = serde_json::Value::String(provider.to_string());
+    }
     let mut route = chm_core::domain::models::ModelRoute::new(
-        remote_model_id.to_string(),
-        display_name.to_string(),
-        context_window,
+        input.remote_model_id.to_string(),
+        input.display_name.to_string(),
+        input.context_window,
         serde_json::json!({}),
-        serde_json::json!({ "provenance": { "source": "adopted-from-harness" } }),
+        overrides,
     );
     route.endpoint_id = endpoint;
-    route.max_input = max_input;
-    route.max_output = max_output;
+    route.max_input = input.max_input;
+    route.max_output = input.max_output;
     let created = create_route(pool, &route)
         .await
         .map_err(|e| e.to_string())?;
@@ -315,22 +371,39 @@ pub async fn adopt_harness_model_cmd(
     installation_id: String,
     native_id: String,
     endpoint_id: String,
+    native_provider_id: Option<String>,
 ) -> Result<AdoptOutcome, String> {
     let endpoint = Uuid::parse_str(&endpoint_id).map_err(|e| e.to_string())?;
     let (_id, _htype, parsed) = read_parsed_state(&state.pool, &installation_id).await?;
     let model = parsed
         .models
         .iter()
-        .find(|m| m.native_id == native_id)
+        .find(|m| {
+            m.native_id == native_id
+                && native_provider_id.as_deref().is_none_or(|provider| {
+                    m.route
+                        .overrides
+                        .get("native_provider_id")
+                        .and_then(|v| v.as_str())
+                        .is_some_and(|actual| actual.eq_ignore_ascii_case(provider))
+                })
+        })
         .ok_or_else(|| format!("model {native_id} not found on this harness"))?;
     adopt_route(
         &state.pool,
         endpoint,
-        &model.route.remote_model_id,
-        &model.route.display_name,
-        model.route.context_window,
-        model.route.max_input,
-        model.route.max_output,
+        AdoptRouteInput {
+            remote_model_id: &model.route.remote_model_id,
+            display_name: &model.route.display_name,
+            context_window: model.route.context_window,
+            max_input: model.route.max_input,
+            max_output: model.route.max_output,
+            native_provider_id: model
+                .route
+                .overrides
+                .get("native_provider_id")
+                .and_then(|value| value.as_str()),
+        },
     )
     .await
 }
@@ -372,12 +445,10 @@ pub async fn list_endpoint_options_cmd(
 // --- Targeted harness model edits (edit / delete / duplicate) ---
 
 use chm_core::domain::history::{ConfigSnapshot, TransactionStatus, TransactionType};
-use chm_database::repos::harness::list_installations;
 use chm_database::repos::history::{add_snapshot, begin_transaction, finish_transaction};
 use chm_harness_sdk::adapter::plan::{ActualState, DesiredState, Mode};
 use chm_reconciliation::engine::{filter_unsupported, reconcile};
 use serde::Deserialize;
-use sha2::Digest;
 
 #[derive(Debug, Clone, Deserialize)]
 #[serde(rename_all = "camelCase")]
@@ -418,13 +489,7 @@ pub async fn apply_harness_model_edits_cmd(
     if ops.is_empty() {
         return Err("no operations given".into());
     }
-    let id = Uuid::parse_str(&installation_id).map_err(|e| e.to_string())?;
-    let inst = list_installations(&state.pool)
-        .await
-        .map_err(|e| e.to_string())?
-        .into_iter()
-        .find(|i| i.id == id)
-        .ok_or_else(|| format!("installation {installation_id} not found"))?;
+    let inst = crate::commands::find_installation(&state.pool, &installation_id).await?;
     let adapter = adapters::all_adapters()
         .into_iter()
         .find(|a| a.id() == inst.harness_type.as_str())
@@ -437,7 +502,10 @@ pub async fn apply_harness_model_edits_cmd(
     // reconciler emit a Remove.
     let mut managed: std::collections::HashMap<String, bool> = std::collections::HashMap::new();
     for m in &parsed.models {
-        managed.insert(format!("route:{}:{}", m.route.endpoint_id, m.native_id), true);
+        managed.insert(
+            format!("route:{}:{}", m.route.endpoint_id, m.native_id),
+            true,
+        );
     }
     for m in &parsed.mcp {
         managed.insert(format!("mcp:{}", m.native_name), false);
@@ -495,10 +563,8 @@ pub async fn apply_harness_model_edits_cmd(
                     .and_then(|o| o.destination_provider_id.as_deref())
                     .unwrap_or(&provider)
                     .to_string();
-                let new_identity = identity(
-                    &destination_provider.to_lowercase(),
-                    &new_id.to_lowercase(),
-                );
+                let new_identity =
+                    identity(&destination_provider.to_lowercase(), &new_id.to_lowercase());
                 let source_identity = identity(&provider, &m.native_id.to_lowercase());
                 if new_identity != source_identity && used_ids.contains(&new_identity) {
                     return Err(format!(
@@ -537,7 +603,9 @@ pub async fn apply_harness_model_edits_cmd(
                         if !rm.is_empty() && rm != m.native_id {
                             let renamed_identity = identity(&provider, &rm.to_lowercase());
                             let source_identity = identity(&provider, &m.native_id.to_lowercase());
-                            if renamed_identity != source_identity && used_ids.contains(&renamed_identity) {
+                            if renamed_identity != source_identity
+                                && used_ids.contains(&renamed_identity)
+                            {
                                 return Err(format!(
                                     "a model named \"{rm}\" already exists for provider \"{provider}\" on this harness"
                                 ));
@@ -620,14 +688,16 @@ pub async fn apply_harness_model_edits_cmd(
         }
     }
 
-    let apply_outcome = adapter.apply(&inst, &native_plan).map_err(|e| e.to_string());
+    let apply_outcome = adapter
+        .apply(&inst, &native_plan)
+        .map_err(|e| e.to_string());
     match apply_outcome {
         Ok(apply_result) => {
             for (file, backup) in &backups {
                 let before = std::fs::read_to_string(backup).ok();
                 let after = std::fs::read_to_string(file).ok();
-                let hash = |s: &str| format!("{:x}", sha2::Sha256::digest(s.as_bytes()));
-                add_snapshot(
+                let hash = crate::drift::sha256_hex;
+                if let Err(error) = add_snapshot(
                     &state.pool,
                     &ConfigSnapshot {
                         id: Uuid::new_v4(),
@@ -641,11 +711,42 @@ pub async fn apply_harness_model_edits_cmd(
                     },
                 )
                 .await
-                .map_err(|e| e.to_string())?;
+                {
+                    let msg = format!("could not record edit snapshot: {error}");
+                    let rollback_error = rollback_manual_edit(
+                        &state.pool,
+                        tx.id,
+                        &*adapter,
+                        &inst,
+                        &native_plan,
+                        &backups,
+                        &msg,
+                    )
+                    .await
+                    .err();
+                    return Err(rollback_error.unwrap_or(msg));
+                }
             }
-            let validation = adapter.validate(&inst).map_err(|e| e.to_string())?;
+            let validation = match adapter.validate(&inst) {
+                Ok(validation) => validation,
+                Err(error) => {
+                    let msg = format!("validation failed: {error}");
+                    let rollback_error = rollback_manual_edit(
+                        &state.pool,
+                        tx.id,
+                        &*adapter,
+                        &inst,
+                        &native_plan,
+                        &backups,
+                        &msg,
+                    )
+                    .await
+                    .err();
+                    return Err(rollback_error.unwrap_or(msg));
+                }
+            };
             if validation.ok {
-                finish_transaction(
+                if let Err(error) = finish_transaction(
                     &state.pool,
                     tx.id,
                     TransactionStatus::Succeeded,
@@ -659,7 +760,17 @@ pub async fn apply_harness_model_edits_cmd(
                     None,
                 )
                 .await
-                .map_err(|e| e.to_string())?;
+                {
+                    let _ = finish_transaction(
+                        &state.pool,
+                        tx.id,
+                        TransactionStatus::Failed,
+                        None,
+                        Some(format!("could not finish edit transaction: {error}")),
+                    )
+                    .await;
+                    return Err(error.to_string());
+                }
                 Ok(HarnessEditReport {
                     files_written: apply_result.files_written,
                     added: count_kind(&plan, "model", "add"),
@@ -669,41 +780,66 @@ pub async fn apply_harness_model_edits_cmd(
                 })
             } else {
                 let msg = format!("validation failed: {:?}", validation.errors);
-                for (file, backup) in &backups {
-                    let _ = chm_filesystem::restore_backup(
-                        std::path::Path::new(file),
-                        std::path::Path::new(backup),
-                    );
-                }
-                let _ = finish_transaction(
+                let rollback_error = rollback_manual_edit(
                     &state.pool,
                     tx.id,
-                    TransactionStatus::Failed,
-                    None,
-                    Some(msg.clone()),
+                    &*adapter,
+                    &inst,
+                    &native_plan,
+                    &backups,
+                    &msg,
                 )
-                .await;
+                .await
+                .err();
+                if let Some(error) = rollback_error {
+                    return Err(format!("{msg}; {error}"));
+                }
                 Err(msg)
             }
         }
         Err(e) => {
-            for (file, backup) in &backups {
-                let _ = chm_filesystem::restore_backup(
-                    std::path::Path::new(file),
-                    std::path::Path::new(backup),
-                );
-            }
-            let _ = finish_transaction(
+            let rollback_error = rollback_manual_edit(
                 &state.pool,
                 tx.id,
-                TransactionStatus::Failed,
-                None,
-                Some(e.clone()),
+                &*adapter,
+                &inst,
+                &native_plan,
+                &backups,
+                &e,
             )
-            .await;
+            .await
+            .err();
+            if let Some(error) = rollback_error {
+                return Err(format!("{e}; {error}"));
+            }
             Err(e)
         }
     }
+}
+
+/// Restore a failed direct-edit transaction and always close its audit row.
+/// Returning recovery failures is important: a failed restore can leave the
+/// harness in a mixed state and must not be presented as a clean edit error.
+async fn rollback_manual_edit(
+    pool: &sqlx::Pool<sqlx::Sqlite>,
+    tx_id: Uuid,
+    adapter: &dyn chm_harness_sdk::adapter::types::HarnessAdapter,
+    install: &chm_core::domain::harness::HarnessInstallation,
+    native_plan: &chm_harness_sdk::adapter::types::NativePlan,
+    backups: &[(String, std::path::PathBuf)],
+    reason: &str,
+) -> Result<(), String> {
+    let errors = [reason.to_owned()];
+    crate::services::transactions::rollback_native_transaction(
+        pool,
+        tx_id,
+        adapter,
+        install,
+        native_plan,
+        backups,
+        &errors,
+    )
+    .await
 }
 
 fn count_kind(
@@ -735,8 +871,24 @@ pub struct SmartAdoptOutcome {
     pub endpoint_id: String,
 }
 
-fn normalize_base(url: &str) -> String {
-    url.trim().trim_end_matches('/').to_lowercase()
+async fn find_endpoint_by_base_url(
+    pool: &sqlx::Pool<sqlx::Sqlite>,
+    providers: &[chm_core::domain::provider::Provider],
+    base_url: &str,
+) -> Result<Option<chm_core::domain::provider::ProviderEndpoint>, String> {
+    let target_base = crate::services::normalize_base_url(base_url);
+    for provider in providers {
+        let endpoints = list_endpoints(pool, provider.id)
+            .await
+            .map_err(|e| e.to_string())?;
+        if let Some(endpoint) = endpoints
+            .into_iter()
+            .find(|endpoint| crate::services::normalize_base_url(&endpoint.base_url) == target_base)
+        {
+            return Ok(Some(endpoint));
+        }
+    }
+    Ok(None)
 }
 
 fn slugify(name: &str) -> String {
@@ -762,30 +914,48 @@ pub async fn smart_adopt_harness_model_cmd(
     state: State<'_, AppState>,
     installation_id: String,
     native_id: String,
+    native_provider_id: Option<String>,
 ) -> Result<SmartAdoptOutcome, String> {
     use chm_core::domain::provider::{AuthType, Protocol, ProviderEndpoint};
 
-    let id = Uuid::parse_str(&installation_id).map_err(|e| e.to_string())?;
-    let inst = list_installations(&state.pool)
-        .await
-        .map_err(|e| e.to_string())?
-        .into_iter()
-        .find(|i| i.id == id)
-        .ok_or_else(|| format!("installation {installation_id} not found"))?;
-    let (_rid, _htype, parsed) = read_parsed_state(&state.pool, &installation_id).await?;
+    let (inst, parsed) = read_parsed_installation(&state.pool, &installation_id).await?;
     let model = parsed
         .models
         .iter()
-        .find(|m| m.native_id == native_id)
+        .find(|m| {
+            m.native_id == native_id
+                && native_provider_id.as_deref().is_none_or(|provider| {
+                    m.route
+                        .overrides
+                        .get("native_provider_id")
+                        .and_then(|v| v.as_str())
+                        .is_some_and(|actual| actual.eq_ignore_ascii_case(provider))
+                })
+        })
         .ok_or_else(|| format!("model {native_id} not found on this harness"))?;
 
-    let provider_map = harness_provider_map(&inst);
+    let provider_declarations = harness_provider_declarations(&inst);
+    let provider_map = harness_provider_map_from_declarations(&provider_declarations);
     let native_lower = native_id.to_lowercase();
-    let Some((provider_name, Some(base_url))) = native_providers_lookup(
-        &provider_map,
-        &model.route.remote_model_id.to_lowercase(),
-        &native_lower,
-    ) else {
+    let provider = native_provider_id
+        .as_deref()
+        .and_then(|provider| {
+            harness_provider_for_model(
+                &provider_declarations,
+                provider,
+                &model.route.remote_model_id,
+                &native_id,
+            )
+        })
+        .or_else(|| {
+            native_providers_lookup(
+                &provider_map,
+                &model.route.remote_model_id.to_lowercase(),
+                &native_lower,
+            )
+            .cloned()
+        });
+    let Some((provider_name, Some(base_url))) = provider else {
         return Err(
             "this harness config does not declare a provider for this model; choose an endpoint manually"
                 .into(),
@@ -796,24 +966,9 @@ pub async fn smart_adopt_harness_model_cmd(
     let providers = list_providers(&state.pool)
         .await
         .map_err(|e| e.to_string())?;
-    let target_base = normalize_base(base_url);
-    let mut endpoint: Option<chm_core::domain::provider::ProviderEndpoint> = None;
     let mut provider_created = false;
     let mut endpoint_created = false;
-    for p in &providers {
-        for e in list_endpoints(&state.pool, p.id)
-            .await
-            .map_err(|e| e.to_string())?
-        {
-            if normalize_base(&e.base_url) == target_base {
-                endpoint = Some(e);
-                break;
-            }
-        }
-        if endpoint.is_some() {
-            break;
-        }
-    }
+    let endpoint = find_endpoint_by_base_url(&state.pool, &providers, &base_url).await?;
 
     let endpoint = if let Some(e) = endpoint {
         e
@@ -821,22 +976,13 @@ pub async fn smart_adopt_harness_model_cmd(
         // Create the provider (reuse by slug when present) and its endpoint.
         provider_created = true;
         endpoint_created = true;
-        let slug = slugify(provider_name);
-        let provider = match chm_database::repos::providers::list_providers(&state.pool)
-            .await
-            .map_err(|e| e.to_string())?
-            .into_iter()
-            .find(|p| p.name == slug)
-        {
+        let slug = slugify(&provider_name);
+        let provider = match providers.into_iter().find(|p| p.name == slug) {
             Some(p) => p,
             None => {
-                chm_database::repos::providers::create_provider(
-                    &state.pool,
-                    &slug,
-                    provider_name,
-                )
-                .await
-                .map_err(|e| e.to_string())?
+                chm_database::repos::providers::create_provider(&state.pool, &slug, &provider_name)
+                    .await
+                    .map_err(|e| e.to_string())?
             }
         };
         chm_database::repos::providers::create_endpoint(
@@ -863,11 +1009,19 @@ pub async fn smart_adopt_harness_model_cmd(
     let outcome = adopt_route(
         &state.pool,
         endpoint.id,
-        &model.route.remote_model_id,
-        &model.route.display_name,
-        model.route.context_window,
-        model.route.max_input,
-        model.route.max_output,
+        AdoptRouteInput {
+            remote_model_id: &model.route.remote_model_id,
+            display_name: &model.route.display_name,
+            context_window: model.route.context_window,
+            max_input: model.route.max_input,
+            max_output: model.route.max_output,
+            native_provider_id: model
+                .route
+                .overrides
+                .get("native_provider_id")
+                .and_then(|value| value.as_str())
+                .or(Some(provider_name.as_str())),
+        },
     )
     .await?;
     Ok(SmartAdoptOutcome {
@@ -886,6 +1040,27 @@ fn native_providers_lookup<'m>(
     native_lower: &str,
 ) -> Option<&'m (String, Option<String>)> {
     map.get(remote_lower).or_else(|| map.get(native_lower))
+}
+
+/// Resolve a provider-specific model directly from the harness config. The
+/// fallback map intentionally keeps the first provider for display, but
+/// adoption must not do that when two providers expose the same native id.
+fn harness_provider_for_model(
+    declarations: &[HarnessProviderDeclaration],
+    provider_id: &str,
+    remote_model_id: &str,
+    native_id: &str,
+) -> Option<(String, Option<String>)> {
+    let remote_lower = remote_model_id.to_lowercase();
+    let native_lower = native_id.to_lowercase();
+    declarations
+        .iter()
+        .find(|declaration| {
+            declaration.name.eq_ignore_ascii_case(provider_id)
+                && (declaration.model_ids.contains(&remote_lower)
+                    || declaration.model_ids.contains(&native_lower))
+        })
+        .map(|declaration| (declaration.name.clone(), declaration.base_url.clone()))
 }
 #[derive(Serialize)]
 #[serde(rename_all = "camelCase")]
@@ -915,41 +1090,57 @@ pub async fn harness_provider_detail_cmd(
     installation_id: String,
     provider_name: String,
 ) -> Result<HarnessProviderDetail, String> {
-    let id = Uuid::parse_str(&installation_id).map_err(|e| e.to_string())?;
-    let inst = list_installations(&state.pool)
-        .await
-        .map_err(|e| e.to_string())?
-        .into_iter()
-        .find(|i| i.id == id)
-        .ok_or_else(|| format!("installation {installation_id} not found"))?;
-    let provider_map = harness_provider_map(&inst);
-    let base_url = provider_map
-        .values()
-        .find(|(name, _)| name == &provider_name)
-        .and_then(|(_, base)| base.clone());
-    if !provider_map.values().any(|(name, _)| name == &provider_name) {
-        return Err(format!("provider {provider_name} not declared in this harness config"));
-    }
-    let (_, _, parsed) = read_parsed_state(&state.pool, &installation_id).await?;
+    let (inst, parsed) = read_parsed_installation(&state.pool, &installation_id).await?;
+    // Parse the provider declaration once. Calling harness_provider_for_model
+    // inside the model iterator reread and reparsed the same config for every
+    // row, which was needlessly expensive for larger harness configs.
+    let (declared_name, base_url, declared_model_ids) =
+        harness_provider_models(&inst, &provider_name).ok_or_else(|| {
+            format!("provider {provider_name} not declared in this harness config")
+        })?;
     let models = parsed
         .models
         .iter()
         .filter(|m| {
-            provider_map
-                .get(&m.route.remote_model_id.to_lowercase())
-                .or_else(|| provider_map.get(&m.native_id.to_lowercase()))
-                .is_some_and(|(name, _)| name == &provider_name)
+            let declared_id = declared_model_ids.contains(&m.route.remote_model_id.to_lowercase())
+                || declared_model_ids.contains(&m.native_id.to_lowercase());
+            let native_provider = m
+                .route
+                .overrides
+                .get("native_provider_id")
+                .and_then(|value| value.as_str())
+                .map(|provider| provider.eq_ignore_ascii_case(&declared_name));
+            declared_id && native_provider.is_none_or(|matches| matches)
         })
         .map(|m| m.route.remote_model_id.clone())
         .collect();
     Ok(HarnessProviderDetail {
         installation_id,
         harness_type: inst.harness_type.as_str().to_string(),
-        provider_name,
+        provider_name: declared_name,
         base_url,
         models,
         attribution_confidence: "declared by harness config".into(),
     })
+}
+
+/// Return one harness provider declaration and its model ids, parsing the
+/// config a single time. Provider model lists may be arrays or id-keyed
+/// objects depending on the harness.
+fn harness_provider_models(
+    inst: &chm_core::domain::harness::HarnessInstallation,
+    provider_name: &str,
+) -> Option<(String, Option<String>, std::collections::HashSet<String>)> {
+    harness_provider_declarations(inst)
+        .into_iter()
+        .find(|declaration| declaration.name.eq_ignore_ascii_case(provider_name))
+        .map(|declaration| {
+            (
+                declaration.name,
+                declaration.base_url,
+                declaration.model_ids,
+            )
+        })
 }
 
 /// Materialize a harness-declared provider (name + base URL from the
@@ -963,45 +1154,22 @@ pub async fn ensure_provider_from_harness_cmd(
 ) -> Result<EnsureProviderOutcome, String> {
     use chm_core::domain::provider::{AuthType, Protocol, ProviderEndpoint};
 
-    let id = Uuid::parse_str(&installation_id).map_err(|e| e.to_string())?;
-    let inst = list_installations(&state.pool)
-        .await
-        .map_err(|e| e.to_string())?
-        .into_iter()
-        .find(|i| i.id == id)
-        .ok_or_else(|| format!("installation {installation_id} not found"))?;
+    let inst = crate::commands::find_installation(&state.pool, &installation_id).await?;
 
     let provider_map = harness_provider_map(&inst);
     let base_url = provider_map
         .values()
         .find(|(pname, _)| *pname == provider_name)
         .and_then(|(_, base)| base.clone())
-        .ok_or_else(|| {
-            format!("provider {provider_name} not declared in this harness's config")
-        })?;
+        .ok_or_else(|| format!("provider {provider_name} not declared in this harness's config"))?;
 
     let providers = list_providers(&state.pool)
         .await
         .map_err(|e| e.to_string())?;
-    let target_base = normalize_base(&base_url);
     let mut provider_created = false;
     let mut endpoint_created = false;
 
-    let mut endpoint: Option<ProviderEndpoint> = None;
-    for p in &providers {
-        for e in list_endpoints(&state.pool, p.id)
-            .await
-            .map_err(|e| e.to_string())?
-        {
-            if normalize_base(&e.base_url) == target_base {
-                endpoint = Some(e);
-                break;
-            }
-        }
-        if endpoint.is_some() {
-            break;
-        }
-    }
+    let endpoint = find_endpoint_by_base_url(&state.pool, &providers, &base_url).await?;
 
     let provider = if let Some(e) = &endpoint {
         providers
@@ -1019,13 +1187,9 @@ pub async fn ensure_provider_from_harness_cmd(
                 p
             }
             None => {
-                chm_database::repos::providers::create_provider(
-                    &state.pool,
-                    &slug,
-                    &provider_name,
-                )
-                .await
-                .map_err(|e| e.to_string())?
+                chm_database::repos::providers::create_provider(&state.pool, &slug, &provider_name)
+                    .await
+                    .map_err(|e| e.to_string())?
             }
         }
     };

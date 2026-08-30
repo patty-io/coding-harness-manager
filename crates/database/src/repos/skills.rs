@@ -33,6 +33,27 @@ pub async fn create_skill<'e>(
     Ok(s.clone())
 }
 
+pub async fn update_skill(pool: &Pool<Sqlite>, s: &Skill) -> Result<Skill, DbError> {
+    let result = sqlx::query(
+        "UPDATE skills SET name = ?, source_type = ?, source_url = ?, content_hash = ?,
+            provenance_json = ?, enabled = ?, updated_at = ? WHERE id = ?",
+    )
+    .bind(&s.name)
+    .bind(s.source_type.as_str())
+    .bind(&s.source_url)
+    .bind(&s.content_hash)
+    .bind(serde_json::to_string(&s.provenance)?)
+    .bind(s.enabled as i64)
+    .bind(s.updated_at.to_rfc3339())
+    .bind(s.id.to_string())
+    .execute(pool)
+    .await?;
+    if result.rows_affected() == 0 {
+        return Err(DbError::NotFound(format!("skill {}", s.id)));
+    }
+    Ok(s.clone())
+}
+
 pub async fn list_skills(pool: &Pool<Sqlite>) -> Result<Vec<Skill>, DbError> {
     let rows = sqlx::query_as::<
         _,
@@ -94,6 +115,37 @@ pub async fn create_skill_binding<'e>(
     .execute(pool)
     .await?;
     Ok(())
+}
+
+pub async fn upsert_skill_binding(
+    pool: &Pool<Sqlite>,
+    b: &HarnessSkillBinding,
+) -> Result<(), DbError> {
+    let existing = sqlx::query_scalar::<_, String>(
+        "SELECT id FROM harness_skill_bindings
+         WHERE harness_installation_id = ? AND skill_id = ? AND target_path = ?
+         ORDER BY id LIMIT 1",
+    )
+    .bind(b.harness_installation_id.to_string())
+    .bind(b.skill_id.to_string())
+    .bind(&b.target_path)
+    .fetch_optional(pool)
+    .await?;
+    if let Some(id) = existing {
+        sqlx::query(
+            "UPDATE harness_skill_bindings
+             SET binding_type = ?, managed = ?, status = ? WHERE id = ?",
+        )
+        .bind(b.binding_type.as_str())
+        .bind(b.managed as i64)
+        .bind(&b.status)
+        .bind(id)
+        .execute(pool)
+        .await?;
+        Ok(())
+    } else {
+        create_skill_binding(pool, b).await
+    }
 }
 
 pub async fn list_skill_bindings<'e>(

@@ -11,7 +11,7 @@ export function ConfirmDialog({
   title: string;
   message: string;
   confirmLabel?: string;
-  onConfirm: () => void | Promise<void>;
+  onConfirm: () => void | Promise<unknown>;
   onClose: () => void;
 }) {
   const titleId = useId();
@@ -20,6 +20,8 @@ export function ConfirmDialog({
   const confirmRef = useRef<HTMLButtonElement>(null);
   const previousFocus = useRef<HTMLElement | null>(null);
   const pendingRef = useRef(false);
+  const onCloseRef = useRef(onClose);
+  onCloseRef.current = onClose;
   const [pending, setPending] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -29,7 +31,7 @@ export function ConfirmDialog({
     const onKeyDown = (event: KeyboardEvent) => {
       if (event.key === "Escape" && !pendingRef.current) {
         event.preventDefault();
-        onClose();
+        onCloseRef.current();
       }
     };
     document.addEventListener("keydown", onKeyDown);
@@ -37,7 +39,7 @@ export function ConfirmDialog({
       document.removeEventListener("keydown", onKeyDown);
       previousFocus.current?.focus();
     };
-  }, [onClose]);
+  }, []);
   const submit = async () => {
     if (pending) return;
     pendingRef.current = true;
@@ -46,7 +48,7 @@ export function ConfirmDialog({
     try {
       await onConfirm();
       announceToast({ message: `${title} completed`, tone: "success", link: "/history" });
-      onClose();
+      onCloseRef.current();
     } catch (reason) {
       setError(reason instanceof Error ? reason.message : String(reason));
     } finally {
@@ -118,7 +120,7 @@ type ConfirmState = {
   title: string;
   message: string;
   confirmLabel?: string;
-  onConfirm: () => void | Promise<void>;
+  onConfirm: () => void | Promise<unknown>;
 };
 
 /**
@@ -130,9 +132,29 @@ export function useConfirm() {
   const confirm = (
     title: string,
     message: string,
-    onConfirm: () => void | Promise<void>,
+    onConfirm: () => void | Promise<unknown>,
     confirmLabel?: string,
-  ) => setState({ title, message, onConfirm, confirmLabel });
+  ) => {
+    // The preference is evaluated at invocation time so a settings change
+    // applies immediately across already-mounted screens.
+    if (
+      typeof window !== "undefined" &&
+      window.localStorage.getItem("chm.confirmDestructive") === "false"
+    ) {
+      void Promise.resolve(onConfirm())
+        .then(() =>
+          announceToast({ message: title + " completed", tone: "success", link: "/history" }),
+        )
+        .catch((reason) =>
+          announceToast({
+            message: title + " failed: " + (reason instanceof Error ? reason.message : String(reason)),
+            tone: "error",
+          }),
+        );
+      return;
+    }
+    setState({ title, message, onConfirm, confirmLabel });
+  };
   const confirmDialog = state ? (
     <ConfirmDialog
       title={state.title}

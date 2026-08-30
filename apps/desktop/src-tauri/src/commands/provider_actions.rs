@@ -94,7 +94,9 @@ pub struct SkippedEndpoint {
 /// One endpoint per protocol family — preferring OpenAI-chat first because it
 /// is the canonical catalog format. Endpoints that fail to load a credential
 /// or have no discovery path are skipped with an explicit reason.
-fn pick_discovery_endpoints(endpoints: &[ProviderEndpoint]) -> (Vec<ProviderEndpoint>, Vec<(ProviderEndpoint, String)>) {
+fn pick_discovery_endpoints(
+    endpoints: &[ProviderEndpoint],
+) -> (Vec<ProviderEndpoint>, Vec<(ProviderEndpoint, String)>) {
     const PRIORITY: &[Protocol] = &[
         Protocol::OpenAiChatCompletions,
         Protocol::OpenAiResponses,
@@ -123,7 +125,10 @@ fn pick_discovery_endpoints(endpoints: &[ProviderEndpoint]) -> (Vec<ProviderEndp
                     ep.protocol.as_str()
                 )
             } else {
-                format!("protocol {} not in discovery priority order", ep.protocol.as_str())
+                format!(
+                    "protocol {} not in discovery priority order",
+                    ep.protocol.as_str()
+                )
             };
             skipped.push((ep.clone(), reason));
         }
@@ -259,7 +264,8 @@ pub async fn discover_provider_models(
                 let was_updated = report.updated;
                 let _ = (was_added, was_updated);
                 for row in rows {
-                    let display_name = extract_display_name(&row.raw_metadata, &row.remote_model_id);
+                    let display_name =
+                        extract_display_name(&row.raw_metadata, &row.remote_model_id);
                     let context_length = extract_context_length(&row.raw_metadata);
                     let is_new = row.status == chm_core::domain::models::CatalogStatus::New;
                     let model = DiscoveredModel {
@@ -354,7 +360,20 @@ pub async fn list_provider_catalog_cmd(
 ) -> Result<Vec<ProviderCatalogEntry>, String> {
     let _ = Uuid::parse_str(&provider_id).map_err(|e| e.to_string())?;
     let pool = &state.pool;
-    let rows = sqlx::query_as::<_, (String, String, String, String, String, String, String, String, Option<String>)>(
+    let rows = sqlx::query_as::<
+        _,
+        (
+            String,
+            String,
+            String,
+            String,
+            String,
+            String,
+            String,
+            String,
+            Option<String>,
+        ),
+    >(
         "SELECT c.id, c.endpoint_id, e.name, e.protocol, c.remote_model_id,
                 c.raw_metadata_json, c.status, c.last_seen_at, r.id
          FROM provider_catalog_models c
@@ -383,13 +402,26 @@ pub async fn list_provider_catalog_cmd(
     use std::collections::HashMap;
     let mut best: HashMap<String, (i32, ProviderCatalogEntry)> = HashMap::new();
     let mut routed: HashMap<String, String> = HashMap::new();
-    for (catalog_id, endpoint_id, endpoint_name, protocol, remote_model_id, raw_json, status, last_seen, route_id) in rows {
+    for (
+        catalog_id,
+        endpoint_id,
+        endpoint_name,
+        protocol,
+        remote_model_id,
+        raw_json,
+        status,
+        last_seen,
+        route_id,
+    ) in rows
+    {
+        let model_key = remote_model_id.to_lowercase();
         if let Some(rid) = &route_id {
             routed
-                .entry(remote_model_id.clone())
+                .entry(model_key.clone())
                 .or_insert_with(|| rid.clone());
         }
-        let raw: serde_json::Value = serde_json::from_str(&raw_json).unwrap_or(serde_json::Value::Null);
+        let raw: serde_json::Value =
+            serde_json::from_str(&raw_json).unwrap_or(serde_json::Value::Null);
         let entry = ProviderCatalogEntry {
             catalog_id,
             endpoint_id,
@@ -403,10 +435,10 @@ pub async fn list_provider_catalog_cmd(
             route_id: None,
         };
         let rank = proto_rank(&protocol) as i32;
-        match best.get(&remote_model_id) {
+        match best.get(&model_key) {
             Some((existing_rank, _)) if *existing_rank <= rank => {}
             _ => {
-                best.insert(remote_model_id, (rank, entry));
+                best.insert(model_key, (rank, entry));
             }
         }
     }
@@ -452,7 +484,9 @@ pub async fn add_discovered_to_my_models_cmd(
         let catalog_id = match Uuid::parse_str(&catalog_id_str) {
             Ok(id) => id,
             Err(err) => {
-                report.failures.push(format!("bad catalog id {catalog_id_str}: {err}"));
+                report
+                    .failures
+                    .push(format!("bad catalog id {catalog_id_str}: {err}"));
                 continue;
             }
         };
@@ -483,7 +517,9 @@ pub async fn add_discovered_to_my_models_cmd(
                 report.created += 1;
                 already_keys.insert((route.endpoint_id, route.remote_model_id));
             }
-            Err(err) => report.failures.push(format!("{}: {err}", row.remote_model_id)),
+            Err(err) => report
+                .failures
+                .push(format!("{}: {err}", row.remote_model_id)),
         }
     }
     Ok(report)
@@ -494,7 +530,21 @@ async fn lookup_catalog_by_id(
     id: Uuid,
 ) -> Result<Option<chm_core::domain::models::ProviderCatalogModel>, String> {
     use chm_core::domain::models::{CatalogStatus, ProviderCatalogModel};
-    let row = sqlx::query_as::<_, (String, String, String, String, Option<String>, Option<i64>, String, String, Option<String>, String)>(
+    let row = sqlx::query_as::<
+        _,
+        (
+            String,
+            String,
+            String,
+            String,
+            Option<String>,
+            Option<i64>,
+            String,
+            String,
+            Option<String>,
+            String,
+        ),
+    >(
         "SELECT id, endpoint_id, remote_model_id, raw_metadata_json,
                 canonical_model_id, match_confidence, first_seen_at, last_seen_at,
                 missing_since, status
@@ -513,8 +563,12 @@ async fn lookup_catalog_by_id(
                 raw_metadata: serde_json::from_str(&raw).unwrap_or(serde_json::Value::Null),
                 canonical_model_id: canonical.and_then(|s| Uuid::parse_str(&s).ok()),
                 match_confidence: confidence.map(|c| c as u8),
-                first_seen_at: chrono::DateTime::parse_from_rfc3339(&first).ok()?.with_timezone(&chrono::Utc),
-                last_seen_at: chrono::DateTime::parse_from_rfc3339(&last).ok()?.with_timezone(&chrono::Utc),
+                first_seen_at: chrono::DateTime::parse_from_rfc3339(&first)
+                    .ok()?
+                    .with_timezone(&chrono::Utc),
+                last_seen_at: chrono::DateTime::parse_from_rfc3339(&last)
+                    .ok()?
+                    .with_timezone(&chrono::Utc),
                 missing_since: missing
                     .and_then(|m| chrono::DateTime::parse_from_rfc3339(&m).ok())
                     .map(|m| m.with_timezone(&chrono::Utc)),
@@ -531,6 +585,13 @@ pub struct ProviderSummary {
     pub discovered_models: usize,
     pub my_models: usize,
     pub health: String,
+}
+
+#[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ProviderSummaryEntry {
+    pub provider_id: String,
+    pub summary: ProviderSummary,
 }
 
 #[tauri::command]
@@ -558,4 +619,40 @@ pub async fn provider_summary(
         my_models: row.2 as usize,
         health: "unknown".into(), // persisted health lands with Phase 13 doctor
     })
+}
+
+/// Batch form used by the provider list. Keeping the aggregation in one
+/// query avoids one IPC/database round-trip per provider card.
+#[tauri::command]
+pub async fn provider_summaries(
+    state: State<'_, AppState>,
+) -> Result<Vec<ProviderSummaryEntry>, String> {
+    let rows = sqlx::query_as::<_, (String, i64, i64, i64)>(
+        "SELECT p.id,
+                COUNT(DISTINCT e.id),
+                COUNT(DISTINCT c.remote_model_id),
+                COUNT(DISTINCT r.id)
+         FROM providers p
+         LEFT JOIN provider_endpoints e ON e.provider_id = p.id
+         LEFT JOIN provider_catalog_models c ON c.endpoint_id = e.id
+         LEFT JOIN model_routes r ON r.endpoint_id = e.id
+         GROUP BY p.id",
+    )
+    .fetch_all(&state.pool)
+    .await
+    .map_err(|e| e.to_string())?;
+    Ok(rows
+        .into_iter()
+        .map(
+            |(provider_id, endpoints, discovered_models, my_models)| ProviderSummaryEntry {
+                provider_id,
+                summary: ProviderSummary {
+                    endpoints: endpoints as usize,
+                    discovered_models: discovered_models as usize,
+                    my_models: my_models as usize,
+                    health: "unknown".into(),
+                },
+            },
+        )
+        .collect())
 }

@@ -1,9 +1,12 @@
-use chm_core::domain::harness::HarnessType;
+use chm_core::domain::harness::{
+    HarnessInstallation, HarnessMcpBinding, HarnessType, InstallationStatus,
+};
 use chm_core::domain::mcp::*;
 use chm_core::domain::profiles::*;
 use chm_core::domain::sets::SetItemType;
 use chm_core::domain::skills::*;
 use chm_database::connect_test;
+use chm_database::repos::harness::upsert_installation;
 use chm_database::repos::mcp::*;
 use chm_database::repos::profiles::*;
 use chm_database::repos::skills::*;
@@ -34,6 +37,52 @@ async fn mcp_crud_flow() {
     assert_eq!(all[0].env.len(), 1);
     delete_mcp_server(&pool, s.id).await.unwrap();
     assert!(list_mcp_servers(&pool).await.unwrap().is_empty());
+}
+
+#[tokio::test]
+async fn mcp_bindings_can_be_listed_by_server_without_installation_n_plus_one() {
+    let pool = connect_test().await.unwrap();
+    let server = McpServer {
+        id: uuid::Uuid::new_v4(),
+        name: "filesystem".into(),
+        transport: McpTransport::Stdio,
+        command: Some("mcp-filesystem".into()),
+        args: vec![],
+        url: None,
+        env: Default::default(),
+        scope_type: ScopeType::Global,
+        scope_path: None,
+        provenance: Default::default(),
+        enabled: true,
+    };
+    create_mcp_server(&pool, &server).await.unwrap();
+    let installation = HarnessInstallation {
+        id: uuid::Uuid::new_v4(),
+        harness_type: HarnessType::Pi,
+        executable_path: None,
+        version: Some("0.84.3".into()),
+        config_path: None,
+        detected_at: chrono::Utc::now(),
+        last_scanned_at: None,
+        status: InstallationStatus::Installed,
+    };
+    let stored = upsert_installation(&pool, &installation).await.unwrap();
+    let binding = HarnessMcpBinding {
+        id: uuid::Uuid::new_v4(),
+        harness_installation_id: stored.id,
+        mcp_server_id: server.id,
+        native_name: server.name.clone(),
+        native_config: Default::default(),
+        managed: true,
+    };
+    create_mcp_binding(&pool, &binding).await.unwrap();
+
+    let rows = list_mcp_bindings_for_server(&pool, server.id)
+        .await
+        .unwrap();
+    assert_eq!(rows.len(), 1);
+    assert_eq!(rows[0].0.id, binding.id);
+    assert_eq!(rows[0].1, HarnessType::Pi);
 }
 
 #[tokio::test]

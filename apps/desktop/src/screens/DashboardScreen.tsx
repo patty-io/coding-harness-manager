@@ -3,9 +3,8 @@ import { useQuery } from "@tanstack/react-query";
 import { useDashboardStats } from "../hooks/useDashboard";
 import {
   useInstallations,
-  useHarnessDrift,
 } from "../hooks/useHarnesses";
-import { listHistory, readHarnessState, type HarnessInstallation } from "../lib/api";
+import { listHistory, type DashboardHarnessSummary, type HarnessInstallation } from "../lib/api";
 import { useState } from "react";
 import { SyncDialog } from "../components/SyncDialog";
 
@@ -75,6 +74,7 @@ export function DashboardScreen() {
           <HarnessCard
             key={i.id}
             installation={i}
+            summary={stats?.harnessDetails.find((detail) => detail.installationId === i.id)}
             onReview={() => setSyncing(i)}
           />
         ))}
@@ -107,19 +107,14 @@ export function DashboardScreen() {
 
 function HarnessCard({
   installation,
+  summary,
   onReview,
 }: {
   installation: HarnessInstallation;
+  summary?: DashboardHarnessSummary;
   onReview: () => void;
 }) {
   const navigate = useNavigate();
-  const { data: drift } = useHarnessDrift(installation.id);
-  const { data: state } = useQuery({
-    queryKey: ["harness-state", installation.id],
-    queryFn: () => readHarnessState(installation.id),
-    retry: false,
-  });
-
   const statusStyles: Record<string, string> = {
     installed: "bg-green-500/15 text-green-400 border-green-500/30",
     detected: "bg-slate-700/50 text-slate-300 border-slate-600",
@@ -151,23 +146,28 @@ function HarnessCard({
         </span>
       </div>
 
-      {drift?.drifted && (
+      {summary?.drifted && (
         <p className="mt-2 rounded border border-amber-500/40 bg-amber-500/10 px-2 py-1 text-xs text-amber-300">
           Config changed outside the app
+        </p>
+      )}
+      {summary?.stateError && (
+        <p className="mt-2 rounded border border-red-500/40 bg-red-500/10 px-2 py-1 text-xs text-red-300">
+          Could not read current state · open Doctor for details
         </p>
       )}
 
       <div className="mt-3 flex gap-4 text-xs text-slate-400">
         <span>
-          <strong className="text-slate-200">{state?.models.length ?? "…"}</strong>{" "}
+          <strong className="text-slate-200">{summary?.models ?? "—"}</strong>{" "}
           models
         </span>
         <span>
-          <strong className="text-slate-200">{state?.mcp.length ?? "…"}</strong>{" "}
+          <strong className="text-slate-200">{summary?.mcp ?? "—"}</strong>{" "}
           mcp
         </span>
         <span>
-          <strong className="text-slate-200">{state?.skills.length ?? "…"}</strong>{" "}
+          <strong className="text-slate-200">{summary?.skills ?? "—"}</strong>{" "}
           skills
         </span>
       </div>

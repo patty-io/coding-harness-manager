@@ -19,7 +19,7 @@ const SECTIONS: Section[] = [
       { to: "/models", label: "Models" },
       { to: "/mcp", label: "MCP Servers" },
       { to: "/skills", label: "Skills" },
-      { to: "/profiles", label: "Presets" },
+      { to: "/profiles", label: "Profiles" },
       { to: "/sets", label: "Configuration sets" },
     ],
   },

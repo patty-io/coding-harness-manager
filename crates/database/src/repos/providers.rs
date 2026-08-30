@@ -175,6 +175,36 @@ pub async fn create_endpoint<'e>(
     Ok(e.clone())
 }
 
+/// Update endpoint metadata without changing its stable identity. Credential
+/// references are intentionally passed as an already-resolved row so callers
+/// can preserve the existing secret reference during portable imports.
+pub async fn update_endpoint(
+    pool: &Pool<Sqlite>,
+    e: &ProviderEndpoint,
+) -> Result<ProviderEndpoint, DbError> {
+    let result = sqlx::query(
+        "UPDATE provider_endpoints SET name = ?, base_url = ?, protocol = ?,
+            discovery_path = ?, auth_type = ?, credential_ref_id = ?, headers_json = ?,
+            enabled = ?, updated_at = ? WHERE id = ?",
+    )
+    .bind(&e.name)
+    .bind(&e.base_url)
+    .bind(e.protocol.as_str())
+    .bind(&e.discovery_path)
+    .bind(e.auth_type.as_str())
+    .bind(e.credential_ref.as_ref().map(|c| c.id.to_string()))
+    .bind(serde_json::to_string(&e.headers)?)
+    .bind(e.enabled as i64)
+    .bind(e.updated_at.to_rfc3339())
+    .bind(e.id.to_string())
+    .execute(pool)
+    .await?;
+    if result.rows_affected() == 0 {
+        return Err(DbError::NotFound(format!("endpoint {}", e.id)));
+    }
+    Ok(e.clone())
+}
+
 pub async fn list_endpoints<'e>(
     pool: impl sqlx::Executor<'e, Database = Sqlite> + 'e,
     provider_id: Uuid,

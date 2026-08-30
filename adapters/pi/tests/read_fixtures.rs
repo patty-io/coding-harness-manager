@@ -149,6 +149,25 @@ fn writer_updates_and_removes_models() {
 }
 
 #[test]
+fn malformed_provider_shapes_return_errors_instead_of_panicking() {
+    assert!(
+        writer::parse_document(r#"{"providers":null}"#)
+            .unwrap_err()
+            .contains("providers must be an object")
+    );
+    assert!(
+        writer::parse_document(r#"{"providers":{"broken":null}}"#)
+            .unwrap_err()
+            .contains("provider broken must be an object")
+    );
+    assert!(
+        writer::parse_document(r#"{"providers":{"broken":{"models":{}}}}"#)
+            .unwrap_err()
+            .contains("provider broken models must be an array")
+    );
+}
+
+#[test]
 fn removing_a_providers_last_model_prunes_only_an_empty_stub() {
     let raw = r#"{
         "providers": {

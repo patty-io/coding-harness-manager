@@ -9,6 +9,33 @@ use uuid::Uuid;
 
 use crate::DbError;
 
+type InstallationRow = (
+    String,
+    String,
+    Option<String>,
+    Option<String>,
+    Option<String>,
+    String,
+    Option<String>,
+    String,
+);
+
+fn parse_installation_row(
+    (id, htype, executable_path, version, config_path, detected_at, last_scanned_at, status):
+        InstallationRow,
+) -> Result<HarnessInstallation, DbError> {
+    Ok(HarnessInstallation {
+        id: Uuid::parse_str(&id).map_err(|_| DbError::InvalidData(id))?,
+        harness_type: HarnessType::parse_str(&htype),
+        executable_path,
+        version,
+        config_path,
+        detected_at: parse_ts(&detected_at)?,
+        last_scanned_at: last_scanned_at.and_then(|t| parse_ts(&t).ok()),
+        status: InstallationStatus::parse_str(&status),
+    })
+}
+
 pub async fn upsert_installation(
     pool: &Pool<Sqlite>,
     i: &HarnessInstallation,
@@ -37,19 +64,7 @@ pub async fn upsert_installation(
     .await?;
     // The stored row owns the canonical id (stable across rescans) — return it,
     // not the caller-supplied fresh uuid.
-    let row = sqlx::query_as::<
-        _,
-        (
-            String,
-            String,
-            Option<String>,
-            Option<String>,
-            Option<String>,
-            String,
-            Option<String>,
-            String,
-        ),
-    >(
+    let row = sqlx::query_as::<_, InstallationRow>(
         "SELECT id, harness_type, executable_path, version, config_path, detected_at,
                 last_scanned_at, status
          FROM harness_installations WHERE harness_type = ?",
@@ -57,54 +72,36 @@ pub async fn upsert_installation(
     .bind(i.harness_type.as_str())
     .fetch_one(pool)
     .await?;
-    Ok(HarnessInstallation {
-        id: Uuid::parse_str(&row.0).map_err(|_| DbError::InvalidData(row.0))?,
-        harness_type: HarnessType::parse_str(&row.1),
-        executable_path: row.2,
-        version: row.3,
-        config_path: row.4,
-        detected_at: parse_ts(&row.5)?,
-        last_scanned_at: row.6.and_then(|t| parse_ts(&t).ok()),
-        status: InstallationStatus::parse_str(&row.7),
-    })
+    parse_installation_row(row)
 }
 
 pub async fn list_installations(pool: &Pool<Sqlite>) -> Result<Vec<HarnessInstallation>, DbError> {
-    let rows = sqlx::query_as::<
-        _,
-        (
-            String,
-            String,
-            Option<String>,
-            Option<String>,
-            Option<String>,
-            String,
-            Option<String>,
-            String,
-        ),
-    >(
+    let rows = sqlx::query_as::<_, InstallationRow>(
         "SELECT id, harness_type, executable_path, version, config_path, detected_at,
                 last_scanned_at, status
          FROM harness_installations ORDER BY harness_type",
     )
     .fetch_all(pool)
     .await?;
-    rows.into_iter()
-        .map(
-            |(id, htype, exe, version, config, detected, last_scanned, status)| {
-                Ok(HarnessInstallation {
-                    id: Uuid::parse_str(&id).map_err(|_| DbError::NotFound(id))?,
-                    harness_type: HarnessType::parse_str(&htype),
-                    executable_path: exe,
-                    version,
-                    config_path: config,
-                    detected_at: parse_ts(&detected)?,
-                    last_scanned_at: last_scanned.and_then(|t| parse_ts(&t).ok()),
-                    status: InstallationStatus::parse_str(&status),
-                })
-            },
-        )
-        .collect()
+    rows.into_iter().map(parse_installation_row).collect()
+}
+
+/// Load one installation without materializing every harness row. Commands
+/// operating on a single harness use this path for a bounded database query.
+pub async fn find_installation(
+    pool: &Pool<Sqlite>,
+    id: Uuid,
+) -> Result<HarnessInstallation, DbError> {
+    let row = sqlx::query_as::<_, InstallationRow>(
+        "SELECT id, harness_type, executable_path, version, config_path, detected_at,
+                last_scanned_at, status
+         FROM harness_installations WHERE id = ?",
+    )
+    .bind(id.to_string())
+    .fetch_optional(pool)
+    .await?
+    .ok_or_else(|| DbError::NotFound(format!("installation {id}")))?;
+    parse_installation_row(row)
 }
 
 pub async fn create_model_binding<'e>(
@@ -128,6 +125,41 @@ pub async fn create_model_binding<'e>(
     .execute(pool)
     .await?;
     Ok(())
+}
+
+/// Record ownership of a native model without creating duplicate rows when a
+/// sync is repeated. Bindings are keyed by installation, route, and native id
+/// because a harness may expose the same remote id through multiple providers.
+pub async fn upsert_model_binding(
+    pool: &Pool<Sqlite>,
+    b: &HarnessModelBinding,
+) -> Result<(), DbError> {
+    let existing = sqlx::query_scalar::<_, String>(
+        "SELECT id FROM harness_model_bindings
+         WHERE harness_installation_id = ? AND model_route_id = ? AND native_id = ?
+         ORDER BY updated_at DESC LIMIT 1",
+    )
+    .bind(b.harness_installation_id.to_string())
+    .bind(b.model_route_id.to_string())
+    .bind(&b.native_id)
+    .fetch_optional(pool)
+    .await?;
+    if let Some(id) = existing {
+        sqlx::query(
+            "UPDATE harness_model_bindings
+             SET native_config_json = ?, managed = ?, updated_at = ?
+             WHERE id = ?",
+        )
+        .bind(serde_json::to_string(&b.native_config)?)
+        .bind(b.managed as i64)
+        .bind(b.updated_at.to_rfc3339())
+        .bind(id)
+        .execute(pool)
+        .await?;
+        Ok(())
+    } else {
+        create_model_binding(pool, b).await
+    }
 }
 
 pub async fn list_model_bindings<'e>(

@@ -37,6 +37,16 @@ export interface DashboardStats {
   mcp: number;
   skills: number;
   drifted: number;
+  harnessDetails: DashboardHarnessSummary[];
+}
+
+export interface DashboardHarnessSummary {
+  installationId: string;
+  models: number | null;
+  mcp: number | null;
+  skills: number | null;
+  drifted: boolean;
+  stateError: string | null;
 }
 
 export async function dashboardStats(): Promise<DashboardStats> {
@@ -95,6 +105,66 @@ export interface HarnessDrift {
 export async function harnessDrift(installationId: string): Promise<HarnessDrift> {
   return invoke<HarnessDrift>("harness_drift_cmd", { installationId });
 }
+
+export interface ActionView {
+  kind: string;
+  identity: string;
+  action: string;
+}
+
+export interface FilePreview {
+  path: string;
+  before: string | null;
+  after: string | null;
+}
+
+export interface SyncPreviewReport {
+  summary: string;
+  actions: ActionView[];
+  files: FilePreview[];
+  planHash: string;
+  writableChanges: number;
+  hasBlockers: boolean;
+}
+
+export interface SyncSelection {
+  modelIds?: string[];
+  mcpIds?: string[];
+  skillIds?: string[];
+}
+
+export interface SyncApplyReport {
+  summary: string;
+  filesWritten: string[];
+  linksCreated: string[];
+  transactionId: string;
+  validation: { ok: boolean; errors: string[] };
+}
+
+export async function syncPreview(
+  installationId: string,
+  mode: string,
+  selection?: SyncSelection,
+): Promise<SyncPreviewReport> {
+  return invoke<SyncPreviewReport>("sync_preview", { installationId, mode, selection });
+}
+
+export async function syncApply(
+  installationId: string,
+  mode: string,
+  force: boolean,
+  planHash: string,
+  selection?: SyncSelection,
+): Promise<SyncApplyReport> {
+  return invoke<SyncApplyReport>("sync_apply", {
+    installationId,
+    mode,
+    force,
+    planHash,
+    selection,
+  });
+}
+
 export async function recordManualSnapshot(installationId: string): Promise<void> {
   return invoke<void>("record_manual_snapshot_cmd", { installationId });
 }
@@ -287,6 +357,13 @@ export async function listCatalogModels(endpointId: string): Promise<ProviderCat
 export async function providerSummary(providerId: string): Promise<ProviderSummary> {
   return invoke<ProviderSummary>("provider_summary", { providerId });
 }
+export interface ProviderSummaryEntry {
+  providerId: string;
+  summary: ProviderSummary;
+}
+export async function providerSummaries(): Promise<ProviderSummaryEntry[]> {
+  return invoke<ProviderSummaryEntry[]>("provider_summaries");
+}
 
 // --- My Models ---
 
@@ -380,7 +457,7 @@ export interface HarnessEditReport {
   updated: number;
   removed: number;
   unchanged: number;
-  files_written: string[];
+  filesWritten: string[];
 }
 
 export async function applyHarnessModelEdits(
@@ -414,10 +491,12 @@ export interface SmartAdoptOutcome {
 export async function smartAdoptHarnessModel(
   installationId: string,
   nativeId: string,
+  nativeProviderId?: string | null,
 ): Promise<SmartAdoptOutcome> {
   return invoke<SmartAdoptOutcome>("smart_adopt_harness_model_cmd", {
     installationId,
     nativeId,
+    nativeProviderId,
   });
 }
 export interface EnsureProviderOutcome {
@@ -458,11 +537,13 @@ export async function adoptHarnessModel(
   installationId: string,
   nativeId: string,
   endpointId: string,
+  nativeProviderId?: string | null,
 ): Promise<AdoptOutcome> {
   return invoke<AdoptOutcome>("adopt_harness_model_cmd", {
     installationId,
     nativeId,
     endpointId,
+    nativeProviderId,
   });
 }
 
@@ -662,6 +743,9 @@ export async function listProfiles(): Promise<ProfileView[]> {
 export async function createProfile(input: ProfileInput): Promise<string> {
   return invoke<string>("create_profile_cmd", { input });
 }
+export async function updateProfile(id: string, input: ProfileInput): Promise<void> {
+  return invoke<void>("update_profile_cmd", { id, input });
+}
 export async function deleteProfile(id: string): Promise<void> {
   return invoke<void>("delete_profile_cmd", { id });
 }
@@ -702,35 +786,27 @@ export async function removeSetItem(
   return invoke<void>("remove_set_item_cmd", { setId, itemType, itemId });
 }
 
-export interface SetPreviewReport {
-  summary: string;
-  actions: { kind: string; identity: string; action: string }[];
-  files: { path: string; before: string | null; after: string | null }[];
-  planHash: string;
-  writableChanges: number;
-  hasBlockers: boolean;
-}
-
-export interface SetApplyReport {
-  summary: string;
-  filesWritten: string[];
-  linksCreated: string[];
-  transactionId: string;
-  validation: { ok: boolean; errors: string[] };
-}
+// A set preview/apply uses the same wire contract as regular sync. Keep the
+// names as aliases at this seam so callers can remain explicit about which
+// workflow they are invoking without maintaining two subtly different
+// representations of the same plan.
+export type SetPreviewReport = SyncPreviewReport;
+export type SetApplyReport = SyncApplyReport;
 
 export async function applySetPreview(
   setId: string,
   installationId: string,
+  mode: string,
 ): Promise<SetPreviewReport> {
-  return invoke<SetPreviewReport>("apply_set_preview_cmd", { setId, installationId });
+  return invoke<SetPreviewReport>("apply_set_preview_cmd", { setId, installationId, mode });
 }
 export async function applySet(
   setId: string,
   installationId: string,
   mode: string,
+  planHash: string,
 ): Promise<SetApplyReport> {
-  return invoke<SetApplyReport>("apply_set_cmd", { setId, installationId, mode });
+  return invoke<SetApplyReport>("apply_set_cmd", { setId, installationId, mode, planHash });
 }
 
 
@@ -775,6 +851,7 @@ export interface DoctorReport {
   providerChecks: { providerName: string; endpointName: string; checks: DoctorCheck[] }[];
   mcpChecks: DoctorCheck[];
   skillChecks: DoctorCheck[];
+  systemChecks: DoctorCheck[];
   summary: string;
 }
 
@@ -783,6 +860,42 @@ export async function runDoctor(): Promise<DoctorReport> {
 }
 export async function exportDiagnostics(destDir: string): Promise<string> {
   return invoke<string>("export_diagnostics_cmd", { destDir });
+}
+
+export async function backupNow(destDir: string): Promise<string> {
+  return invoke<string>("backup_now_cmd", { destDir });
+}
+export async function listBackups(destDir: string): Promise<string[]> {
+  return invoke<string[]>("list_backups_cmd", { destDir });
+}
+
+export async function restoreBackup(backupPath: string): Promise<string> {
+  return invoke<string>("restore_backup_cmd", { backupPath });
+}
+
+export async function exportConfig(destDir: string, preferences?: Record<string, unknown>): Promise<string> {
+  return invoke<string>("export_config_cmd", { destDir, preferences });
+}
+
+export interface ImportPreview {
+  additions: { kind: string; identity: string; detail?: string }[];
+  conflicts: { kind: string; identity: string; detail?: string }[];
+  unchanged: { kind: string; identity: string; detail?: string }[];
+}
+
+export async function previewImport(filePath: string): Promise<ImportPreview> {
+  return invoke<ImportPreview>("preview_import_cmd", { filePath });
+}
+
+export interface ImportResult {
+  applied: number;
+  skipped: string[];
+  conflicts: string[];
+  mode: string;
+}
+
+export async function importConfig(filePath: string, mode: "merge" | "replaceManaged"): Promise<ImportResult> {
+  return invoke<ImportResult>("import_config_cmd", { filePath, mode });
 }
 export async function rollbackTransaction(transactionId: string): Promise<RollbackReport> {
   return invoke<RollbackReport>("rollback_transaction_cmd", { transactionId });

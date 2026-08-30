@@ -2,7 +2,6 @@ import {
   useMutation,
   useQuery,
   useQueryClient,
-  useQueries,
 } from "@tanstack/react-query";
 import {
   addDiscoveredToMyModels,
@@ -18,6 +17,7 @@ import {
   listProviderCatalog,
   listProviders,
   providerSummary,
+  providerSummaries,
   saveApiKey,
   updateProvider,
   type EndpointInput,
@@ -28,15 +28,16 @@ export function useProviders() {
 }
 
 export function useProviderSummaries(
-  providers: { id: string }[] | undefined,
 ) {
-  return useQueries({
-    queries: (providers ?? []).map((provider) => ({
-      queryKey: ["provider-summary", provider.id],
-      queryFn: () => providerSummary(provider.id),
-      staleTime: 15_000,
-    })),
+  const query = useQuery({
+    queryKey: ["provider-summaries"],
+    queryFn: providerSummaries,
+    staleTime: 15_000,
   });
+  return {
+    ...query,
+    byProvider: new Map((query.data ?? []).map((entry) => [entry.providerId, entry.summary])),
+  };
 }
 
 export function useCreateProvider() {

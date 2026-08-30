@@ -1,6 +1,16 @@
 //! Drift classification (pure) + watcher commands.
 
 use serde_json::Value;
+use sha2::{Digest, Sha256};
+
+/// Canonical SHA-256 helper shared by history, sync, and drift checks.
+pub fn sha256_hex(value: &str) -> String {
+    sha256_hex_bytes(value.as_bytes())
+}
+
+pub fn sha256_hex_bytes(value: &[u8]) -> String {
+    format!("{:x}", Sha256::digest(value))
+}
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum DriftKind {

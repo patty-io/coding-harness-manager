@@ -6,6 +6,7 @@ use chm_core::domain::history::{
 use chm_core::parse_ts;
 use chrono::Utc;
 use sqlx::{Pool, Sqlite};
+use std::collections::HashMap;
 use uuid::Uuid;
 
 use crate::DbError;
@@ -86,10 +87,28 @@ pub async fn add_snapshot<'e>(
 }
 
 pub async fn list_transactions(pool: &Pool<Sqlite>) -> Result<Vec<SyncTransaction>, DbError> {
+    list_transactions_with_limit(pool, None).await
+}
+
+/// List the newest transactions, applying the limit in SQLite before rows are
+/// materialized. A negative SQLite LIMIT means "all rows", so the unbounded
+/// API above can share the same row mapping without a second query shape.
+pub async fn list_transactions_limited(
+    pool: &Pool<Sqlite>,
+    limit: u32,
+) -> Result<Vec<SyncTransaction>, DbError> {
+    list_transactions_with_limit(pool, Some(limit)).await
+}
+
+async fn list_transactions_with_limit(
+    pool: &Pool<Sqlite>,
+    limit: Option<u32>,
+) -> Result<Vec<SyncTransaction>, DbError> {
     let rows = sqlx::query_as::<_, (String, String, String, Option<String>, String, Option<String>, Option<String>, String)>(
         "SELECT id, transaction_type, started_at, completed_at, status, summary, error_json, plan_json
-         FROM sync_transactions ORDER BY started_at DESC",
+         FROM sync_transactions ORDER BY started_at DESC LIMIT ?",
     )
+    .bind(limit.map(i64::from).unwrap_or(-1))
     .fetch_all(pool)
     .await?;
     rows.into_iter()
@@ -151,6 +170,66 @@ pub async fn list_snapshots<'e>(
             },
         )
         .collect()
+}
+
+/// Load snapshots for a bounded set of transactions in one query.
+///
+/// History screens commonly display the newest N transactions and previously
+/// issued one query per transaction for its snapshots. Keeping the grouping in
+/// this repository avoids that N+1 round-trip pattern while retaining the
+/// single-transaction helper used by rollback.
+pub async fn list_snapshots_for_transactions(
+    pool: &Pool<Sqlite>,
+    transaction_ids: &[Uuid],
+) -> Result<HashMap<Uuid, Vec<ConfigSnapshot>>, DbError> {
+    if transaction_ids.is_empty() {
+        return Ok(HashMap::new());
+    }
+    let placeholders = (0..transaction_ids.len())
+        .map(|_| "?")
+        .collect::<Vec<_>>()
+        .join(",");
+    let query = format!(
+        "SELECT id, transaction_id, harness_installation_id, path, before_content,
+                after_content, before_hash, after_hash
+         FROM config_snapshots WHERE transaction_id IN ({placeholders}) ORDER BY rowid"
+    );
+    let mut request = sqlx::query_as::<
+        _,
+        (
+            String,
+            String,
+            String,
+            String,
+            Option<String>,
+            Option<String>,
+            Option<String>,
+            Option<String>,
+        ),
+    >(&query);
+    for transaction_id in transaction_ids {
+        request = request.bind(transaction_id.to_string());
+    }
+    let rows = request.fetch_all(pool).await?;
+    let mut grouped = HashMap::new();
+    for (id, tid, hid, path, before, after, before_hash, after_hash) in rows {
+        let snapshot = ConfigSnapshot {
+            id: Uuid::parse_str(&id).map_err(|_| DbError::InvalidData(id))?,
+            transaction_id: Uuid::parse_str(&tid).map_err(|_| DbError::InvalidData(tid))?,
+            harness_installation_id: Uuid::parse_str(&hid)
+                .map_err(|_| DbError::InvalidData(hid))?,
+            path,
+            before_content: before,
+            after_content: after,
+            before_hash,
+            after_hash,
+        };
+        grouped
+            .entry(snapshot.transaction_id)
+            .or_insert_with(Vec::new)
+            .push(snapshot);
+    }
+    Ok(grouped)
 }
 
 /// after_content of the newest snapshot for (installation, path) — last known state.

@@ -1,10 +1,15 @@
 use chm_core::domain::harness::{HarnessInstallation, HarnessType, InstallationStatus};
 use chm_core::domain::mcp::{McpServer, McpTransport, ScopeType};
+use chm_core::domain::models::ModelRoute;
+use chm_core::domain::provider::{AuthType, Protocol, ProviderEndpoint};
 use chm_database::connect_test;
 use chm_database::repos::harness::upsert_installation;
 use chm_database::repos::mcp::list_mcp_servers;
+use chm_database::repos::models::list_routes;
+use chm_database::repos::providers::create_endpoint;
 use chm_database::repos::providers::{create_provider, list_providers};
 use chm_database::repos::skills::list_skills;
+use chm_harness_sdk::adapter::types::{HarnessModel, ParsedState};
 use chrono::Utc;
 use coding_harness_manager_lib::services::import::run_import;
 use uuid::Uuid;
@@ -205,4 +210,103 @@ async fn import_reports_duplicates_without_overwriting() {
         Some("node"),
         "existing server untouched"
     );
+}
+
+#[tokio::test]
+async fn import_matches_existing_provider_endpoint_by_declared_base_url() {
+    let pool = connect_test().await.unwrap();
+    let provider = create_provider(&pool, "gateway", "Gateway").await.unwrap();
+    let first = ProviderEndpoint {
+        id: Uuid::new_v4(),
+        provider_id: provider.id,
+        name: "primary".into(),
+        base_url: "https://primary.example/v1".into(),
+        protocol: Protocol::OpenAiChatCompletions,
+        discovery_path: Some("/v1/models".into()),
+        auth_type: AuthType::None,
+        credential_ref: None,
+        headers: Default::default(),
+        enabled: true,
+        created_at: Utc::now(),
+        updated_at: Utc::now(),
+    };
+    let declared = ProviderEndpoint {
+        id: Uuid::new_v4(),
+        provider_id: provider.id,
+        name: "declared".into(),
+        base_url: "https://declared.example/v1".into(),
+        protocol: Protocol::OpenAiChatCompletions,
+        discovery_path: Some("/v1/models".into()),
+        auth_type: AuthType::None,
+        credential_ref: None,
+        headers: Default::default(),
+        enabled: true,
+        created_at: Utc::now(),
+        updated_at: Utc::now(),
+    };
+    create_endpoint(&pool, &first).await.unwrap();
+    create_endpoint(&pool, &declared).await.unwrap();
+
+    let parsed = ParsedState {
+        providers: vec![serde_json::json!({
+            "native_provider_id": "gateway",
+            "base_url": "https://declared.example/v1",
+            "api": "openai-chat"
+        })],
+        models: vec![HarnessModel {
+            native_id: "model-a".into(),
+            route: ModelRoute::new(
+                "model-a".into(),
+                "Model A".into(),
+                None,
+                serde_json::json!({}),
+                serde_json::json!({"native_provider_id": "gateway"}),
+            ),
+        }],
+        ..Default::default()
+    };
+    let inst = HarnessInstallation {
+        id: Uuid::new_v4(),
+        harness_type: HarnessType::OpenCode,
+        executable_path: None,
+        version: None,
+        config_path: None,
+        detected_at: Utc::now(),
+        last_scanned_at: None,
+        status: InstallationStatus::Installed,
+    };
+
+    let report = run_import(&pool, &inst, &parsed, true, false, false)
+        .await
+        .unwrap();
+    assert_eq!(report.models_imported, 1);
+    let routes = list_routes(&pool).await.unwrap();
+    assert_eq!(routes.len(), 1);
+    assert_eq!(routes[0].endpoint_id, declared.id);
+}
+
+#[tokio::test]
+async fn importing_duplicate_skills_in_one_batch_is_non_fatal() {
+    let pool = connect_test().await.unwrap();
+    let dir = tempfile::TempDir::new().unwrap();
+    let first = dir.path().join("first");
+    let second = dir.path().join("second");
+    std::fs::create_dir_all(&first).unwrap();
+    std::fs::create_dir_all(&second).unwrap();
+    std::fs::write(first.join("SKILL.md"), "same content").unwrap();
+    std::fs::write(second.join("SKILL.md"), "same content").unwrap();
+
+    let first = first.display().to_string();
+    let second = second.display().to_string();
+    let report = coding_harness_manager_lib::commands::skills::import_skills_core(
+        &pool,
+        &[first.clone(), first, second],
+    )
+    .await
+    .unwrap();
+
+    assert_eq!(report.imported, 1);
+    assert_eq!(report.duplicates.len(), 2);
+    assert!(report.conflicts.is_empty());
+    assert_eq!(list_skills(&pool).await.unwrap().len(), 1);
 }

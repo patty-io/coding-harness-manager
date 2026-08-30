@@ -99,6 +99,7 @@ export default function DoctorScreen() {
           ))}
           {report.mcpChecks.length > 0 && <ReportSection title="MCP servers"><CheckList checks={report.mcpChecks} /></ReportSection>}
           {report.skillChecks.length > 0 && <ReportSection title="Skills"><CheckList checks={report.skillChecks} /></ReportSection>}
+          {report.systemChecks.length > 0 && <ReportSection title="Application"><CheckList checks={report.systemChecks} /></ReportSection>}
         </div>
       )}
       {!report && !doctor.isPending && <p className="mt-5 text-sm text-slate-500">Run checks to inspect the current machine.</p>}

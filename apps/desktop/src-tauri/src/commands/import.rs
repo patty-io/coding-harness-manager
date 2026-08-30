@@ -1,12 +1,10 @@
 //! Import commands: thin orchestration over the import service.
 
 use adapters::all_adapters;
-use chm_database::repos::harness::list_installations;
 use chm_harness_sdk::adapter::types::ParsedState;
 use serde::{Deserialize, Serialize};
 use sqlx::{Pool, Sqlite};
 use tauri::State;
-use uuid::Uuid;
 
 use crate::AppState;
 use crate::services::import::{ImportReport, run_import};
@@ -39,15 +37,21 @@ pub async fn read_parsed_state(
     pool: &Pool<Sqlite>,
     installation_id: &str,
 ) -> Result<(uuid::Uuid, String, ParsedState), String> {
-    let inst = list_installations(pool)
-        .await
-        .map_err(|e| e.to_string())?
-        .into_iter()
-        .find(|i| i.id.to_string() == installation_id)
-        .ok_or_else(|| format!("installation {installation_id} not found"))?;
+    let (inst, state) = read_parsed_installation(pool, installation_id).await?;
+    Ok((inst.id, inst.harness_type.as_str().to_string(), state))
+}
+
+/// Read a persisted installation and its adapter state together. Commands
+/// that need both should use this form so they do not look the installation up
+/// a second time after `read_parsed_state` has already done so.
+pub async fn read_parsed_installation(
+    pool: &Pool<Sqlite>,
+    installation_id: &str,
+) -> Result<(chm_core::domain::harness::HarnessInstallation, ParsedState), String> {
+    let inst = crate::commands::find_installation(pool, installation_id).await?;
     let adapter = adapter_for(inst.harness_type.as_str()).ok_or("no adapter for harness")?;
     let state = adapter.read_state(&inst).map_err(|e| e.to_string())?;
-    Ok((inst.id, inst.harness_type.as_str().to_string(), state))
+    Ok((inst, state))
 }
 
 #[tauri::command]
@@ -98,12 +102,7 @@ pub async fn read_harness_raw_config(
     state: State<'_, AppState>,
     installation_id: String,
 ) -> Result<String, String> {
-    let inst = list_installations(&state.pool)
-        .await
-        .map_err(|e| e.to_string())?
-        .into_iter()
-        .find(|i| i.id.to_string() == installation_id)
-        .ok_or_else(|| format!("installation {installation_id} not found"))?;
+    let inst = crate::commands::find_installation(&state.pool, &installation_id).await?;
     let path = inst
         .config_path
         .as_ref()
@@ -117,17 +116,10 @@ pub async fn import_harness_state(
     installation_id: String,
     options: ImportOptions,
 ) -> Result<ImportReport, String> {
-    let (_id, htype, parsed) = read_parsed_state(&state.pool, &installation_id).await?;
-    let inst = chm_core::domain::harness::HarnessInstallation {
-        id: Uuid::new_v4(),
-        harness_type: chm_core::domain::harness::HarnessType::parse_str(&htype),
-        executable_path: None,
-        version: None,
-        config_path: None,
-        detected_at: chrono::Utc::now(),
-        last_scanned_at: None,
-        status: chm_core::domain::harness::InstallationStatus::Installed,
-    };
+    // Keep the persisted installation identity and metadata. Reconstructing
+    // a synthetic installation here discarded the stable id, executable, and
+    // config path that downstream import provenance/ownership may need.
+    let (inst, parsed) = read_parsed_installation(&state.pool, &installation_id).await?;
     run_import(
         &state.pool,
         &inst,

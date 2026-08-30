@@ -168,6 +168,51 @@ fn model_add_carries_native_provider_in_payload() {
     ));
 }
 
+#[test]
+fn imported_nested_native_provider_keeps_model_identity_scoped() {
+    let endpoint = Uuid::new_v4();
+    let mut desired = route(endpoint, "same-model", None);
+    desired.overrides = serde_json::json!({
+        "provenance": {"source": "pi"},
+        "native": {"native_provider_id": "provider-b"}
+    });
+    let mut actual = actual_model("same-model");
+    actual.route.overrides = serde_json::json!({
+        "native_provider_id": "provider-b"
+    });
+
+    let plan = reconcile_models(&[desired], &[actual], Mode::Append, &managed(&[]));
+    assert!(matches!(&plan[0], PlanAction::Unchanged(_)));
+}
+
+#[test]
+fn replace_managed_removes_only_the_matching_provider_model() {
+    let endpoint = Uuid::new_v4();
+    let mut desired = route(endpoint, "same-model", None);
+    desired.overrides = serde_json::json!({"native_provider_id": "provider-b"});
+    let mut provider_a = actual_model("same-model");
+    provider_a.route.overrides = serde_json::json!({"native_provider_id": "provider-a"});
+    let mut provider_b = actual_model("same-model");
+    provider_b.route.overrides = serde_json::json!({"native_provider_id": "provider-b"});
+    let key_a = format!("route:{}:same-model", provider_a.route.endpoint_id);
+    let key_b = format!("route:{}:same-model", provider_b.route.endpoint_id);
+
+    let plan = reconcile_models(
+        &[desired],
+        &[provider_a, provider_b],
+        Mode::ReplaceManaged,
+        &managed(&[&key_a, &key_b]),
+    );
+    assert!(plan.iter().any(|action| matches!(
+        action,
+        PlanAction::Remove(remove) if remove.native_provider_id.as_deref() == Some("provider-a")
+    )));
+    assert!(!plan.iter().any(|action| matches!(
+        action,
+        PlanAction::Remove(remove) if remove.native_provider_id.as_deref() == Some("provider-b")
+    )));
+}
+
 fn mcp_server(name: &str) -> McpServer {
     McpServer {
         id: Uuid::new_v4(),
