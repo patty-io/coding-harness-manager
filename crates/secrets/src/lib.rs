@@ -55,7 +55,14 @@ impl KeychainStore {
     }
 
     fn account(&self, key: &str) -> String {
-        key.to_string()
+        // Credential references persist the Keychain service as a prefix
+        // (for example, `coding-harness-manager/providers/<id>`), while the
+        // macOS `security` command receives the account separately. Accept
+        // both the persisted reference and the raw account key so existing
+        // credentials can be resolved consistently.
+        key.strip_prefix(&format!("{}/", self.service))
+            .unwrap_or(key)
+            .to_string()
     }
 }
 
@@ -206,4 +213,23 @@ fn dirs_data_dir() -> PathBuf {
             let home = std::env::var_os("HOME").unwrap_or_default();
             PathBuf::from(home).join(".coding-harness-manager")
         })
+}
+
+#[cfg(test)]
+mod tests {
+    use super::KeychainStore;
+
+    #[test]
+    fn keychain_reference_prefix_is_not_part_of_account() {
+        let store = KeychainStore::new("coding-harness-manager");
+
+        assert_eq!(
+            store.account("coding-harness-manager/providers/harness/example"),
+            "providers/harness/example"
+        );
+        assert_eq!(
+            store.account("providers/harness/example"),
+            "providers/harness/example"
+        );
+    }
 }
