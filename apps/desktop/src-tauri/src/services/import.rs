@@ -30,7 +30,85 @@ pub struct ImportReport {
     pub mcp_imported: usize,
     pub skills_imported: usize,
     pub skills_symlinked: usize,
+    pub created_provider_names: Vec<String>,
+    pub imported_model_ids: Vec<String>,
+    pub imported_mcp_names: Vec<String>,
+    pub imported_skill_names: Vec<String>,
     pub duplicates: Vec<String>,
+}
+
+fn activity_value(value: &str) -> String {
+    let compact = value.split_whitespace().collect::<Vec<_>>().join(" ");
+    let mut chars = compact.chars();
+    let short = chars.by_ref().take(120).collect::<String>();
+    if chars.next().is_some() {
+        format!("{short}…")
+    } else {
+        short
+    }
+}
+
+fn activity_names(values: &[String]) -> String {
+    let mut names = values
+        .iter()
+        .take(8)
+        .map(|value| activity_value(value))
+        .collect::<Vec<_>>();
+    if values.len() > names.len() {
+        names.push(format!("{} more", values.len() - names.len()));
+    }
+    names.join(", ")
+}
+
+fn activity_harness_label(value: &str) -> String {
+    let mut chars = value.replace('-', " ").chars().collect::<Vec<_>>();
+    if let Some(first) = chars.first_mut() {
+        first.make_ascii_uppercase();
+    }
+    chars.into_iter().collect()
+}
+
+impl ImportReport {
+    /// A safe history summary for a harness import. It names imported
+    /// resources without serializing native config or credential values.
+    pub fn activity_summary(&self, harness_type: &str) -> String {
+        let mut parts = Vec::new();
+        if !self.created_provider_names.is_empty() {
+            parts.push(format!(
+                "providers: {}",
+                activity_names(&self.created_provider_names)
+            ));
+        }
+        if !self.imported_model_ids.is_empty() {
+            parts.push(format!(
+                "models: {}",
+                activity_names(&self.imported_model_ids)
+            ));
+        }
+        if !self.imported_mcp_names.is_empty() {
+            parts.push(format!(
+                "MCP servers: {}",
+                activity_names(&self.imported_mcp_names)
+            ));
+        }
+        if !self.imported_skill_names.is_empty() {
+            parts.push(format!(
+                "skills: {}",
+                activity_names(&self.imported_skill_names)
+            ));
+        }
+        let harness = activity_harness_label(harness_type);
+        if parts.is_empty() {
+            return format!(
+                "{harness}: no new registry items imported ({} duplicate(s))",
+                self.duplicates.len()
+            );
+        }
+        if !self.duplicates.is_empty() {
+            parts.push(format!("skipped {} duplicate(s)", self.duplicates.len()));
+        }
+        format!("{harness}: imported {}", parts.join("; "))
+    }
 }
 
 /// Maps native protocol hints to the domain Protocol:
@@ -122,6 +200,7 @@ pub async fn run_import(
                 .await
                 .map_err(|e| e.to_string())?;
             report.providers_created += 1;
+            report.created_provider_names.push(name.to_string());
             created
         };
 
@@ -235,6 +314,7 @@ pub async fn run_import(
             match create_route(&mut *tx, &route).await {
                 Ok(_) => {
                     report.models_imported += 1;
+                    report.imported_model_ids.push(m.route.remote_model_id.clone());
                     let now = Utc::now();
                     upsert_catalog_model(
                         &mut *tx,
@@ -292,6 +372,7 @@ pub async fn run_import(
                 .await
                 .map_err(|e| e.to_string())?;
             report.mcp_imported += 1;
+            report.imported_mcp_names.push(m.server.name.clone());
         }
     }
 
@@ -324,6 +405,7 @@ pub async fn run_import(
                 .await
                 .map_err(|e| e.to_string())?;
             report.skills_imported += 1;
+            report.imported_skill_names.push(s.name.clone());
         }
     }
 
@@ -379,4 +461,29 @@ async fn imported_endpoint_id(
         .await
         .map_err(|e| e.to_string())?;
     Ok(endpoint.id)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::ImportReport;
+
+    #[test]
+    fn activity_summary_names_imported_resources_and_duplicates() {
+        let report = ImportReport {
+            providers_created: 1,
+            models_imported: 1,
+            mcp_imported: 1,
+            skills_imported: 0,
+            skills_symlinked: 0,
+            created_provider_names: vec!["Yolo-Auto".into()],
+            imported_model_ids: vec!["qwen3.8-27b".into()],
+            imported_mcp_names: vec!["github".into()],
+            imported_skill_names: vec![],
+            duplicates: vec!["model:existing".into()],
+        };
+        assert_eq!(
+            report.activity_summary("pi"),
+            "Pi: imported providers: Yolo-Auto; models: qwen3.8-27b; MCP servers: github; skipped 1 duplicate(s)"
+        );
+    }
 }

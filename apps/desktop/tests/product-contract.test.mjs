@@ -8,6 +8,7 @@ const root = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 const read = (path) => readFileSync(resolve(root, path), "utf8");
 
 const harness = read("src/screens/HarnessDetailScreen.tsx");
+const dashboard = read("src/screens/DashboardScreen.tsx");
 const configDiff = read("src/components/ConfigDiffViewer.tsx");
 const sync = read("src/components/SyncDialog.tsx");
 const html = read("index.html");
@@ -33,6 +34,10 @@ describe("product contracts", () => {
     assert.ok(harness.includes("Revert to last app baseline"), "drift action must expose an explicit revert");
     assert.ok(harness.includes('title="Save this harness model into your My Models library"'), "row action must state its direction");
     assert.ok(harness.includes("<ConfigDiffViewer"), "drift view must render a real diff");
+    assert.ok(dashboard.includes("Recent activity"), "dashboard must expose recent activity");
+    assert.ok(dashboard.includes("break-words"), "activity descriptions must be readable when they wrap");
+    assert.ok(!dashboard.includes('className="truncate text-slate-300"'), "activity descriptions must not be truncated");
+    assert.ok(dashboard.includes("Changed outside app"), "drift state must not displace card metrics");
     assert.ok(configDiff.includes('aria-label="Previous change"'), "diff must support previous-change navigation");
     assert.ok(configDiff.includes('aria-label="Next change"'), "diff must support next-change navigation");
     assert.ok(sync.includes("planHash"), "sync apply must carry the validated plan hash");

@@ -24,10 +24,12 @@ export default function HistoryScreen() {
         {(data ?? []).map((e) => (
           <li key={e.transactionId} className="rounded border border-slate-700 bg-slate-800 p-3 text-sm">
             <div className="flex items-center justify-between">
-              <div>
-                <span className="font-medium">{new Date(e.startedAt).toLocaleString()}</span>{" "}
-                <span className={statusClass(e.status)}>{e.status}</span>{" "}
-                <span className="text-slate-400">{e.summary ?? ""}</span>
+              <div className="min-w-0">
+                <div>
+                  <span className="font-medium">{new Date(e.startedAt).toLocaleString()}</span>{" "}
+                  <span className={statusClass(e.status)}>{e.status}</span>
+                </div>
+                <p className="mt-1 break-words text-slate-400">{e.summary ?? e.transactionType}</p>
               </div>
               <div className="flex gap-2">
                 <button onClick={() => setExpanded(expanded === e.transactionId ? null : e.transactionId)} className="rounded border border-slate-600 px-2 py-0.5 text-xs">

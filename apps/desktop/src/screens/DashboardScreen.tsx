@@ -55,12 +55,14 @@ export function DashboardScreen() {
         ) : (
           <ul className="mt-2 space-y-1 text-xs">
             {(recentHistory ?? []).map((entry) => (
-              <li key={entry.transactionId} className="flex items-center gap-2">
+              <li key={entry.transactionId} className="flex items-start gap-2">
                 <span className={entry.status === "succeeded" ? "text-green-400" : entry.status === "failed" ? "text-red-400" : "text-amber-300"}>
                   {entry.status}
                 </span>
-                <span className="text-slate-500">{new Date(entry.startedAt).toLocaleString()}</span>
-                <span className="truncate text-slate-300">{entry.summary ?? entry.transactionType}</span>
+                <span className="shrink-0 text-slate-500">{new Date(entry.startedAt).toLocaleString()}</span>
+                <span className="min-w-0 flex-1 break-words text-slate-300">
+                  {entry.summary ?? entry.transactionType}
+                </span>
               </li>
             ))}
           </ul>
@@ -133,24 +135,30 @@ function HarnessCard({
       onClick={() => navigate(`/harnesses/${installation.id}`)}
       className="cursor-pointer rounded-lg border border-slate-700 bg-slate-800 p-4 transition-colors hover:border-slate-500"
     >
-      <div className="flex items-center justify-between">
+      <div className="flex items-center justify-between gap-2">
         <span className="font-medium capitalize text-slate-100">
           {installation.harness_type}
         </span>
-        <span
-          className={`rounded border px-2 py-0.5 text-xs ${
-            statusStyles[installation.status] ?? statusStyles.detected
-          }`}
-        >
-          {statusLabels[installation.status] ?? installation.status}
-        </span>
+        <div className="flex items-center gap-2">
+          {summary?.drifted && (
+            <span
+              title="The harness config changed outside Coding Harness Manager"
+              aria-label="Config changed outside the app"
+              className="rounded border border-amber-500/40 bg-amber-500/10 px-2 py-0.5 text-xs text-amber-300"
+            >
+              Changed outside app
+            </span>
+          )}
+          <span
+            className={`rounded border px-2 py-0.5 text-xs ${
+              statusStyles[installation.status] ?? statusStyles.detected
+            }`}
+          >
+            {statusLabels[installation.status] ?? installation.status}
+          </span>
+        </div>
       </div>
 
-      {summary?.drifted && (
-        <p className="mt-2 rounded border border-amber-500/40 bg-amber-500/10 px-2 py-1 text-xs text-amber-300">
-          Config changed outside the app
-        </p>
-      )}
       {summary?.stateError ? (
         <p className="mt-2 rounded border border-red-500/40 bg-red-500/10 px-2 py-1 text-xs text-red-300">
           Could not read current state: {summary.stateError}{" "}

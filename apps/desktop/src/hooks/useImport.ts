@@ -23,6 +23,9 @@ export function useImportHarnessState() {
       installationId: string;
       options: ImportOptions;
     }) => importHarnessState(installationId, options),
-    onSuccess: () => qc.invalidateQueries({ queryKey: ["dashboard"] }),
+    onSuccess: () => {
+      void qc.invalidateQueries({ queryKey: ["dashboard"] });
+      void qc.invalidateQueries({ queryKey: ["history"] });
+    },
   });
 }

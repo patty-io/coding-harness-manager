@@ -480,6 +480,295 @@ pub struct HarnessEditReport {
     pub files_written: Vec<String>,
 }
 
+fn activity_value(value: &str) -> String {
+    let compact = value.split_whitespace().collect::<Vec<_>>().join(" ");
+    let mut chars = compact.chars();
+    let short = chars.by_ref().take(120).collect::<String>();
+    if chars.next().is_some() {
+        format!("{short}…")
+    } else {
+        short
+    }
+}
+
+fn activity_harness_label(value: &str) -> String {
+    let mut chars = value.replace('-', " ").chars().collect::<Vec<_>>();
+    if let Some(first) = chars.first_mut() {
+        first.make_ascii_uppercase();
+    }
+    chars.into_iter().collect()
+}
+
+fn model_provider_id(model: &chm_harness_sdk::adapter::types::HarnessModel) -> Option<&str> {
+    model
+        .route
+        .overrides
+        .get("native_provider_id")
+        .and_then(|value| value.as_str())
+}
+
+fn model_activity_label(model_id: &str, display_name: Option<&str>) -> String {
+    let id = activity_value(model_id);
+    let display = display_name
+        .map(activity_value)
+        .filter(|value| !value.is_empty() && !value.eq_ignore_ascii_case(model_id));
+    display
+        .map(|name| format!("{id} ({name})"))
+        .unwrap_or(id)
+}
+
+fn format_context_window(value: Option<i64>) -> String {
+    value
+        .map(|number| number.to_string())
+        .unwrap_or_else(|| "unset".into())
+}
+
+fn changed_field_label(field: &str) -> &str {
+    match field {
+        "context_window" => "context window",
+        "max_input" => "max input",
+        "max_output" => "max output",
+        "display_name" => "display name",
+        "capabilities" => "capabilities",
+        other => other,
+    }
+}
+
+fn model_action_matches(
+    action: &chm_harness_sdk::adapter::plan::PlanAction,
+    expected_action: &str,
+    model_id: &str,
+    provider: Option<&str>,
+) -> bool {
+    use chm_harness_sdk::adapter::plan::PlanAction;
+    let (kind, identity, action_provider, action_name) = match action {
+        PlanAction::Add(value) => (
+            value.kind.as_str(),
+            value.identity.as_str(),
+            value.native_provider_id.as_deref(),
+            "add",
+        ),
+        PlanAction::Update(value) => (
+            value.kind.as_str(),
+            value.identity.as_str(),
+            value.native_provider_id.as_deref(),
+            "update",
+        ),
+        PlanAction::Remove(value) => (
+            value.kind.as_str(),
+            value.identity.as_str(),
+            value.native_provider_id.as_deref(),
+            "remove",
+        ),
+        _ => return false,
+    };
+    kind == "model"
+        && action_name == expected_action
+        && identity.eq_ignore_ascii_case(model_id)
+        && match (provider, action_provider) {
+            (Some(expected), Some(actual)) => expected.eq_ignore_ascii_case(actual),
+            (Some(_), None) => false,
+            (None, _) => true,
+        }
+}
+
+fn plan_has_model_action(
+    plan: &chm_harness_sdk::adapter::plan::ReconciliationPlan,
+    expected_action: &str,
+    model_id: &str,
+    provider: Option<&str>,
+) -> bool {
+    plan.actions
+        .iter()
+        .any(|action| model_action_matches(action, expected_action, model_id, provider))
+}
+
+/// Build a readable, secret-free audit description for direct model edits.
+/// The old counter summary (`+1 ~0 -0`) is intentionally not used here: the
+/// activity feed should identify the model and the provider that changed.
+pub(crate) fn model_edit_activity_summary(
+    harness_type: &str,
+    parsed: &chm_harness_sdk::adapter::types::ParsedState,
+    ops: &[HarnessModelOp],
+    plan: &chm_harness_sdk::adapter::plan::ReconciliationPlan,
+) -> String {
+    let harness = activity_harness_label(harness_type);
+    let mut details = Vec::new();
+    for op in ops {
+        let source = parsed.models.iter().find(|model| {
+            model.native_id.eq_ignore_ascii_case(&op.native_id)
+                && op
+                    .native_provider_id
+                    .as_deref()
+                    .is_none_or(|provider| {
+                        model_provider_id(model)
+                            .is_some_and(|actual| actual.eq_ignore_ascii_case(provider))
+                    })
+        });
+        let provider = op
+            .destination_provider_id
+            .as_deref()
+            .or(op.native_provider_id.as_deref())
+            .or_else(|| source.and_then(model_provider_id));
+        let provider_suffix = provider
+            .map(|value| format!(" via {}", activity_value(value)))
+            .unwrap_or_default();
+        match op.op.as_str() {
+            "remove" if plan_has_model_action(
+                plan,
+                "remove",
+                &op.native_id,
+                provider,
+            ) => {
+                let label = source
+                    .map(|model| {
+                        model_activity_label(
+                            &model.native_id,
+                            Some(&model.route.display_name),
+                        )
+                    })
+                    .unwrap_or_else(|| model_activity_label(&op.native_id, None));
+                details.push(format!(
+                    "Deleted model {label}{provider_suffix}"
+                ));
+            }
+            "duplicate" => {
+                let new_id = op
+                    .remote_model_id
+                    .as_deref()
+                    .map(str::trim)
+                    .filter(|value| !value.is_empty())
+                    .unwrap_or_else(|| "");
+                let new_id = if new_id.is_empty() {
+                    format!("{}-copy", op.native_id)
+                } else {
+                    new_id.to_string()
+                };
+                if !plan_has_model_action(plan, "add", &new_id, provider) {
+                    continue;
+                }
+                let source_label = source
+                    .map(|model| {
+                        model_activity_label(
+                            &model.native_id,
+                            Some(&model.route.display_name),
+                        )
+                    })
+                    .unwrap_or_else(|| model_activity_label(&op.native_id, None));
+                let new_display = op
+                    .display_name
+                    .as_deref()
+                    .filter(|value| !value.trim().is_empty());
+                let default_display = source.map(|model| format!("{} (copy)", model.route.display_name));
+                let new_label = model_activity_label(
+                    &new_id,
+                    new_display.or(default_display.as_deref()),
+                );
+                details.push(format!(
+                    "Duplicated model {source_label} as {new_label}{provider_suffix}"
+                ));
+            }
+            "update" => {
+                let renamed_id = op
+                    .remote_model_id
+                    .as_deref()
+                    .map(str::trim)
+                    .filter(|value| !value.is_empty() && !value.eq_ignore_ascii_case(&op.native_id));
+                let has_plan_change = plan_has_model_action(
+                    plan,
+                    "update",
+                    &op.native_id,
+                    provider,
+                ) || renamed_id.is_some_and(|new_id| {
+                    plan_has_model_action(plan, "add", new_id, provider)
+                        || plan_has_model_action(plan, "remove", &op.native_id, provider)
+                });
+                if !has_plan_change {
+                    continue;
+                }
+                let source_label = source
+                    .map(|model| {
+                        model_activity_label(
+                            &model.native_id,
+                            Some(&model.route.display_name),
+                        )
+                    })
+                    .unwrap_or_else(|| model_activity_label(&op.native_id, None));
+                let mut changes = Vec::new();
+                if let Some(new_id) = renamed_id {
+                    let renamed_display = op
+                        .display_name
+                        .as_deref()
+                        .or_else(|| source.map(|model| model.route.display_name.as_str()));
+                    changes.push(format!(
+                        "renamed to {}",
+                        model_activity_label(new_id, renamed_display)
+                    ));
+                } else if let (Some(source), Some(display)) =
+                    (source, op.display_name.as_deref())
+                    && source.route.display_name != display
+                {
+                    changes.push(format!(
+                        "display name \"{}\" → \"{}\"",
+                        activity_value(&source.route.display_name),
+                        activity_value(display)
+                    ));
+                }
+                if let Some(context_window) = op.context_window
+                    && source.is_none_or(|model| model.route.context_window != Some(context_window))
+                {
+                    changes.push(format!(
+                        "context window {} → {}",
+                        source
+                            .map(|model| format_context_window(model.route.context_window))
+                            .unwrap_or_else(|| "unknown".into()),
+                        format_context_window(Some(context_window))
+                    ));
+                }
+                if changes.is_empty()
+                    && let Some(fields) = plan.actions.iter().find_map(|action| match action {
+                        chm_harness_sdk::adapter::plan::PlanAction::Update(update)
+                            if model_action_matches(action, "update", &op.native_id, provider) =>
+                        {
+                            Some(update.changed_fields.clone())
+                        }
+                        _ => None,
+                    })
+                {
+                    changes.extend(
+                        fields
+                            .iter()
+                            .map(|field| changed_field_label(field).to_string()),
+                    );
+                }
+                let change_suffix = if changes.is_empty() {
+                    String::new()
+                } else {
+                    format!(": {}", changes.join(", "))
+                };
+                details.push(format!(
+                    "Updated model {source_label}{provider_suffix}{change_suffix}"
+                ));
+            }
+            _ => {}
+        }
+    }
+    if details.is_empty() {
+        let add = count_kind(plan, "model", "add");
+        let update = count_kind(plan, "model", "update");
+        let remove = count_kind(plan, "model", "remove");
+        return format!(
+            "{harness}: {add} model(s) added, {update} updated, {remove} deleted"
+        );
+    }
+    if details.len() > 8 {
+        let remaining = details.len() - 8;
+        details.truncate(8);
+        details.push(format!("{remaining} more model change(s)"));
+    }
+    format!("{harness}: {}", details.join("; "))
+}
+
 #[tauri::command]
 pub async fn apply_harness_model_edits_cmd(
     state: State<'_, AppState>,
@@ -565,8 +854,7 @@ pub async fn apply_harness_model_edits_cmd(
                     .to_string();
                 let new_identity =
                     identity(&destination_provider.to_lowercase(), &new_id.to_lowercase());
-                let source_identity = identity(&provider, &m.native_id.to_lowercase());
-                if new_identity != source_identity && used_ids.contains(&new_identity) {
+                if used_ids.contains(&new_identity) {
                     return Err(format!(
                         "a model named \"{new_id}\" already exists for provider \"{destination_provider}\" on this harness"
                     ));
@@ -750,12 +1038,11 @@ pub async fn apply_harness_model_edits_cmd(
                     &state.pool,
                     tx.id,
                     TransactionStatus::Succeeded,
-                    Some(format!(
-                        "edited models on {}: +{} ~{} -{}",
+                    Some(model_edit_activity_summary(
                         inst.harness_type.as_str(),
-                        count_kind(&plan, "model", "add"),
-                        count_kind(&plan, "model", "update"),
-                        count_kind(&plan, "model", "remove"),
+                        &parsed,
+                        &ops,
+                        &plan,
                     )),
                     None,
                 )
@@ -1224,4 +1511,51 @@ pub async fn ensure_provider_from_harness_cmd(
         provider_created,
         endpoint_created,
     })
+}
+
+#[cfg(test)]
+mod activity_tests {
+    use super::{HarnessModelOp, model_edit_activity_summary};
+    use chm_core::domain::models::ModelRoute;
+    use chm_harness_sdk::adapter::plan::{PlanAction, ReconciliationPlan, RemoveAction};
+    use chm_harness_sdk::adapter::types::{HarnessModel, ParsedState};
+
+    #[test]
+    fn model_edit_summary_names_deleted_model_and_provider() {
+        let route = ModelRoute::new(
+            "qwen3.8-27b".into(),
+            "Qwen 3.8 27B".into(),
+            Some(32768),
+            serde_json::json!({}),
+            serde_json::json!({"native_provider_id": "Yolo-Auto"}),
+        );
+        let parsed = ParsedState {
+            models: vec![HarnessModel {
+                native_id: "qwen3.8-27b".into(),
+                route,
+            }],
+            ..Default::default()
+        };
+        let ops = vec![HarnessModelOp {
+            op: "remove".into(),
+            native_id: "qwen3.8-27b".into(),
+            native_provider_id: None,
+            destination_provider_id: None,
+            display_name: None,
+            context_window: None,
+            remote_model_id: None,
+        }];
+        let plan = ReconciliationPlan {
+            actions: vec![PlanAction::Remove(RemoveAction {
+                kind: "model".into(),
+                identity: "qwen3.8-27b".into(),
+                native_provider_id: Some("Yolo-Auto".into()),
+            })],
+        };
+        let summary = model_edit_activity_summary("pi", &parsed, &ops, &plan);
+        assert_eq!(
+            summary,
+            "Pi: Deleted model qwen3.8-27b (Qwen 3.8 27B) via Yolo-Auto"
+        );
+    }
 }

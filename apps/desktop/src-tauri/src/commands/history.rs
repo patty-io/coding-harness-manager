@@ -1,6 +1,6 @@
 //! History, rollback, and purge commands (Phase 12).
 
-use chm_core::domain::history::{TransactionStatus, TransactionType};
+use chm_core::domain::history::{ConfigSnapshot, TransactionStatus, TransactionType};
 use chm_database::repos::history::{
     add_snapshot, begin_transaction, finish_transaction, list_snapshots,
     list_snapshots_for_transactions, list_transactions, list_transactions_limited,
@@ -80,6 +80,219 @@ fn rollback_eligibility(
     (true, None)
 }
 
+#[derive(Debug, Clone, PartialEq, Eq)]
+struct LegacyPiModel {
+    provider: String,
+    id: String,
+    name: String,
+    context_window: Option<i64>,
+}
+
+fn parse_pi_models(content: Option<&str>) -> Option<std::collections::BTreeMap<String, LegacyPiModel>> {
+    let value = serde_json::from_str::<serde_json::Value>(content?).ok()?;
+    let providers = value.get("providers")?.as_object()?;
+    let mut models = std::collections::BTreeMap::new();
+    for (provider, value) in providers {
+        let Some(entries) = value.get("models").and_then(|value| value.as_array()) else {
+            continue;
+        };
+        for model in entries {
+            let Some(id) = model.get("id").and_then(|value| value.as_str()) else {
+                continue;
+            };
+            let id = id.to_string();
+            let name = model
+                .get("name")
+                .and_then(|value| value.as_str())
+                .unwrap_or(&id)
+                .to_string();
+            let context_window = model
+                .get("contextWindow")
+                .or_else(|| model.get("context_window"))
+                .and_then(|value| value.as_i64());
+            let key = format!("{provider}\u{1f}{id}");
+            models.insert(
+                key,
+                LegacyPiModel {
+                    provider: provider.clone(),
+                    id,
+                    name,
+                    context_window,
+                },
+            );
+        }
+    }
+    Some(models)
+}
+
+fn compact_activity_value(value: &str) -> String {
+    let compact = value.split_whitespace().collect::<Vec<_>>().join(" ");
+    let mut chars = compact.chars();
+    let short = chars.by_ref().take(120).collect::<String>();
+    if chars.next().is_some() {
+        format!("{short}…")
+    } else {
+        short
+    }
+}
+
+fn history_harness_label(value: &str) -> String {
+    let mut chars = value.replace('-', " ").chars().collect::<Vec<_>>();
+    if let Some(first) = chars.first_mut() {
+        first.make_ascii_uppercase();
+    }
+    chars.into_iter().collect()
+}
+
+fn legacy_model_label(model: &LegacyPiModel) -> String {
+    let id = compact_activity_value(&model.id);
+    let name = compact_activity_value(&model.name);
+    if name.eq_ignore_ascii_case(&model.id) {
+        id
+    } else {
+        format!("{id} ({name})")
+    }
+}
+
+fn format_legacy_context(value: Option<i64>) -> String {
+    value
+        .map(|number| number.to_string())
+        .unwrap_or_else(|| "unset".into())
+}
+
+fn parse_legacy_edit_summary(summary: &str) -> Option<(&str, usize, usize, usize)> {
+    let rest = summary.strip_prefix("edited models on ")?;
+    let (harness, counts) = rest.split_once(": ")?;
+    let mut added = None;
+    let mut updated = None;
+    let mut removed = None;
+    for token in counts.split_whitespace() {
+        let (prefix, value) = token.split_at(1);
+        let count = value.parse::<usize>().ok()?;
+        match prefix {
+            "+" => added = Some(count),
+            "~" => updated = Some(count),
+            "-" => removed = Some(count),
+            _ => return None,
+        }
+    }
+    Some((
+        harness,
+        added?,
+        updated?,
+        removed?,
+    ))
+}
+
+fn describe_legacy_pi_changes(
+    harness: &str,
+    expected_added: usize,
+    expected_updated: usize,
+    expected_removed: usize,
+    snapshots: &[ConfigSnapshot],
+) -> Option<String> {
+    let (before, after) = snapshots.iter().find_map(|snapshot| {
+        Some((
+            parse_pi_models(snapshot.before_content.as_deref())?,
+            parse_pi_models(snapshot.after_content.as_deref())?,
+        ))
+    })?;
+    let added = after
+        .iter()
+        .filter(|(key, _)| !before.contains_key(*key))
+        .map(|(_, model)| model)
+        .collect::<Vec<_>>();
+    let removed = before
+        .iter()
+        .filter(|(key, _)| !after.contains_key(*key))
+        .map(|(_, model)| model)
+        .collect::<Vec<_>>();
+    let updated = before
+        .iter()
+        .filter_map(|(key, old)| {
+            let new = after.get(key)?;
+            (old != new).then_some((old, new))
+        })
+        .collect::<Vec<_>>();
+    if added.len() != expected_added
+        || updated.len() != expected_updated
+        || removed.len() != expected_removed
+    {
+        return None;
+    }
+
+    let harness = history_harness_label(harness);
+    let mut details = Vec::new();
+    for model in added {
+        details.push(format!(
+            "Added model {} via {}",
+            legacy_model_label(model),
+            compact_activity_value(&model.provider)
+        ));
+    }
+    for (old, new) in updated {
+        let mut changes = Vec::new();
+        if old.name != new.name {
+            changes.push(format!(
+                "display name \"{}\" → \"{}\"",
+                compact_activity_value(&old.name),
+                compact_activity_value(&new.name)
+            ));
+        }
+        if old.context_window != new.context_window {
+            changes.push(format!(
+                "context window {} → {}",
+                format_legacy_context(old.context_window),
+                format_legacy_context(new.context_window)
+            ));
+        }
+        let suffix = if changes.is_empty() {
+            String::new()
+        } else {
+            format!(": {}", changes.join(", "))
+        };
+        details.push(format!(
+            "Updated model {} via {}{suffix}",
+            legacy_model_label(new),
+            compact_activity_value(&new.provider)
+        ));
+    }
+    for model in removed {
+        details.push(format!(
+            "Deleted model {} via {}",
+            legacy_model_label(model),
+            compact_activity_value(&model.provider)
+        ));
+    }
+    (!details.is_empty()).then(|| format!("{harness}: {}", details.join("; ")))
+}
+
+/// Upgrade the old counter-only edit summaries when the snapshots contain a
+/// Pi model document. Other legacy summaries still get readable words rather
+/// than unexplained `+0 ~0 -1` notation.
+fn humanize_history_summary(summary: Option<&str>, snapshots: &[ConfigSnapshot]) -> Option<String> {
+    let summary = summary?;
+    let Some((harness, added, updated, removed)) = parse_legacy_edit_summary(summary) else {
+        return Some(summary.to_string());
+    };
+    if let Some(details) = describe_legacy_pi_changes(
+        harness,
+        added,
+        updated,
+        removed,
+        snapshots,
+    ) {
+        return Some(details);
+    }
+    Some(format!(
+        "{}: {} model(s) added, {} updated, {} deleted",
+        history_harness_label(harness),
+        added,
+        updated,
+        removed
+    ))
+}
+
 #[tauri::command]
 pub async fn list_history_cmd(
     state: State<'_, AppState>,
@@ -102,12 +315,13 @@ pub async fn list_history_cmd(
             .unwrap_or_default();
         let (can_rollback, rollback_reason) =
             rollback_eligibility(tx.status, tx.transaction_type, snaps.len());
+        let summary = humanize_history_summary(tx.summary.as_deref(), &snaps);
         entries.push(HistoryEntry {
             transaction_id: tx.id.to_string(),
             transaction_type: tx.transaction_type.as_str().to_string(),
             status: tx.status.as_str().to_string(),
             started_at: tx.started_at.to_rfc3339(),
-            summary: tx.summary.clone(),
+            summary,
             snapshots: snaps
                 .into_iter()
                 .map(|s| SnapshotEntry {
@@ -360,5 +574,54 @@ mod tests {
     fn content_hash_distinguishes_missing_and_empty_files() {
         assert_ne!(content_hash(None), content_hash(Some("")));
         assert_eq!(content_hash(Some("same")), content_hash(Some("same")));
+    }
+
+    #[test]
+    fn legacy_pi_edit_summary_is_upgraded_from_snapshots() {
+        let before = r#"{
+            "providers": {
+                "Yolo-Auto": {
+                    "models": [
+                        {"id": "qwen3.8-27b", "name": "Qwen 3.8 27B"},
+                        {"id": "keep", "name": "Keep"}
+                    ]
+                }
+            }
+        }"#;
+        let after = r#"{
+            "providers": {
+                "Yolo-Auto": {
+                    "models": [
+                        {"id": "keep", "name": "Keep"}
+                    ]
+                }
+            }
+        }"#;
+        let snapshot = ConfigSnapshot {
+            id: Uuid::new_v4(),
+            transaction_id: Uuid::new_v4(),
+            harness_installation_id: Uuid::new_v4(),
+            path: "/tmp/models.json".into(),
+            before_content: Some(before.into()),
+            after_content: Some(after.into()),
+            before_hash: None,
+            after_hash: None,
+        };
+        let summary = humanize_history_summary(
+            Some("edited models on pi: +0 ~0 -1"),
+            &[snapshot],
+        )
+        .unwrap();
+        assert_eq!(
+            summary,
+            "Pi: Deleted model qwen3.8-27b (Qwen 3.8 27B) via Yolo-Auto"
+        );
+    }
+
+    #[test]
+    fn legacy_counter_summary_falls_back_to_words_without_model_snapshot() {
+        let summary = humanize_history_summary(Some("edited models on pi: +1 ~2 -0"), &[])
+            .unwrap();
+        assert_eq!(summary, "Pi: 1 model(s) added, 2 updated, 0 deleted");
     }
 }

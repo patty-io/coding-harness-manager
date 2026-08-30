@@ -423,6 +423,178 @@ pub(crate) fn action_views(plan: &ReconciliationPlan) -> Vec<ActionView> {
         .collect()
 }
 
+fn activity_value(value: &str) -> String {
+    let compact = value.split_whitespace().collect::<Vec<_>>().join(" ");
+    let mut chars = compact.chars();
+    let short = chars.by_ref().take(120).collect::<String>();
+    if chars.next().is_some() {
+        format!("{short}…")
+    } else {
+        short
+    }
+}
+
+fn activity_harness_label(value: &str) -> String {
+    let mut chars = value.replace('-', " ").chars().collect::<Vec<_>>();
+    if let Some(first) = chars.first_mut() {
+        first.make_ascii_uppercase();
+    }
+    chars.into_iter().collect()
+}
+
+fn activity_field_label(field: &str) -> &str {
+    match field {
+        "context_window" => "context window",
+        "max_input" => "max input",
+        "max_output" => "max output",
+        "display_name" => "display name",
+        "capabilities" => "capabilities",
+        other => other,
+    }
+}
+
+fn activity_json_value(value: Option<&serde_json::Value>) -> String {
+    match value {
+        Some(value) if value.is_null() => "unset".into(),
+        Some(value) if value.as_i64().is_some() => {
+            value.as_i64().unwrap_or_default().to_string()
+        }
+        Some(value) if value.as_str().is_some() => {
+            format!("\"{}\"", activity_value(value.as_str().unwrap_or_default()))
+        }
+        _ => "changed".into(),
+    }
+}
+
+fn activity_model_label(id: &str, display_name: Option<&str>) -> String {
+    let id = activity_value(id);
+    let display = display_name
+        .map(activity_value)
+        .filter(|value| !value.is_empty() && !value.eq_ignore_ascii_case(&id));
+    display
+        .map(|name| format!("{id} ({name})"))
+        .unwrap_or(id)
+}
+
+fn activity_provider_suffix(provider: Option<&str>) -> String {
+    provider
+        .map(|value| format!(" via {}", activity_value(value)))
+        .unwrap_or_default()
+}
+
+/// Render a safe, human-readable description of the resource actions that a
+/// successful library-to-harness sync applied. Only identities, provider
+/// labels, and model metadata are included; native payloads and credentials
+/// are never rendered into the audit summary.
+pub(crate) fn activity_summary(
+    harness_type: &str,
+    plan: &ReconciliationPlan,
+) -> String {
+    let harness = activity_harness_label(harness_type);
+    let mut details = Vec::new();
+    for action in &plan.actions {
+        match action {
+            PlanAction::Add(add) if add.kind == "model" => {
+                let id = add
+                    .payload
+                    .get("remote_model_id")
+                    .and_then(|value| value.as_str())
+                    .unwrap_or(&add.identity);
+                let display = add.payload.get("display_name").and_then(|value| value.as_str());
+                details.push(format!(
+                    "Added model {}{}",
+                    activity_model_label(id, display),
+                    activity_provider_suffix(add.native_provider_id.as_deref())
+                ));
+            }
+            PlanAction::Update(update) if update.kind == "model" => {
+                let display = update
+                    .current
+                    .get("display_name")
+                    .and_then(|value| value.as_str());
+                let mut changes = Vec::new();
+                for field in &update.changed_fields {
+                    let change = match field.as_str() {
+                        "display_name" => format!(
+                            "display name {} → {}",
+                            activity_json_value(update.current.get("display_name")),
+                            activity_json_value(update.desired.get("display_name"))
+                        ),
+                        "context_window" => format!(
+                            "context window {} → {}",
+                            activity_json_value(update.current.get("context_window")),
+                            activity_json_value(update.desired.get("context_window"))
+                        ),
+                        "max_input" => format!(
+                            "max input {} → {}",
+                            activity_json_value(update.current.get("max_input")),
+                            activity_json_value(update.desired.get("max_input"))
+                        ),
+                        "max_output" => format!(
+                            "max output {} → {}",
+                            activity_json_value(update.current.get("max_output")),
+                            activity_json_value(update.desired.get("max_output"))
+                        ),
+                        other => activity_field_label(other).to_string(),
+                    };
+                    changes.push(change);
+                }
+                let suffix = if changes.is_empty() {
+                    String::new()
+                } else {
+                    format!(": {}", changes.join(", "))
+                };
+                details.push(format!(
+                    "Updated model {}{}{suffix}",
+                    activity_model_label(&update.identity, display),
+                    activity_provider_suffix(update.native_provider_id.as_deref())
+                ));
+            }
+            PlanAction::Remove(remove) if remove.kind == "model" => {
+                details.push(format!(
+                    "Deleted model {}{}",
+                    activity_value(&remove.identity),
+                    activity_provider_suffix(remove.native_provider_id.as_deref())
+                ));
+            }
+            PlanAction::Add(add) if add.kind == "mcp" => details.push(format!(
+                "Added MCP server {}",
+                activity_value(&add.identity)
+            )),
+            PlanAction::Update(update) if update.kind == "mcp" => details.push(format!(
+                "Updated MCP server {}",
+                activity_value(&update.identity)
+            )),
+            PlanAction::Remove(remove) if remove.kind == "mcp" => details.push(format!(
+                "Deleted MCP server {}",
+                activity_value(&remove.identity)
+            )),
+            PlanAction::Add(add) if add.kind == "skill" => details.push(format!(
+                "Linked skill {}",
+                activity_value(&add.identity)
+            )),
+            PlanAction::Update(update) if update.kind == "skill" => details.push(format!(
+                "Updated skill {}",
+                activity_value(&update.identity)
+            )),
+            PlanAction::Remove(remove) if remove.kind == "skill" => details.push(format!(
+                "Unlinked skill {}",
+                activity_value(&remove.identity)
+            )),
+            _ => {}
+        }
+    }
+    if details.is_empty() {
+        return format!("{harness}: no resource details recorded");
+    }
+    if details.len() > 8 {
+        let remaining = details.len() - 8;
+        details.truncate(8);
+        details.push(format!("{remaining} more resource change(s)"));
+    }
+    format!("{harness}: {}", details.join("; "))
+}
+
 /// Render the user-facing preview from the same plan representation used by
 /// both regular library sync and configuration-set sync. Keeping this seam in
 /// the sync module prevents the two preview commands from drifting in what
@@ -588,11 +760,12 @@ pub async fn execute_desired_with_plan(
     } else {
         *mode
     };
-    let (inst, adapter, _plan, native_plan) =
+    let (inst, adapter, plan, native_plan) =
         build_native_plan_for_desired(pool, installation_id, &effective_mode, desired.clone())
             .await?;
-    let current_hash = plan_hash(&_plan, &native_plan)?;
-    let blockers = _plan
+    let activity = activity_summary(inst.harness_type.as_str(), &plan);
+    let current_hash = plan_hash(&plan, &native_plan)?;
+    let blockers = plan
         .actions
         .iter()
         .any(|action| matches!(action, PlanAction::Conflict(_) | PlanAction::Unsupported(_)));
@@ -700,7 +873,7 @@ pub async fn execute_desired_with_plan(
                             }
                         };
                         if let Err(error) =
-                            record_bindings(pool, &inst, &desired_after, &_plan, &parsed_after)
+                            record_bindings(pool, &inst, &desired_after, &plan, &parsed_after)
                                 .await
                         {
                             rollback_all(
@@ -721,7 +894,7 @@ pub async fn execute_desired_with_plan(
                             pool,
                             tx.id,
                             TransactionStatus::Succeeded,
-                            Some(format!("synced {} files", result.files_written.len())),
+                            Some(activity.clone()),
                             None,
                         )
                         .await
@@ -774,7 +947,7 @@ pub async fn execute_desired_with_plan(
     }
 
     result.summary = format!(
-        "{} files written, {} links created",
+        "{activity}; {} file(s) written, {} link(s) created",
         result.files_written.len(),
         result.links_created.len()
     );
@@ -856,8 +1029,10 @@ pub async fn bind_mcp_sync(
 
 #[cfg(test)]
 mod tests {
-    use super::{SyncSelection, effective_mode, validate_apply_request};
-    use chm_harness_sdk::adapter::plan::Mode;
+    use super::{SyncSelection, activity_summary, effective_mode, validate_apply_request};
+    use chm_harness_sdk::adapter::plan::{
+        AddAction, Mode, PlanAction, ReconciliationPlan, RemoveAction, UpdateAction,
+    };
 
     #[test]
     fn stale_preview_is_rejected_before_writes() {
@@ -890,5 +1065,42 @@ mod tests {
             effective_mode("append", Some(&selection)),
             Ok(Mode::Append)
         ));
+    }
+
+    #[test]
+    fn activity_summary_names_models_providers_and_changed_fields() {
+        let plan = ReconciliationPlan {
+            actions: vec![
+                PlanAction::Add(AddAction {
+                    kind: "model".into(),
+                    identity: "qwen3.8-27b".into(),
+                    payload: serde_json::json!({
+                        "remote_model_id": "qwen3.8-27b",
+                        "display_name": "Qwen 3.8 27B"
+                    }),
+                    native_provider_id: Some("Yolo-Auto".into()),
+                }),
+                PlanAction::Update(UpdateAction {
+                    kind: "model".into(),
+                    identity: "glm-5.2".into(),
+                    changed_fields: vec!["context_window".into()],
+                    desired: serde_json::json!({"context_window": 200000}),
+                    current: serde_json::json!({
+                        "display_name": "GLM 5.2",
+                        "context_window": 128000
+                    }),
+                    native_provider_id: Some("pattycode".into()),
+                }),
+                PlanAction::Remove(RemoveAction {
+                    kind: "model".into(),
+                    identity: "old-model".into(),
+                    native_provider_id: Some("pattycode".into()),
+                }),
+            ],
+        };
+        let summary = activity_summary("pi", &plan);
+        assert!(summary.contains("Pi: Added model qwen3.8-27b (Qwen 3.8 27B) via Yolo-Auto"));
+        assert!(summary.contains("Updated model glm-5.2 (GLM 5.2) via pattycode: context window 128000 → 200000"));
+        assert!(summary.contains("Deleted model old-model via pattycode"));
     }
 }

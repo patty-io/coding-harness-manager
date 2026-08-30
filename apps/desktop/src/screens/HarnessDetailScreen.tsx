@@ -174,6 +174,7 @@ export default function HarnessDetailScreen() {
     void qc.invalidateQueries({ queryKey: ["harness-state", id] });
     void qc.invalidateQueries({ queryKey: ["drift", id] });
     void qc.invalidateQueries({ queryKey: ["dashboard"] });
+    void qc.invalidateQueries({ queryKey: ["history"] });
   };
 
   const smartImport = async (m: HarnessModelRow) => {

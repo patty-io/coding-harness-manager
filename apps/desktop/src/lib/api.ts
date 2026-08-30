@@ -81,6 +81,10 @@ export interface ImportReport {
   mcpImported: number;
   skillsImported: number;
   skillsSymlinked: number;
+  createdProviderNames: string[];
+  importedModelIds: string[];
+  importedMcpNames: string[];
+  importedSkillNames: string[];
   duplicates: string[];
 }
 

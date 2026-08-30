@@ -1,6 +1,8 @@
 //! Import commands: thin orchestration over the import service.
 
 use adapters::all_adapters;
+use chm_core::domain::history::{TransactionStatus, TransactionType};
+use chm_database::repos::history::{begin_transaction, finish_transaction};
 use chm_harness_sdk::adapter::types::ParsedState;
 use serde::{Deserialize, Serialize};
 use sqlx::{Pool, Sqlite};
@@ -120,7 +122,23 @@ pub async fn import_harness_state(
     // a synthetic installation here discarded the stable id, executable, and
     // config path that downstream import provenance/ownership may need.
     let (inst, parsed) = read_parsed_installation(&state.pool, &installation_id).await?;
-    run_import(
+    let audit = begin_transaction(
+        &state.pool,
+        TransactionType::Import,
+        serde_json::json!({
+            "source": "harness",
+            "harness": inst.harness_type.as_str(),
+            "installation_id": inst.id,
+            "options": {
+                "import_models": options.import_models,
+                "import_mcp": options.import_mcp,
+                "import_skills": options.import_skills,
+            },
+        }),
+    )
+    .await
+    .map_err(|e| e.to_string())?;
+    let report = match run_import(
         &state.pool,
         &inst,
         &parsed,
@@ -129,4 +147,28 @@ pub async fn import_harness_state(
         options.import_skills,
     )
     .await
+    {
+        Ok(report) => report,
+        Err(error) => {
+            let _ = finish_transaction(
+                &state.pool,
+                audit.id,
+                TransactionStatus::Failed,
+                None,
+                Some(error.clone()),
+            )
+            .await;
+            return Err(error);
+        }
+    };
+    finish_transaction(
+        &state.pool,
+        audit.id,
+        TransactionStatus::Succeeded,
+        Some(report.activity_summary(inst.harness_type.as_str())),
+        None,
+    )
+    .await
+    .map_err(|e| e.to_string())?;
+    Ok(report)
 }
