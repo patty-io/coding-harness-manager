@@ -2,13 +2,22 @@
 
 html {
   color-scheme: dark;
+  height: 100%;
+  overflow: hidden;
 }
 
 body {
   margin: 0;
+  height: 100%;
+  overflow: hidden;
   background-color: #0f172a;
   color: #e2e8f0;
   font-family: ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+}
+
+#root {
+  height: 100%;
+  overflow: hidden;
 }
 
 .harness-logo {

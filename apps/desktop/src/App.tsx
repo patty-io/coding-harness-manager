@@ -22,7 +22,7 @@ import DoctorScreen from "./screens/DoctorScreen";
 export default function App() {
   useBackForwardNavigation();
   return (
-    <div className="flex h-screen bg-slate-950 text-slate-200">
+    <div className="flex h-screen min-h-0 overflow-hidden bg-slate-950 text-slate-200">
       <Sidebar />
       <a
         href="#main-content"
@@ -30,7 +30,10 @@ export default function App() {
       >
         Skip to content
       </a>
-      <main id="main-content" className="flex-1 overflow-auto bg-slate-900 p-6 text-slate-200">
+      <main
+        id="main-content"
+        className="min-h-0 min-w-0 flex-1 overflow-x-hidden overflow-y-auto bg-slate-900 p-6 text-slate-200"
+      >
         <Routes>
           <Route path="/" element={<DashboardScreen />} />
           <Route path="/harnesses" element={<HarnessesScreen />} />

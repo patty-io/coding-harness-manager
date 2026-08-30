@@ -14,6 +14,7 @@ const dashboard = read("src/screens/DashboardScreen.tsx");
 const configDiff = read("src/components/ConfigDiffViewer.tsx");
 const sync = read("src/components/SyncDialog.tsx");
 const mcp = read("src/screens/McpScreen.tsx");
+const app = read("src/App.tsx");
 const html = read("index.html");
 
 const sourceFiles = [
@@ -73,6 +74,8 @@ describe("product contracts", () => {
     assert.ok(mcp.includes("groupDetectedMcps"), "MCP detections must be grouped by logical server");
     assert.ok(mcp.includes("Show configuration details"), "grouped MCPs must retain configuration details");
     assert.ok(mcp.includes("found in {group.foundIn.join(\", \")}"), "grouped MCPs must show all harnesses");
+    assert.ok(app.includes("min-h-0 overflow-hidden"), "app shell must contain document scrolling");
+    assert.ok(app.includes("overflow-x-hidden overflow-y-auto"), "main content must own the vertical scroll");
     assert.ok(!sourceFiles.some((file) => read(file).includes("window.confirm")), "native confirm must not be used in the webview");
   });
 });
