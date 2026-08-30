@@ -105,6 +105,7 @@ pub fn run() {
             commands::import::read_harness_raw_config,
             commands::drift::harness_drift_cmd,
             commands::drift::record_manual_snapshot_cmd,
+            commands::drift::revert_to_baseline_cmd,
             commands::detect::detect_mcp_cmd,
             commands::detect::detect_skills_cmd,
             commands::harness_detail::harness_models_view_cmd,

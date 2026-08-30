@@ -16,6 +16,7 @@ import {
 import {
   useHarnessDrift,
   useInstallations,
+  useRevertToBaseline,
   useRecordManualSnapshot,
 } from "../hooks/useHarnesses";
 import { SyncDialog } from "../components/SyncDialog";
@@ -89,7 +90,8 @@ export default function HarnessDetailScreen() {
   const { data: installations } = useInstallations();
   const installation = (installations ?? []).find((i) => i.id === id);
   const { data: drift } = useHarnessDrift(id);
-  const rebaseline = useRecordManualSnapshot();
+  const acceptLocalChanges = useRecordManualSnapshot();
+  const revertToBaseline = useRevertToBaseline();
 
   const { data: profiles } = useQuery({
     queryKey: ["profiles"],
@@ -147,6 +149,9 @@ export default function HarnessDetailScreen() {
   const [directEditMode, setDirectEditMode] = useState(false);
   const [rawCopied, setRawCopied] = useState(false);
   const { confirm, confirmDialog } = useConfirm();
+  const driftActionError = acceptLocalChanges.error ?? revertToBaseline.error;
+  const driftActionPending =
+    acceptLocalChanges.isPending || revertToBaseline.isPending;
   const [adoptEndpoint, setAdoptEndpoint] = useState("");
   const { data: endpointOptions } = useQuery({
     queryKey: ["endpoint-options"],
@@ -402,19 +407,44 @@ export default function HarnessDetailScreen() {
                       {showDiff ? "Hide diff" : "Show diff"}
                     </button>
                     <button
-                      onClick={() => id && rebaseline.mutate(id)}
-                      disabled={rebaseline.isPending}
+                      onClick={() => id && acceptLocalChanges.mutate(id)}
+                      disabled={driftActionPending}
                       className="rounded border border-amber-500/50 px-2 py-0.5 text-xs text-amber-200 hover:bg-amber-500/15 disabled:opacity-50"
                     >
-                      {rebaseline.isPending ? "Saving…" : "Keep my changes"}
+                      {acceptLocalChanges.isPending
+                        ? "Accepting…"
+                        : "Accept local changes"}
+                    </button>
+                    <button
+                      onClick={() =>
+                        id &&
+                        confirm(
+                          "Revert local changes?",
+                          "This replaces the harness config on disk with the last configuration written by Coding Harness Manager. Your current file is backed up and this action is recorded in History.",
+                          () => revertToBaseline.mutate(id),
+                          "Revert",
+                        )
+                      }
+                      disabled={driftActionPending}
+                      className="rounded border border-red-500/50 px-2 py-0.5 text-xs text-red-200 hover:bg-red-500/15 disabled:opacity-50"
+                    >
+                      {revertToBaseline.isPending
+                        ? "Reverting…"
+                        : "Revert to last app baseline"}
                     </button>
                   </div>
                 </div>
                 <p className="mt-1 text-xs text-amber-200/70">
-                  "Keep my changes" records the file as it is now as the new
-                  baseline. "Sync from library…" instead compares your My
-                  Models library with disk and lets you apply.
+                  "Accept local changes" records the file as it is now as the
+                  new baseline. "Revert to last app baseline" restores the
+                  last version written by this app. "Sync from library…"
+                  compares your My Models library with disk and lets you apply.
                 </p>
+                {driftActionError && (
+                  <p className="mt-2 text-xs text-red-300" role="alert">
+                    {String(driftActionError)}
+                  </p>
+                )}
                 {showDiff && (
                   <ConfigDiffViewer
                     before={drift.lastWrittenContent}

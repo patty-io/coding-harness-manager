@@ -3,6 +3,7 @@ import {
   harnessDrift,
   listInstallations,
   recordManualSnapshot,
+  revertToBaseline,
   scanHarnesses,
   type HarnessInstallation,
 } from "../lib/api";
@@ -35,6 +36,20 @@ export function useRecordManualSnapshot() {
     onSuccess: (_data, installationId) => {
       qc.invalidateQueries({ queryKey: ["drift", installationId] });
       qc.invalidateQueries({ queryKey: ["history"] });
+    },
+  });
+}
+
+export function useRevertToBaseline() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (installationId: string) => revertToBaseline(installationId),
+    onSuccess: (_data, installationId) => {
+      qc.invalidateQueries({ queryKey: ["drift", installationId] });
+      qc.invalidateQueries({ queryKey: ["harness-state", installationId] });
+      qc.invalidateQueries({ queryKey: ["harness-raw", installationId] });
+      qc.invalidateQueries({ queryKey: ["history"] });
+      qc.invalidateQueries({ queryKey: ["dashboard"] });
     },
   });
 }

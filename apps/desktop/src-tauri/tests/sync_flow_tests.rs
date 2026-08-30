@@ -1,14 +1,105 @@
 use chm_core::domain::harness::{HarnessInstallation, HarnessType, InstallationStatus};
-use chm_core::domain::history::TransactionStatus;
+use chm_core::domain::history::{ConfigSnapshot, TransactionStatus, TransactionType};
 use chm_database::connect_test;
 use chm_database::repos::harness::upsert_installation;
-use chm_database::repos::history::{list_snapshots, list_transactions};
+use chm_database::repos::history::{
+    add_snapshot, begin_transaction, finish_transaction, list_snapshots, list_transactions,
+};
 use chm_database::repos::models::create_route;
 use chm_database::repos::providers::{create_endpoint, create_provider};
 use chm_harness_sdk::adapter::plan::Mode;
 use chrono::Utc;
 use coding_harness_manager_lib::commands::sync::execute_sync;
 use uuid::Uuid;
+
+#[tokio::test]
+async fn revert_to_baseline_restores_file_and_records_snapshot() {
+    let pool = connect_test().await.unwrap();
+    let dir = tempfile::TempDir::new().unwrap();
+    let path = dir.path().join("opencode.jsonc");
+    let baseline = "{\n  \"provider\": {}\n}\n";
+    let external = "{\n  \"provider\": {\"zai\": {}}\n}\n";
+    std::fs::write(&path, baseline).unwrap();
+    let inst = HarnessInstallation {
+        id: Uuid::new_v4(),
+        harness_type: HarnessType::OpenCode,
+        executable_path: None,
+        version: Some("0.30.0".into()),
+        config_path: Some(path.display().to_string()),
+        detected_at: Utc::now(),
+        last_scanned_at: None,
+        status: InstallationStatus::Installed,
+    };
+    upsert_installation(&pool, &inst).await.unwrap();
+
+    // Seed the last state written by the app, then simulate an outside edit.
+    let seed_tx = begin_transaction(
+        &pool,
+        TransactionType::Sync,
+        serde_json::json!({ "path": path }),
+    )
+    .await
+    .unwrap();
+    add_snapshot(
+        &pool,
+        &ConfigSnapshot {
+            id: Uuid::new_v4(),
+            transaction_id: seed_tx.id,
+            harness_installation_id: inst.id,
+            path: path.display().to_string(),
+            before_content: Some("{}".into()),
+            after_content: Some(baseline.into()),
+            before_hash: None,
+            after_hash: None,
+        },
+    )
+    .await
+    .unwrap();
+    finish_transaction(
+        &pool,
+        seed_tx.id,
+        TransactionStatus::Succeeded,
+        Some("seed baseline".into()),
+        None,
+    )
+    .await
+    .unwrap();
+    std::fs::write(&path, external).unwrap();
+
+    let report = coding_harness_manager_lib::commands::drift::revert_to_baseline_core(
+        &pool,
+        &inst.id.to_string(),
+    )
+    .await
+    .unwrap();
+
+    assert_eq!(report.path, path.display().to_string());
+    assert_eq!(std::fs::read_to_string(&path).unwrap(), baseline);
+    assert!(dir.path().join(".chm-backups").is_dir());
+
+    let (_, drifted, current, last_written) =
+        coding_harness_manager_lib::commands::drift::installation_drifted(&pool, &inst)
+            .await
+            .unwrap();
+    assert!(!drifted);
+    assert_eq!(current.as_deref(), Some(baseline));
+    assert_eq!(last_written.as_deref(), Some(baseline));
+
+    let revert_tx_id = Uuid::parse_str(&report.transaction_id).unwrap();
+    let txs = list_transactions(&pool).await.unwrap();
+    assert!(txs.iter().any(|tx| {
+        tx.id == revert_tx_id
+            && tx.status == TransactionStatus::Succeeded
+            && tx
+                .summary
+                .as_deref()
+                .is_some_and(|s| s.contains("reverted external changes"))
+    }));
+    let snapshots = list_snapshots(&pool, revert_tx_id).await.unwrap();
+    assert_eq!(snapshots.len(), 1);
+    assert_eq!(snapshots[0].before_content.as_deref(), Some(external));
+    assert_eq!(snapshots[0].after_content.as_deref(), Some(baseline));
+}
 
 #[tokio::test]
 async fn execute_sync_applies_and_records_snapshots() {

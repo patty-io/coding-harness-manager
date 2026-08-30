@@ -170,6 +170,19 @@ export async function recordManualSnapshot(installationId: string): Promise<void
   return invoke<void>("record_manual_snapshot_cmd", { installationId });
 }
 
+export interface RevertBaselineReport {
+  path: string;
+  transactionId: string;
+}
+
+export async function revertToBaseline(
+  installationId: string,
+): Promise<RevertBaselineReport> {
+  return invoke<RevertBaselineReport>("revert_to_baseline_cmd", {
+    installationId,
+  });
+}
+
 export async function importHarnessState(
   installationId: string,
   options: ImportOptions,

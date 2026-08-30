@@ -29,6 +29,8 @@ describe("product contracts", () => {
     assert.ok(harness.includes('role="tablist"'), "harness tabs must expose a tablist");
     assert.ok(harness.includes('role="tabpanel"'), "harness content must expose a tabpanel");
     assert.ok(harness.includes("Sync from library…"), "sync action must state its direction");
+    assert.ok(harness.includes("Accept local changes"), "drift action must accept local changes explicitly");
+    assert.ok(harness.includes("Revert to last app baseline"), "drift action must expose an explicit revert");
     assert.ok(harness.includes('title="Save this harness model into your My Models library"'), "row action must state its direction");
     assert.ok(harness.includes("<ConfigDiffViewer"), "drift view must render a real diff");
     assert.ok(configDiff.includes('aria-label="Previous change"'), "diff must support previous-change navigation");
