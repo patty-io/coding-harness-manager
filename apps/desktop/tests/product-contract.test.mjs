@@ -8,6 +8,8 @@ const root = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 const read = (path) => readFileSync(resolve(root, path), "utf8");
 
 const harness = read("src/screens/HarnessDetailScreen.tsx");
+const harnesses = read("src/screens/HarnessesScreen.tsx");
+const harnessLogo = read("src/components/HarnessLogo.tsx");
 const dashboard = read("src/screens/DashboardScreen.tsx");
 const configDiff = read("src/components/ConfigDiffViewer.tsx");
 const sync = read("src/components/SyncDialog.tsx");
@@ -34,6 +36,28 @@ describe("product contracts", () => {
     assert.ok(harness.includes("Revert to last app baseline"), "drift action must expose an explicit revert");
     assert.ok(harness.includes('title="Save this harness model into your My Models library"'), "row action must state its direction");
     assert.ok(harness.includes("<ConfigDiffViewer"), "drift view must render a real diff");
+    assert.ok(harnesses.includes("<HarnessLogo"), "harness cards must render real logos");
+    for (const id of [
+      "claude-code",
+      "codex",
+      "opencode",
+      "pi",
+      "reasonix",
+      "kimi-cli",
+      "gemini-cli",
+      "qwen-code",
+      "cursor",
+      "cline",
+      "roo-code",
+      "aider",
+      "amp",
+      "goose",
+      "continue",
+    ]) {
+      const key = id.includes("-") ? `"${id}"` : `${id}:`;
+      assert.ok(harnessLogo.includes(key), `logo registry must include ${id}`);
+    }
+    assert.ok(harnessLogo.includes("maskImage"), "harness logos must remain colorable");
     assert.ok(dashboard.includes("Recent activity"), "dashboard must expose recent activity");
     assert.ok(dashboard.includes("break-words"), "activity descriptions must be readable when they wrap");
     assert.ok(!dashboard.includes('className="truncate text-slate-300"'), "activity descriptions must not be truncated");

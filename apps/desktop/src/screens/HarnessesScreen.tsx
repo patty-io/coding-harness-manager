@@ -1,6 +1,7 @@
 import { useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
 import { useInstallations, useScanHarnesses } from "../hooks/useHarnesses";
+import { HarnessLogo } from "../components/HarnessLogo";
 import { SyncDialog } from "../components/SyncDialog";
 
 const STATUS_STYLES: Record<string, string> = {
@@ -15,14 +16,6 @@ const STATUS_LABELS: Record<string, string> = {
   detected: "Detected, command not found",
   "config-missing": "Config found, no binary",
   error: "Error",
-};
-
-const HARNESS_ICONS: Record<string, string> = {
-  "claude-code": "◆",
-  codex: "▲",
-  opencode: "●",
-  pi: "■",
-  reasonix: "✦",
 };
 
 export default function HarnessesScreen() {
@@ -84,9 +77,7 @@ export default function HarnessesScreen() {
           >
             <div className="flex items-start justify-between">
               <div className="flex items-center gap-2">
-                <span className="text-lg text-slate-400">
-                  {HARNESS_ICONS[i.harness_type] ?? "◇"}
-                </span>
+                <HarnessLogo harnessType={i.harness_type} className="text-slate-300" />
                 <span className="font-medium text-slate-100">
                   {i.harness_type}
                 </span>
