@@ -14,7 +14,7 @@
 - Import never overwrites existing canonical state: name conflicts are reported as duplicates, never auto-merged silently.
 - Every imported object records provenance (project plan §39): `{"source": "<harness>", "imported_at": "<ts>"}`.
 - All Tauri commands return `Result<T, String>` (stringified error) — the React layer maps them to user-facing messages.
-- App identifier: `com.codingharnessmanager.app`. Window: 1200×800, min 900×600.
+- App identifier: `com.codingharnessmanager.app`. Window: 1440×1000, min 1200×800.
 - Phase exit: `npm run tauri dev` runs, wizard completes end-to-end on a machine with real harness configs, all tests green (Rust + frontend build in CI).
 
 ---
@@ -180,10 +180,10 @@ Note: `[workspace]` must NOT appear here — this crate lives OUTSIDE the cargo 
     "windows": [
       {
         "title": "Coding Harness Manager",
-        "width": 1200,
-        "height": 800,
-        "minWidth": 900,
-        "minHeight": 600
+        "width": 1440,
+        "height": 1000,
+        "minWidth": 1200,
+        "minHeight": 800
       }
     ],
     "security": { "csp": null }
