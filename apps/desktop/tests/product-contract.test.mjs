@@ -38,6 +38,9 @@ describe("product contracts", () => {
     assert.ok(dashboard.includes("break-words"), "activity descriptions must be readable when they wrap");
     assert.ok(!dashboard.includes('className="truncate text-slate-300"'), "activity descriptions must not be truncated");
     assert.ok(dashboard.includes("Changed outside app"), "drift state must not displace card metrics");
+    assert.ok(!dashboard.includes("adapter available"), "dashboard must not expose adapter implementation status");
+    assert.ok(!dashboard.includes("no config adapter"), "dashboard must not expose detection-only implementation status");
+    assert.ok(!dashboard.includes("checking adapter"), "dashboard must not expose adapter loading status");
     assert.ok(configDiff.includes('aria-label="Previous change"'), "diff must support previous-change navigation");
     assert.ok(configDiff.includes('aria-label="Next change"'), "diff must support next-change navigation");
     assert.ok(sync.includes("planHash"), "sync apply must carry the validated plan hash");

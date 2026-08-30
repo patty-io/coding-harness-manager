@@ -194,14 +194,6 @@ function HarnessCard({
             ? new Date(installation.last_scanned_at).toLocaleString()
             : "not scanned"}
         </span>
-        <span className="text-slate-500">·</span>
-        <span className={summary?.support === "supported" ? "text-green-400" : "text-slate-400"}>
-          {summary
-            ? summary.support === "supported"
-              ? "adapter available"
-              : "no config adapter"
-            : "checking adapter…"}
-        </span>
       </div>
 
       <div className="mt-3 flex items-center justify-between border-t border-slate-700/60 pt-3">
