@@ -14,6 +14,7 @@ import {
   useUpdateRoute,
 } from "../hooks/useModels";
 import { ConflictResolver, type EnrichOutcome } from "../components/ConflictResolver";
+import type { ModelRouteView } from "../lib/api";
 
 type Tab = "mine" | "discovered";
 
@@ -39,6 +40,63 @@ export default function ModelsScreen() {
     routeId: string;
     outcome: EnrichOutcome;
   } | null>(null);
+  const [editingRoute, setEditingRoute] = useState<ModelRouteView | null>(null);
+  const [editDisplayName, setEditDisplayName] = useState("");
+  const [editContextWindow, setEditContextWindow] = useState("");
+  const [editMaxInput, setEditMaxInput] = useState("");
+  const [editMaxOutput, setEditMaxOutput] = useState("");
+  const [routeEditError, setRouteEditError] = useState<string | null>(null);
+  const [enrichError, setEnrichError] = useState<string | null>(null);
+
+  const beginRouteEdit = (route: ModelRouteView) => {
+    setEditingRoute(route);
+    setEditDisplayName(route.display_name);
+    setEditContextWindow(route.context_window?.toString() ?? "");
+    setEditMaxInput(route.max_input?.toString() ?? "");
+    setEditMaxOutput(route.max_output?.toString() ?? "");
+    setRouteEditError(null);
+  };
+
+  const saveRouteEdit = () => {
+    if (!editingRoute || !editDisplayName.trim()) {
+      setRouteEditError("Display name is required.");
+      return;
+    }
+    const parseLimit = (value: string, label: string) => {
+      if (!value.trim()) return undefined;
+      const parsed = Number(value);
+      if (!Number.isSafeInteger(parsed) || parsed <= 0) {
+        throw new Error(`${label} must be a positive whole number.`);
+      }
+      return parsed;
+    };
+    try {
+      const contextWindow = parseLimit(editContextWindow, "Context window");
+      const maxInput = parseLimit(editMaxInput, "Max input");
+      const maxOutput = parseLimit(editMaxOutput, "Max output");
+      update.mutate(
+        {
+          id: editingRoute.id,
+          input: {
+            displayName: editDisplayName.trim(),
+            contextWindow,
+            maxInput,
+            maxOutput,
+          },
+        },
+        {
+          onSuccess: () => {
+            setEditingRoute(null);
+            setRouteEditError(null);
+          },
+          onError: (error) =>
+            setRouteEditError(error instanceof Error ? error.message : String(error)),
+        },
+      );
+    } catch (error) {
+      setRouteEditError(error instanceof Error ? error.message : String(error));
+    }
+  };
 
   const providers = useMemo(
     () => [...new Set((routes ?? []).map((r) => r.provider_name))],
@@ -185,6 +243,13 @@ export default function ModelsScreen() {
               </select>
             </label>
           </div>
+          <p className="mt-2 text-xs text-slate-500">
+            Edit changes this library entry directly. Match metadata only
+            checks the local models.dev catalog for canonical context and
+            output limits; it does not contact the provider or change the
+            remote model id.
+          </p>
+          {enrichError && <p className="mt-2 text-xs text-red-400">{enrichError}</p>}
           <table className="mt-3 w-full bg-slate-800 text-sm">
             <thead>
               <tr className="border-b text-left">
@@ -250,15 +315,25 @@ export default function ModelsScreen() {
                   </td>
                   <td className="p-2">
                     <button
-                      onClick={() =>
+                      onClick={() => beginRouteEdit(r)}
+                      className="rounded border border-slate-600 px-2 py-0.5 text-xs hover:bg-slate-700"
+                    >
+                      Edit
+                    </button>
+                    <button
+                      onClick={() => {
+                        setEnrichError(null);
                         enrich.mutate(r.id, {
                           onSuccess: (o) => setEnrichOutcome({ routeId: r.id, outcome: o }),
-                        })
-                      }
+                          onError: (error) =>
+                            setEnrichError(error instanceof Error ? error.message : String(error)),
+                        });
+                      }}
                       disabled={enrich.isPending}
+                      title="Match this model id to the local models.dev catalog and fill canonical metadata when a match is found."
                       className="ml-1 rounded border border-slate-600 px-2 py-0.5 text-xs disabled:opacity-50"
                     >
-                      Enrich
+                      Match metadata
                     </button>
                     <button
                       onClick={() =>
@@ -353,6 +428,24 @@ export default function ModelsScreen() {
         />
       )}
 
+      {editingRoute && (
+        <RouteEditDialog
+          route={editingRoute}
+          displayName={editDisplayName}
+          contextWindow={editContextWindow}
+          maxInput={editMaxInput}
+          maxOutput={editMaxOutput}
+          error={routeEditError}
+          saving={update.isPending}
+          onDisplayNameChange={setEditDisplayName}
+          onContextWindowChange={setEditContextWindow}
+          onMaxInputChange={setEditMaxInput}
+          onMaxOutputChange={setEditMaxOutput}
+          onSave={saveRouteEdit}
+          onClose={() => setEditingRoute(null)}
+        />
+      )}
+
       <ManualModelForm
         onCreated={() => setTab("mine")}
         create={create}
@@ -379,6 +472,120 @@ function TabButton({
     >
       {children}
     </button>
+  );
+}
+
+function RouteEditDialog({
+  route,
+  displayName,
+  contextWindow,
+  maxInput,
+  maxOutput,
+  error,
+  saving,
+  onDisplayNameChange,
+  onContextWindowChange,
+  onMaxInputChange,
+  onMaxOutputChange,
+  onSave,
+  onClose,
+}: {
+  route: ModelRouteView;
+  displayName: string;
+  contextWindow: string;
+  maxInput: string;
+  maxOutput: string;
+  error: string | null;
+  saving: boolean;
+  onDisplayNameChange: (value: string) => void;
+  onContextWindowChange: (value: string) => void;
+  onMaxInputChange: (value: string) => void;
+  onMaxOutputChange: (value: string) => void;
+  onSave: () => void;
+  onClose: () => void;
+}) {
+  return (
+    <div
+      className="fixed inset-0 z-40 flex items-center justify-center bg-black/60"
+      onClick={onClose}
+    >
+      <div
+        className="w-full max-w-lg rounded border border-slate-700 bg-slate-800 p-4 shadow-xl"
+        onClick={(event) => event.stopPropagation()}
+      >
+        <h2 className="font-medium text-slate-100">Edit model route</h2>
+        <p className="mt-1 text-xs text-slate-400">
+          {route.provider_name} · {route.remote_model_id}
+        </p>
+        <p className="mt-2 text-sm text-slate-400">
+          Set the metadata used by profiles and harness sync. This does not
+          change the provider or remote model id.
+        </p>
+        <div className="mt-3 grid grid-cols-1 gap-3 sm:grid-cols-2">
+          <label className="sm:col-span-2">
+            <span className="text-xs text-slate-400">Display name</span>
+            <input
+              value={displayName}
+              onChange={(event) => onDisplayNameChange(event.target.value)}
+              className="mt-1 w-full rounded border border-slate-600 bg-slate-900 px-2 py-1.5 text-sm"
+              autoFocus
+            />
+          </label>
+          <label>
+            <span className="text-xs text-slate-400">Context window</span>
+            <input
+              value={contextWindow}
+              onChange={(event) => onContextWindowChange(event.target.value)}
+              type="number"
+              min="1"
+              step="1"
+              placeholder="e.g. 128000"
+              className="mt-1 w-full rounded border border-slate-600 bg-slate-900 px-2 py-1.5 text-sm"
+            />
+          </label>
+          <label>
+            <span className="text-xs text-slate-400">Max output</span>
+            <input
+              value={maxOutput}
+              onChange={(event) => onMaxOutputChange(event.target.value)}
+              type="number"
+              min="1"
+              step="1"
+              placeholder="optional"
+              className="mt-1 w-full rounded border border-slate-600 bg-slate-900 px-2 py-1.5 text-sm"
+            />
+          </label>
+          <label>
+            <span className="text-xs text-slate-400">Max input</span>
+            <input
+              value={maxInput}
+              onChange={(event) => onMaxInputChange(event.target.value)}
+              type="number"
+              min="1"
+              step="1"
+              placeholder="optional"
+              className="mt-1 w-full rounded border border-slate-600 bg-slate-900 px-2 py-1.5 text-sm"
+            />
+          </label>
+        </div>
+        {error && <p className="mt-3 text-xs text-red-400">{error}</p>}
+        <div className="mt-4 flex justify-end gap-2">
+          <button
+            onClick={onClose}
+            className="rounded px-3 py-1 text-sm text-slate-400 hover:text-slate-200"
+          >
+            Cancel
+          </button>
+          <button
+            onClick={onSave}
+            disabled={saving}
+            className="rounded bg-blue-600 px-3 py-1 text-sm text-white hover:bg-blue-500 disabled:opacity-50"
+          >
+            {saving ? "Saving…" : "Save changes"}
+          </button>
+        </div>
+      </div>
+    </div>
   );
 }
 

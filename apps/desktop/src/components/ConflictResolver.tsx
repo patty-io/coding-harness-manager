@@ -11,38 +11,51 @@ export function ConflictResolver({
   onResolve: (identityId: string) => void;
   onClose: () => void;
 }) {
-  if (outcome === "Unknown") {
+  if (outcome === "unknown") {
     return (
       <Modal onClose={onClose}>
-        <h2 className="font-medium">No models.dev match</h2>
+        <h2 className="font-medium">No catalog match</h2>
         <p className="mt-1 text-sm text-slate-300">
-          No canonical model could be matched for this route. You can still use
-          it; metadata will remain provider-discovered.
+          The model id did not match the local models.dev catalog. You can
+          still use it; its current provider metadata is unchanged.
         </p>
         <CloseButton onClose={onClose} />
       </Modal>
     );
   }
-  if ("Matched" in outcome) {
+  if ("matched" in outcome) {
     return (
       <Modal onClose={onClose}>
         <h2 className="font-medium">
-          Matched: {outcome.Matched.identity_name}
+          Catalog match: {outcome.matched.identity_name}
         </h2>
         <p className="mt-1 text-sm text-slate-300">
-          {outcome.Matched.confidence}% confidence — linked automatically.
+          {outcome.matched.confidence}% confidence — canonical metadata was
+          linked automatically.
         </p>
         <CloseButton onClose={onClose} />
       </Modal>
     );
   }
-  const candidates = outcome.Ambiguous.candidates;
+  if (!("ambiguous" in outcome)) {
+    return (
+      <Modal onClose={onClose}>
+        <h2 className="font-medium">Catalog match unavailable</h2>
+        <p className="mt-1 text-sm text-slate-300">
+          The matcher returned an unexpected result. Your model route was not
+          changed.
+        </p>
+        <CloseButton onClose={onClose} />
+      </Modal>
+    );
+  }
+  const candidates = outcome.ambiguous.candidates;
   return (
     <Modal onClose={onClose}>
-      <h2 className="font-medium">Ambiguous match — choose a candidate</h2>
+      <h2 className="font-medium">Choose catalog metadata</h2>
       <p className="mt-1 text-sm text-slate-300">
-        Multiple canonical models could correspond to this route. Select the
-        right one:
+        More than one catalog model resembles this route. Choose the one that
+        describes your provider model:
       </p>
       <ul className="mt-3 space-y-2">
         {candidates.map((c) => (

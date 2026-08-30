@@ -607,9 +607,9 @@ export interface EnrichCandidate {
 }
 
 export type EnrichOutcome =
-  | { Matched: { confidence: number; identity_id: string; identity_name: string } }
-  | { Ambiguous: { candidates: EnrichCandidate[]; current: unknown } }
-  | "Unknown";
+  | { matched: { confidence: number; identity_id: string; identity_name: string } }
+  | { ambiguous: { candidates: EnrichCandidate[]; current: unknown } }
+  | "unknown";
 
 export async function listRoutes(): Promise<ModelRouteView[]> {
   return invoke<ModelRouteView[]>("list_routes_cmd");

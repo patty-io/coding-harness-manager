@@ -2,10 +2,11 @@
 
 use chm_core::domain::models::{ModelIdentity, ModelRoute, ProviderCatalogModel};
 use chm_database::repos::models::{
-    create_identity, create_route, delete_route, list_catalog_models, list_routes, update_route,
+    create_identity, create_route, delete_route, get_identity_by_models_dev_id,
+    list_catalog_models, list_routes, update_route,
 };
 use chm_database::repos::providers::{list_endpoints, list_providers};
-use chm_models_dev::match_bundled;
+use chm_models_dev::{ModelsDevModel, bundled_catalog, match_bundled};
 use serde::{Deserialize, Serialize};
 use sqlx::{Pool, Sqlite};
 use std::collections::HashMap;
@@ -408,6 +409,78 @@ pub async fn add_catalog_batch(
 
 // --- models.dev enrichment (6.4) ---
 
+fn has_user_override(route: &ModelRoute, field: &str) -> bool {
+    route
+        .overrides
+        .get(field)
+        .and_then(|value| value.get("source"))
+        .and_then(|value| value.as_str())
+        == Some("user_override")
+}
+
+async fn get_or_create_identity(
+    pool: &Pool<Sqlite>,
+    model: &ModelsDevModel,
+) -> Result<ModelIdentity, String> {
+    if let Some(identity) = get_identity_by_models_dev_id(pool, &model.id)
+        .await
+        .map_err(|e| e.to_string())?
+    {
+        return Ok(identity);
+    }
+    let identity = ModelIdentity {
+        id: Uuid::new_v4(),
+        canonical_id: model.id.clone(),
+        display_name: model.name.clone(),
+        family: model.id.split('/').next().map(String::from),
+        models_dev_id: Some(model.id.clone()),
+        metadata: serde_json::json!({
+            "context": model.context_window,
+            "max_output": model.max_output,
+        }),
+        created_at: chrono::Utc::now(),
+        updated_at: chrono::Utc::now(),
+    };
+    create_identity(pool, &identity)
+        .await
+        .map_err(|e| e.to_string())
+}
+
+fn apply_catalog_metadata(
+    mut route: ModelRoute,
+    identity: &ModelIdentity,
+    model: &ModelsDevModel,
+) -> ModelRoute {
+    route.model_identity_id = Some(identity.id);
+    let context_missing = route.context_window.is_none() && !has_user_override(&route, "context_window");
+    let output_missing = route.max_output.is_none() && !has_user_override(&route, "max_output");
+    let overrides = route
+        .overrides
+        .as_object_mut()
+        .expect("model route overrides must be a JSON object");
+    if context_missing {
+        if let Some(context) = model.context_window {
+            route.context_window = Some(context);
+            overrides
+                .entry("context_window".to_string())
+                .or_insert_with(|| serde_json::json!({"value": context, "source": "models.dev"}));
+        }
+    }
+    if output_missing {
+        if let Some(max_output) = model.max_output {
+            route.max_output = Some(max_output);
+            overrides
+                .entry("max_output".to_string())
+                .or_insert_with(|| serde_json::json!({"value": max_output, "source": "models.dev"}));
+        }
+    }
+    overrides.insert(
+        "model_identity_id".to_string(),
+        serde_json::json!({"value": identity.id.to_string(), "source": "models.dev"}),
+    );
+    route
+}
+
 #[derive(Debug, Clone, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct EnrichCandidate {
@@ -451,39 +524,8 @@ pub async fn enrich_route(pool: &Pool<Sqlite>, route_id: &str) -> Result<EnrichO
         0 => Ok(EnrichOutcome::Unknown),
         c if c >= 85 => {
             let model = hit.model.expect("confidence implies model");
-            let identity = ModelIdentity {
-                id: Uuid::new_v4(),
-                canonical_id: model.id.clone(),
-                display_name: model.name.clone(),
-                family: model.id.split('/').next().map(String::from),
-                models_dev_id: Some(model.id.clone()),
-                metadata: serde_json::json!({
-                    "context": model.context_window,
-                    "max_output": model.max_output,
-                }),
-                created_at: chrono::Utc::now(),
-                updated_at: chrono::Utc::now(),
-            };
-            create_identity(pool, &identity)
-                .await
-                .map_err(|e| e.to_string())?;
-            // write field provenance (models.dev source) — only where the user
-            // hasn't overridden and no value exists yet
-            let mut overrides = route.overrides.clone();
-            let fields = overrides.as_object_mut().unwrap();
-            fields
-                .entry("context_window".to_string())
-                .or_insert_with(|| {
-                    serde_json::json!({
-                        "value": model.context_window,
-                        "source": "models.dev",
-                    })
-                });
-            let updated = ModelRoute {
-                model_identity_id: Some(identity.id),
-                overrides,
-                ..route.clone()
-            };
+            let identity = get_or_create_identity(pool, &model).await?;
+            let updated = apply_catalog_metadata(route.clone(), &identity, &model);
             update_route(pool, &updated)
                 .await
                 .map_err(|e| e.to_string())?;
@@ -548,22 +590,33 @@ pub async fn resolve_enrichment_cmd(
     identity_id: String,
 ) -> Result<(), String> {
     let id = Uuid::parse_str(&route_id).map_err(|e| e.to_string())?;
-    let iid = Uuid::parse_str(&identity_id).map_err(|e| e.to_string())?;
     let routes = list_routes(&state.pool).await.map_err(|e| e.to_string())?;
     let route = routes
         .iter()
         .find(|r| r.id == id)
         .ok_or("route not found")?;
-    let mut overrides = route.overrides.clone();
-    overrides
-        .as_object_mut()
-        .unwrap()
-        .entry("model_identity_id".to_string())
-        .or_insert_with(|| serde_json::json!(identity_id));
-    let updated = ModelRoute {
-        model_identity_id: Some(iid),
-        overrides,
-        ..route.clone()
+    let updated = if let Ok(iid) = Uuid::parse_str(&identity_id) {
+        // Keep accepting the original identity UUID form for callers that
+        // already resolved a candidate.
+        let mut updated = route.clone();
+        updated.model_identity_id = Some(iid);
+        updated
+            .overrides
+            .as_object_mut()
+            .expect("model route overrides must be a JSON object")
+            .entry("model_identity_id".to_string())
+            .or_insert_with(|| serde_json::json!(identity_id));
+        updated
+    } else {
+        // Ambiguous candidates are represented by their models.dev id in the
+        // UI, not by a database UUID. Materialize/reuse the identity here.
+        let model = bundled_catalog()
+            .models
+            .iter()
+            .find(|model| model.id == identity_id)
+            .ok_or_else(|| format!("unknown models.dev candidate {identity_id}"))?;
+        let identity = get_or_create_identity(&state.pool, model).await?;
+        apply_catalog_metadata(route.clone(), &identity, model)
     };
     update_route(&state.pool, &updated)
         .await
@@ -601,7 +654,11 @@ pub async fn set_user_override_cmd(
 
 #[cfg(test)]
 mod tests {
-    use super::catalog_route_overrides;
+    use super::{EnrichOutcome, apply_catalog_metadata, catalog_route_overrides};
+    use chm_core::domain::models::{ModelIdentity, ModelRoute};
+    use chm_models_dev::ModelsDevModel;
+    use serde_json::json;
+    use uuid::Uuid;
 
     #[test]
     fn discovered_route_keeps_the_canonical_provider_identity() {
@@ -615,5 +672,55 @@ mod tests {
             overrides["provenance"]["source"],
             serde_json::json!("provider_discovery")
         );
+    }
+
+    #[test]
+    fn enrich_outcome_uses_the_camel_case_wire_shape() {
+        let matched = serde_json::to_value(EnrichOutcome::Matched {
+            confidence: 100,
+            identity_id: "identity".into(),
+            identity_name: "GLM".into(),
+        })
+        .unwrap();
+        assert_eq!(matched["matched"]["identity_id"], "identity");
+        assert!(matched.get("Matched").is_none());
+
+        let unknown = serde_json::to_value(EnrichOutcome::Unknown).unwrap();
+        assert_eq!(unknown, json!("unknown"));
+    }
+
+    #[test]
+    fn catalog_metadata_fills_missing_route_limits_without_overwriting_identity() {
+        let route = ModelRoute::new(
+            "glm-5".into(),
+            "GLM 5".into(),
+            None,
+            json!({}),
+            json!({}),
+        );
+        let identity = ModelIdentity {
+            id: Uuid::new_v4(),
+            canonical_id: "zai-org/glm-5".into(),
+            display_name: "GLM 5".into(),
+            family: Some("zai-org".into()),
+            models_dev_id: Some("zai-org/glm-5".into()),
+            metadata: json!({}),
+            created_at: chrono::Utc::now(),
+            updated_at: chrono::Utc::now(),
+        };
+        let model = ModelsDevModel {
+            id: "zai-org/glm-5".into(),
+            name: "GLM 5".into(),
+            provider: Some("zai".into()),
+            context_window: Some(200_000),
+            max_output: Some(32_000),
+            modalities: json!({}),
+        };
+
+        let updated = apply_catalog_metadata(route, &identity, &model);
+        assert_eq!(updated.context_window, Some(200_000));
+        assert_eq!(updated.max_output, Some(32_000));
+        assert_eq!(updated.model_identity_id, Some(identity.id));
+        assert_eq!(updated.overrides["context_window"]["source"], "models.dev");
     }
 }
