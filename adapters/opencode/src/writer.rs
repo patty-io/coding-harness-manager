@@ -15,6 +15,35 @@ pub fn fold_model(
     context_window: Option<i64>,
     capabilities: &Value,
 ) {
+    fold_model_with_provider(
+        doc,
+        provider_id,
+        model_id,
+        display_name,
+        context_window,
+        capabilities,
+        None,
+    );
+}
+
+/// Folds a model and, when the route carries endpoint metadata, materializes
+/// the provider settings OpenCode needs for a custom provider. Existing
+/// provider settings are preserved; only missing values are filled.
+pub fn fold_model_with_provider(
+    doc: &mut Value,
+    provider_id: &str,
+    model_id: &str,
+    display_name: &str,
+    context_window: Option<i64>,
+    capabilities: &Value,
+    provider_config: Option<&Value>,
+) {
+    // Older CHM versions wrote providerless routes under a synthetic
+    // `custom` provider. When the route now carries its canonical provider,
+    // move that legacy model instead of leaving two copies in the config.
+    if !provider_id.eq_ignore_ascii_case("custom") {
+        take_legacy_custom_model(doc, model_id);
+    }
     let providers = doc
         .as_object_mut()
         .expect("document must be an object")
@@ -27,6 +56,7 @@ pub fn fold_model(
         .or_insert_with(|| Value::Object(Map::new()))
         .as_object_mut()
         .expect("provider entry must be an object");
+    configure_provider(pv, provider_config);
     let models = pv
         .entry("models")
         .or_insert_with(|| Value::Object(Map::new()))
@@ -52,6 +82,102 @@ pub fn fold_model(
         }
     }
     models.insert(model_id.to_string(), Value::Object(entry));
+}
+
+fn configure_provider(provider: &mut Map<String, Value>, config: Option<&Value>) {
+    let Some(config) = config.and_then(Value::as_object) else {
+        return;
+    };
+
+    if let Some(name) = config
+        .get("display_name")
+        .and_then(Value::as_str)
+        .map(str::trim)
+        .filter(|name| !name.is_empty())
+    {
+        provider
+            .entry("name")
+            .or_insert_with(|| Value::String(name.to_string()));
+    }
+
+    if let Some(protocol) = config.get("protocol").and_then(Value::as_str) {
+        provider.entry("npm").or_insert_with(|| {
+            Value::String(
+                match protocol {
+                    "openai-responses" => "@ai-sdk/openai",
+                    "anthropic-messages" => "@ai-sdk/anthropic",
+                    _ => "@ai-sdk/openai-compatible",
+                }
+                .to_string(),
+            )
+        });
+    }
+
+    let base_url = config
+        .get("base_url")
+        .and_then(Value::as_str)
+        .map(str::trim)
+        .filter(|base_url| !base_url.is_empty());
+    let api_key_env = config
+        .get("api_key_env")
+        .and_then(Value::as_str)
+        .map(str::trim)
+        .filter(|name| !name.is_empty());
+    if base_url.is_none() && api_key_env.is_none() {
+        return;
+    }
+    let options = provider
+        .entry("options")
+        .or_insert_with(|| Value::Object(Map::new()))
+        .as_object_mut()
+        .expect("provider options must be an object");
+    if let Some(base_url) = base_url {
+        options
+            .entry("baseURL")
+            .or_insert_with(|| Value::String(base_url.to_string()));
+    }
+    if let Some(api_key_env) = api_key_env {
+        options
+            .entry("apiKey")
+            .or_insert_with(|| Value::String(format!("{{env:{api_key_env}}}")));
+    }
+}
+
+/// Remove a model written by the old providerless fallback. We only touch a
+/// `custom` provider that has no provider-level configuration (`npm` or
+/// `options`), which distinguishes CHM's legacy stub from a user-managed
+/// custom provider. The returned value is intentionally unused today; the
+/// target provider is rewritten from the canonical route metadata below.
+fn take_legacy_custom_model(doc: &mut Value, model_id: &str) -> Option<Value> {
+    let providers = doc
+        .as_object_mut()
+        .and_then(|object| object.get_mut("provider"))
+        .and_then(|provider| provider.as_object_mut())?;
+    let custom_id = providers
+        .keys()
+        .find(|id| id.eq_ignore_ascii_case("custom"))
+        .cloned()?;
+    let value = {
+        let custom = providers.get_mut(&custom_id)?.as_object_mut()?;
+        if custom.contains_key("npm") || custom.contains_key("options") {
+            return None;
+        }
+        let models = custom.get_mut("models")?.as_object_mut()?;
+        let value = models.remove(model_id);
+        if models.is_empty() {
+            custom.remove("models");
+        }
+        value
+    };
+    if value.is_some()
+        && providers
+            .get(&custom_id)
+            .and_then(Value::as_object)
+            .is_some_and(Map::is_empty)
+    {
+        providers.remove(&custom_id);
+    }
+    value
 }
 
 /// Folds an MCP server into `mcp.<name>` (local: command array + environment;

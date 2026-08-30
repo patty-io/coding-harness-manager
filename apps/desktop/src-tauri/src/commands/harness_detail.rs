@@ -404,8 +404,16 @@ pub async fn harness_models_view_cmd(
                             base_url_provider.get(&crate::services::normalize_base_url(b))
                         })
                         .copied();
+                    let display_name = pid
+                        .and_then(|provider_id| {
+                            providers
+                                .iter()
+                                .find(|provider| provider.id == provider_id)
+                                .map(|provider| provider.display_name.clone())
+                        })
+                        .unwrap_or(pname);
                     (
-                        Some(pname),
+                        Some(display_name),
                         Some("harness".to_string()),
                         base,
                         pid.map(|p| p.to_string()),

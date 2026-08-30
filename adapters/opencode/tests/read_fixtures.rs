@@ -1,6 +1,7 @@
 use chm_core::domain::harness::{HarnessInstallation, HarnessType, InstallationStatus};
 use chm_harness_sdk::adapter::types::HarnessAdapter;
 use opencode_adapter::OpenCodeAdapter;
+use opencode_adapter::writer;
 use serde_json::Value;
 use std::path::PathBuf;
 
@@ -85,4 +86,71 @@ fn opencode_full_config_parses_without_warnings() {
             version_dir.display()
         );
     }
+}
+
+#[test]
+fn writer_migrates_legacy_custom_model_to_its_declared_provider() {
+    let raw = r#"{
+        "provider": {
+            "custom": {
+                "models": {"qwen3.8-27b": {"name": "qwen3.8-27b"}}
+            }
+        }
+    }"#;
+    let mut doc = writer::parse_document(raw).unwrap();
+
+    writer::fold_model(
+        &mut doc,
+        "yolo-auto",
+        "qwen3.8-27b",
+        "Qwen 3.8 27B",
+        None,
+        &serde_json::json!({}),
+    );
+
+    assert!(
+        doc["provider"]["custom"]["models"]
+            .get("qwen3.8-27b")
+            .is_none()
+    );
+    assert_eq!(
+        doc["provider"]["yolo-auto"]["models"]["qwen3.8-27b"]["name"],
+        serde_json::json!("Qwen 3.8 27B")
+    );
+}
+
+#[test]
+fn writer_configures_a_discovered_openai_provider_without_copying_secrets() {
+    let mut doc = writer::parse_document("{}").unwrap();
+
+    writer::fold_model_with_provider(
+        &mut doc,
+        "yolo-auto",
+        "qwen3.8-27b",
+        "qwen3.8-27b",
+        None,
+        &serde_json::json!({}),
+        Some(&serde_json::json!({
+            "display_name": "Yolo-Auto",
+            "base_url": "https://yolo-auto.example/v1",
+            "protocol": "openai-chat",
+            "api_key_env": "YOLO_AUTO_API_KEY"
+        })),
+    );
+
+    let provider = &doc["provider"]["yolo-auto"];
+    assert_eq!(provider["name"], serde_json::json!("Yolo-Auto"));
+    assert_eq!(
+        provider["npm"],
+        serde_json::json!("@ai-sdk/openai-compatible")
+    );
+    assert_eq!(
+        provider["options"]["baseURL"],
+        serde_json::json!("https://yolo-auto.example/v1")
+    );
+    assert_eq!(
+        provider["options"]["apiKey"],
+        serde_json::json!("{env:YOLO_AUTO_API_KEY}")
+    );
+    assert!(provider.get("secret").is_none());
 }

@@ -14,6 +14,19 @@ use uuid::Uuid;
 
 use crate::AppState;
 
+fn catalog_route_overrides(catalog_id: &str, provider_name: Option<&str>) -> serde_json::Value {
+    let mut overrides = serde_json::json!({
+        "provenance": {"source": "provider_discovery", "catalog_id": catalog_id},
+    });
+    if let Some(provider) = provider_name
+        .map(str::trim)
+        .filter(|provider| !provider.is_empty())
+    {
+        overrides["native_provider_id"] = serde_json::Value::String(provider.to_string());
+    }
+    overrides
+}
+
 #[derive(Debug, Clone, Serialize)]
 pub struct ModelRouteView {
     pub id: String,
@@ -293,6 +306,7 @@ pub async fn add_catalog_to_my_models(
     // find the catalog row (scan all endpoints' catalogs)
     let providers = list_providers(pool).await.map_err(|e| e.to_string())?;
     let mut found: Option<ProviderCatalogModel> = None;
+    let mut found_provider_name: Option<String> = None;
     for p in &providers {
         for e in list_endpoints(pool, p.id)
             .await
@@ -304,6 +318,7 @@ pub async fn add_catalog_to_my_models(
             {
                 if m.id == id {
                     found = Some(m);
+                    found_provider_name = Some(p.name.clone());
                 }
             }
         }
@@ -321,9 +336,7 @@ pub async fn add_catalog_to_my_models(
         cat.remote_model_id.clone(),
         cat.raw_metadata.get("context").and_then(|v| v.as_i64()),
         cat.raw_metadata.clone(),
-        serde_json::json!({
-            "provenance": {"source": "provider_discovery", "catalog_id": catalog_id},
-        }),
+        catalog_route_overrides(catalog_id, found_provider_name.as_deref()),
     );
     let route = ModelRoute {
         endpoint_id: cat.endpoint_id,
@@ -343,6 +356,16 @@ pub async fn add_catalog_batch(
     let pool = &state.pool;
     let mut tx = pool.begin().await.map_err(|e| e.to_string())?;
     let existing = list_routes(pool).await.map_err(|e| e.to_string())?;
+    let providers = list_providers(pool).await.map_err(|e| e.to_string())?;
+    let mut provider_by_endpoint: HashMap<Uuid, String> = HashMap::new();
+    for provider in &providers {
+        for endpoint in list_endpoints(pool, provider.id)
+            .await
+            .map_err(|e| e.to_string())?
+        {
+            provider_by_endpoint.insert(endpoint.id, provider.name.clone());
+        }
+    }
     let mut seen: std::collections::HashSet<(Uuid, String)> = existing
         .iter()
         .map(|r| (r.endpoint_id, r.remote_model_id.clone()))
@@ -366,9 +389,10 @@ pub async fn add_catalog_batch(
             cat.remote_model_id.clone(),
             cat.raw_metadata.get("context").and_then(|v| v.as_i64()),
             cat.raw_metadata.clone(),
-            serde_json::json!({
-                "provenance": {"source": "provider_discovery", "catalog_id": cid},
-            }),
+            catalog_route_overrides(
+                cid,
+                provider_by_endpoint.get(&cat.endpoint_id).map(String::as_str),
+            ),
         );
         let route = ModelRoute {
             endpoint_id: cat.endpoint_id,
@@ -573,4 +597,23 @@ pub async fn set_user_override_cmd(
         .await
         .map_err(|e| e.to_string())?;
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::catalog_route_overrides;
+
+    #[test]
+    fn discovered_route_keeps_the_canonical_provider_identity() {
+        let overrides = catalog_route_overrides("catalog-id", Some("yolo-auto"));
+
+        assert_eq!(
+            overrides.get("native_provider_id").and_then(|value| value.as_str()),
+            Some("yolo-auto")
+        );
+        assert_eq!(
+            overrides["provenance"]["source"],
+            serde_json::json!("provider_discovery")
+        );
+    }
 }

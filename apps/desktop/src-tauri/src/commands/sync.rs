@@ -5,10 +5,12 @@ use chm_core::domain::harness::{
     BindingType, HarnessInstallation, HarnessMcpBinding, HarnessModelBinding, HarnessSkillBinding,
 };
 use chm_core::domain::history::{ConfigSnapshot, TransactionStatus, TransactionType};
+use chm_core::domain::models::ModelRoute;
 use chm_database::repos::harness::{list_model_bindings, upsert_model_binding};
 use chm_database::repos::history::{add_snapshot, begin_transaction, finish_transaction};
 use chm_database::repos::mcp::{list_mcp_bindings, list_mcp_servers, upsert_mcp_binding};
 use chm_database::repos::models::list_routes;
+use chm_database::repos::providers::{list_endpoints, list_providers};
 use chm_database::repos::skills::{list_skill_bindings, list_skills, upsert_skill_binding};
 use chm_filesystem::backup_file;
 use chm_harness_sdk::adapter::plan::{
@@ -96,6 +98,49 @@ fn effective_mode(mode: &str, selection: Option<&SyncSelection>) -> Result<Mode,
     })
 }
 
+/// Routes created from provider discovery may predate native-provider
+/// metadata, but their endpoint still identifies the canonical provider.
+/// Supply that identity to the harness adapter at sync time without mutating
+/// the user's stored route or inventing a `custom` provider.
+#[derive(Debug, Clone)]
+struct EndpointProviderInfo {
+    provider_id: String,
+    display_name: String,
+    base_url: String,
+    protocol: String,
+    api_key_env: Option<String>,
+}
+
+fn route_with_endpoint_provider(
+    mut route: ModelRoute,
+    provider_by_endpoint: &std::collections::HashMap<Uuid, EndpointProviderInfo>,
+) -> ModelRoute {
+    let Some(provider) = provider_by_endpoint.get(&route.endpoint_id) else {
+        return route;
+    };
+    let route_provider = native_provider_id(&route).map(str::to_string);
+    if route_provider.is_none() {
+        route.overrides["native_provider_id"] =
+            serde_json::Value::String(provider.provider_id.clone());
+    }
+    let provider_matches_endpoint = route_provider
+        .as_deref()
+        .map(|id| id.eq_ignore_ascii_case(&provider.provider_id))
+        .unwrap_or(true);
+    if route.overrides.get("native_provider_config").is_none() && provider_matches_endpoint {
+        let mut config = serde_json::json!({
+            "display_name": provider.display_name,
+            "base_url": provider.base_url,
+            "protocol": provider.protocol,
+        });
+        if let Some(api_key_env) = &provider.api_key_env {
+            config["api_key_env"] = serde_json::Value::String(api_key_env.clone());
+        }
+        route.overrides["native_provider_config"] = config;
+    }
+    route
+}
+
 async fn desired_state(
     pool: &Pool<Sqlite>,
     selection: Option<&SyncSelection>,
@@ -103,6 +148,29 @@ async fn desired_state(
     let route_ids = selection.map(|s| s.model_ids.iter().collect::<std::collections::HashSet<_>>());
     let mcp_ids = selection.map(|s| s.mcp_ids.iter().collect::<std::collections::HashSet<_>>());
     let skill_ids = selection.map(|s| s.skill_ids.iter().collect::<std::collections::HashSet<_>>());
+    let providers = list_providers(pool).await.map_err(|e| e.to_string())?;
+    let mut provider_by_endpoint = std::collections::HashMap::new();
+    for provider in &providers {
+        for endpoint in list_endpoints(pool, provider.id)
+            .await
+            .map_err(|e| e.to_string())?
+        {
+            let api_key_env = endpoint.credential_ref.as_ref().and_then(|credential| {
+                (credential.kind == chm_core::domain::credentials::CredentialKind::Env)
+                    .then(|| credential.reference.clone())
+            });
+            provider_by_endpoint.insert(
+                endpoint.id,
+                EndpointProviderInfo {
+                    provider_id: provider.name.clone(),
+                    display_name: provider.display_name.clone(),
+                    base_url: endpoint.base_url,
+                    protocol: endpoint.protocol.as_str().to_string(),
+                    api_key_env,
+                },
+            );
+        }
+    }
     Ok(DesiredState {
         routes: list_routes(pool)
             .await
@@ -114,6 +182,7 @@ async fn desired_state(
                     .as_ref()
                     .is_none_or(|ids| ids.contains(&r.id.to_string()))
             })
+            .map(|route| route_with_endpoint_provider(route, &provider_by_endpoint))
             .collect(),
         mcp_servers: list_mcp_servers(pool)
             .await
@@ -1029,10 +1098,58 @@ pub async fn bind_mcp_sync(
 
 #[cfg(test)]
 mod tests {
-    use super::{SyncSelection, activity_summary, effective_mode, validate_apply_request};
+    use super::{
+        EndpointProviderInfo, SyncSelection, activity_summary, effective_mode,
+        route_with_endpoint_provider, validate_apply_request,
+    };
     use chm_harness_sdk::adapter::plan::{
         AddAction, Mode, PlanAction, ReconciliationPlan, RemoveAction, UpdateAction,
     };
+    use chm_core::domain::models::ModelRoute;
+    use std::collections::HashMap;
+    use uuid::Uuid;
+
+    #[test]
+    fn route_without_native_provider_uses_its_endpoint_provider() {
+        let endpoint_id = Uuid::new_v4();
+        let mut route = ModelRoute::new(
+            "qwen3.8-27b".into(),
+            "Qwen 3.8 27B".into(),
+            None,
+            serde_json::json!({}),
+            serde_json::json!({}),
+        );
+        route.endpoint_id = endpoint_id;
+        let providers = HashMap::from([(
+            endpoint_id,
+            EndpointProviderInfo {
+                provider_id: "yolo-auto".into(),
+                display_name: "Yolo-Auto".into(),
+                base_url: "https://yolo-auto.example/v1".into(),
+                protocol: "openai-chat".into(),
+                api_key_env: Some("YOLO_AUTO_API_KEY".into()),
+            },
+        )]);
+
+        let route = route_with_endpoint_provider(route, &providers);
+
+        assert_eq!(
+            route.overrides["native_provider_id"],
+            serde_json::json!("yolo-auto")
+        );
+        assert_eq!(
+            route.overrides["native_provider_config"]["display_name"],
+            serde_json::json!("Yolo-Auto")
+        );
+        assert_eq!(
+            route.overrides["native_provider_config"]["base_url"],
+            serde_json::json!("https://yolo-auto.example/v1")
+        );
+        assert_eq!(
+            route.overrides["native_provider_config"]["api_key_env"],
+            serde_json::json!("YOLO_AUTO_API_KEY")
+        );
+    }
 
     #[test]
     fn stale_preview_is_rejected_before_writes() {

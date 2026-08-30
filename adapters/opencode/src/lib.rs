@@ -88,7 +88,7 @@ impl HarnessAdapter for OpenCodeAdapter {
                         .get("display_name")
                         .and_then(|v| v.as_str())
                         .unwrap_or(model_id);
-                    writer::fold_model(
+                    writer::fold_model_with_provider(
                         &mut doc,
                         provider_id,
                         model_id,
@@ -97,6 +97,9 @@ impl HarnessAdapter for OpenCodeAdapter {
                         a.payload
                             .get("capabilities")
                             .unwrap_or(&serde_json::json!({})),
+                        a.payload
+                            .get("overrides")
+                            .and_then(|overrides| overrides.get("native_provider_config")),
                     );
                     folded = true;
                 }

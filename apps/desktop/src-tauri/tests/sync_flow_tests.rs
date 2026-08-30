@@ -173,6 +173,80 @@ async fn execute_sync_applies_and_records_snapshots() {
 }
 
 #[tokio::test]
+async fn providerless_discovery_route_syncs_under_its_endpoint_provider() {
+    let pool = connect_test().await.unwrap();
+    let dir = tempfile::TempDir::new().unwrap();
+    let provider = create_provider(&pool, "yolo-auto", "Yolo-Auto")
+        .await
+        .unwrap();
+    let endpoint = chm_core::domain::provider::ProviderEndpoint {
+        id: Uuid::new_v4(),
+        provider_id: provider.id,
+        name: "API".into(),
+        base_url: "https://yolo-auto.example/v1".into(),
+        protocol: chm_core::domain::provider::Protocol::OpenAiChatCompletions,
+        discovery_path: Some("/v1/models".into()),
+        auth_type: chm_core::domain::provider::AuthType::BearerToken,
+        credential_ref: None,
+        headers: Default::default(),
+        enabled: true,
+        created_at: Utc::now(),
+        updated_at: Utc::now(),
+    };
+    create_endpoint(&pool, &endpoint).await.unwrap();
+    let route = chm_core::domain::models::ModelRoute::new(
+        "qwen3.8-27b".into(),
+        "qwen3.8-27b".into(),
+        None,
+        serde_json::json!({}),
+        serde_json::json!({}),
+    );
+    let route = chm_core::domain::models::ModelRoute {
+        endpoint_id: endpoint.id,
+        ..route
+    };
+    create_route(&pool, &route).await.unwrap();
+
+    let inst = HarnessInstallation {
+        id: Uuid::new_v4(),
+        harness_type: HarnessType::OpenCode,
+        executable_path: None,
+        version: Some("1.18.23".into()),
+        config_path: Some(dir.path().join("opencode.jsonc").display().to_string()),
+        detected_at: Utc::now(),
+        last_scanned_at: None,
+        status: InstallationStatus::Installed,
+    };
+    upsert_installation(&pool, &inst).await.unwrap();
+    chm_filesystem::atomic_write(
+        &dir.path().join("opencode.jsonc"),
+        r#"{"provider":{"custom":{"models":{"qwen3.8-27b":{"name":"qwen3.8-27b"}}}}}"#,
+    )
+    .unwrap();
+
+    execute_sync(&pool, &inst.id.to_string(), &Mode::Append, false)
+        .await
+        .unwrap();
+    let content = std::fs::read_to_string(dir.path().join("opencode.jsonc")).unwrap();
+    let config: serde_json::Value = serde_json::from_str(&content).unwrap();
+    assert!(config["provider"]["custom"]["models"]
+        .get("qwen3.8-27b")
+        .is_none());
+    assert_eq!(
+        config["provider"]["yolo-auto"]["name"],
+        serde_json::json!("Yolo-Auto")
+    );
+    assert_eq!(
+        config["provider"]["yolo-auto"]["options"]["baseURL"],
+        serde_json::json!("https://yolo-auto.example/v1")
+    );
+    assert_eq!(
+        config["provider"]["yolo-auto"]["models"]["qwen3.8-27b"]["name"],
+        serde_json::json!("qwen3.8-27b")
+    );
+}
+
+#[tokio::test]
 async fn sync_preview_is_idempotent_after_apply() {
     let pool = connect_test().await.unwrap();
     let dir = tempfile::TempDir::new().unwrap();
