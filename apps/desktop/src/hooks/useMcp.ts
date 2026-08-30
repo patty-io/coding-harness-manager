@@ -15,7 +15,10 @@ export function useCreateMcp() {
   const qc = useQueryClient();
   return useMutation({
     mutationFn: (input: McpInput) => createMcp(input),
-    onSuccess: () => qc.invalidateQueries({ queryKey: ["mcp"] }),
+    onSuccess: () => {
+      void qc.invalidateQueries({ queryKey: ["mcp"] });
+      void qc.invalidateQueries({ queryKey: ["detected-mcp"] });
+    },
   });
 }
 

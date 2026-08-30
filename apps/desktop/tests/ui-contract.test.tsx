@@ -4,6 +4,7 @@ import { useState } from "react";
 import { describe, expect, it, vi } from "vitest";
 import { ConfirmDialog } from "../src/components/ConfirmDialog";
 import { Field } from "../src/components/Field";
+import { groupDetectedMcps } from "../src/lib/mcpGrouping";
 
 describe("shared UI contracts", () => {
   it("gives confirmation dialogs modal semantics, traps focus, and restores focus", async () => {
@@ -75,5 +76,35 @@ describe("shared UI contracts", () => {
     expect(input).toHaveAttribute("aria-invalid", "true");
     expect(input.getAttribute("aria-describedby")).toContain("model-id-description");
     expect(input.getAttribute("aria-describedby")).toContain("model-id-error");
+  });
+
+  it("groups MCP detections by logical name while retaining distinct configurations", () => {
+    const groups = groupDetectedMcps([
+      {
+        name: "lightpanda",
+        transport: "http",
+        command: null,
+        args: [],
+        url: "http://127.0.0.1:9333/mcp",
+        env: {},
+        foundIn: ["claude-code"],
+        inLibrary: false,
+      },
+      {
+        name: "LightPanda",
+        transport: "http",
+        command: null,
+        args: [],
+        url: "http://127.0.0.1:9336/mcp",
+        env: {},
+        foundIn: ["pi"],
+        inLibrary: false,
+      },
+    ]);
+
+    expect(groups).toHaveLength(1);
+    expect(groups[0].name).toBe("lightpanda");
+    expect(groups[0].foundIn).toEqual(["claude-code", "pi"]);
+    expect(groups[0].entries).toHaveLength(2);
   });
 });

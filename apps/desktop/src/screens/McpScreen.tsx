@@ -6,6 +6,11 @@ import { useQuery } from "@tanstack/react-query";
 import { useCreateMcp, useDeleteMcp, useMcpServers, useRunDiagnostics } from "../hooks/useMcp";
 import { SyncToHarnessButton } from "../components/SyncToHarnessButton";
 import { detectMcp, type DetectedMcp } from "../lib/api";
+import { groupDetectedMcps } from "../lib/mcpGrouping";
+
+function mcpTarget(d: DetectedMcp): string {
+  return d.command ? [d.command, ...d.args].join(" ") : d.url ?? "—";
+}
 
 function DetectedMcpSection({
   onAdd,
@@ -20,7 +25,8 @@ function DetectedMcpSection({
     queryFn: detectMcp,
     enabled: true,
   });
-  const notInLibrary = (detected ?? []).filter((d) => !d.inLibrary);
+  const groups = groupDetectedMcps(detected ?? []);
+  const notInLibrary = groups.filter((group) => !group.inLibrary);
 
   return (
     <div className="mt-4 rounded border border-slate-700 bg-slate-800/60 p-4">
@@ -45,42 +51,90 @@ function DetectedMcpSection({
             <p className="mt-3 text-sm text-slate-500">No MCP servers found in any harness config.</p>
           )}
           <ul className="mt-3 space-y-1.5">
-            {(detected ?? []).map((d) => (
-              <li
-                key={`${d.name}|${d.transport}|${d.command ?? d.url ?? ""}`}
-                className="flex items-center gap-3 rounded border border-slate-700 bg-slate-900 px-3 py-2 text-sm"
-              >
-                <div className="min-w-0 flex-1">
-                  <div className="text-slate-100">
-                    {d.name}
-                    <span className="ml-2 rounded bg-slate-700 px-1.5 py-0.5 text-xs text-slate-300">
-                      {d.transport}
+            {groups.map((group) => {
+              const primary = group.entries.find((entry) => !entry.inLibrary) ?? group.entries[0];
+              const multipleConfigurations = group.entries.length > 1;
+              return (
+                <li
+                  key={group.key}
+                  className="flex items-center gap-3 rounded border border-slate-700 bg-slate-900 px-3 py-2 text-sm"
+                >
+                  <div className="min-w-0 flex-1">
+                    <div className="text-slate-100">
+                      {group.name}
+                      <span className="ml-2 rounded bg-slate-700 px-1.5 py-0.5 text-xs text-slate-300">
+                        {multipleConfigurations
+                          ? `${group.entries.length} configurations`
+                          : primary.transport}
+                      </span>
+                    </div>
+                    <div className="mt-0.5 text-xs text-slate-500">
+                      found in {group.foundIn.join(", ")}
+                    </div>
+                    {!multipleConfigurations && (
+                      <div className="truncate font-mono text-xs text-slate-500">
+                        {mcpTarget(primary)}
+                      </div>
+                    )}
+                    {multipleConfigurations && (
+                      <details className="mt-1 text-xs text-slate-500">
+                        <summary className="cursor-pointer text-slate-400">
+                          Show configuration details
+                        </summary>
+                        <ul className="mt-1 space-y-1 border-l border-slate-700 pl-3">
+                          {group.entries.map((entry) => (
+                            <li
+                              key={`${entry.transport}|${entry.command ?? entry.url ?? ""}|${entry.foundIn.join(",")}`}
+                              className="flex flex-wrap items-center gap-x-2 gap-y-1"
+                            >
+                              <span className="rounded bg-slate-700 px-1.5 py-0.5 text-slate-300">
+                                {entry.transport}
+                              </span>
+                              <span className="min-w-0 max-w-full truncate font-mono text-slate-500">
+                                {mcpTarget(entry)}
+                              </span>
+                              <span className="text-slate-600">
+                                found in {entry.foundIn.join(", ")}
+                              </span>
+                              {!group.inLibrary && (
+                                <button
+                                  onClick={() => onAdd(entry)}
+                                  disabled={adding}
+                                  className="rounded border border-blue-500 px-1.5 py-0.5 text-blue-300 hover:bg-blue-500/10 disabled:opacity-50"
+                                >
+                                  + Add this configuration
+                                </button>
+                              )}
+                            </li>
+                          ))}
+                        </ul>
+                      </details>
+                    )}
+                  </div>
+                  {!multipleConfigurations && group.inLibrary ? (
+                    <span className="rounded bg-green-500/15 px-2 py-0.5 text-xs text-green-400">
+                      in library
                     </span>
-                  </div>
-                  <div className="truncate font-mono text-xs text-slate-500">
-                    {d.command
-                      ? [d.command, ...d.args].join(" ")
-                      : d.url}
-                  </div>
-                  <div className="mt-0.5 text-xs text-slate-500">
-                    found in {d.foundIn.join(", ")}
-                  </div>
-                </div>
-                {d.inLibrary ? (
-                  <span className="rounded bg-green-500/15 px-2 py-0.5 text-xs text-green-400">
-                    in library
-                  </span>
-                ) : (
-                  <button
-                    onClick={() => onAdd(d)}
-                    disabled={adding}
-                    className="rounded border border-blue-500 px-2 py-0.5 text-xs text-blue-300 hover:bg-blue-500/10 disabled:opacity-50"
-                  >
-                    + Add to library
-                  </button>
-                )}
-              </li>
-            ))}
+                  ) : !multipleConfigurations ? (
+                    <button
+                      onClick={() => onAdd(primary)}
+                      disabled={adding}
+                      className="rounded border border-blue-500 px-2 py-0.5 text-xs text-blue-300 hover:bg-blue-500/10 disabled:opacity-50"
+                    >
+                      + Add to library
+                    </button>
+                  ) : group.inLibrary ? (
+                    <span className="rounded bg-green-500/15 px-2 py-0.5 text-xs text-green-400">
+                      in library
+                    </span>
+                  ) : (
+                    <span className="shrink-0 text-right text-xs text-slate-600">
+                      choose below
+                    </span>
+                  )}
+                </li>
+              );
+            })}
           </ul>
         </>
       )}

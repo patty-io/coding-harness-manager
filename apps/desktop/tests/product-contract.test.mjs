@@ -13,6 +13,7 @@ const harnessLogo = read("src/components/HarnessLogo.tsx");
 const dashboard = read("src/screens/DashboardScreen.tsx");
 const configDiff = read("src/components/ConfigDiffViewer.tsx");
 const sync = read("src/components/SyncDialog.tsx");
+const mcp = read("src/screens/McpScreen.tsx");
 const html = read("index.html");
 
 const sourceFiles = [
@@ -69,6 +70,9 @@ describe("product contracts", () => {
     assert.ok(configDiff.includes('aria-label="Next change"'), "diff must support next-change navigation");
     assert.ok(sync.includes("planHash"), "sync apply must carry the validated plan hash");
     assert.ok(sync.includes("selection"), "sync apply must carry explicit selection");
+    assert.ok(mcp.includes("groupDetectedMcps"), "MCP detections must be grouped by logical server");
+    assert.ok(mcp.includes("Show configuration details"), "grouped MCPs must retain configuration details");
+    assert.ok(mcp.includes("found in {group.foundIn.join(\", \")}"), "grouped MCPs must show all harnesses");
     assert.ok(!sourceFiles.some((file) => read(file).includes("window.confirm")), "native confirm must not be used in the webview");
   });
 });
