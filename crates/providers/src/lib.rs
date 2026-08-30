@@ -10,6 +10,8 @@ use thiserror::Error;
 pub enum ProviderError {
     #[error("http error: {0}")]
     Http(#[from] reqwest::Error),
+    #[error("credential missing or unavailable")]
+    CredentialMissing,
     #[error("authentication failed")]
     Auth,
     #[error("rate limited")]
@@ -118,6 +120,9 @@ pub async fn discover_models(
     credential: Option<&str>,
     http: &reqwest::Client,
 ) -> Result<Vec<ProviderModel>, ProviderError> {
+    if !matches!(endpoint.auth_type, AuthType::None | AuthType::Unknown) && credential.is_none() {
+        return Err(ProviderError::CredentialMissing);
+    }
     let url = discovery_url(endpoint);
     let resp = request_builder(http, endpoint, credential, &url)
         .send()

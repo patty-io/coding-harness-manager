@@ -64,6 +64,18 @@ impl KeychainStore {
             .unwrap_or(key)
             .to_string()
     }
+
+    fn account_candidates(&self, key: &str) -> Vec<String> {
+        let account = self.account(key);
+        if account == key {
+            vec![account]
+        } else {
+            // Older versions stored the complete credential reference as the
+            // account. Keep that form as a fallback so existing secrets are
+            // not lost when the canonical account is normalized.
+            vec![account, key.to_string()]
+        }
+    }
 }
 
 impl SecretStore for KeychainStore {
@@ -89,47 +101,52 @@ impl SecretStore for KeychainStore {
     }
 
     fn get(&self, key: &str) -> Result<Option<String>, SecretError> {
-        let out = Command::new("security")
-            .args([
-                "find-generic-password",
-                "-s",
-                &self.service,
-                "-a",
-                &self.account(key),
-                "-w",
-            ])
-            .output()?;
-        if !out.status.success() {
-            let stderr = String::from_utf8_lossy(&out.stderr);
-            if stderr.contains("could not be found") || stderr.contains("errSecItemNotFound") {
-                return Ok(None);
+        for account in self.account_candidates(key) {
+            let out = Command::new("security")
+                .args([
+                    "find-generic-password",
+                    "-s",
+                    &self.service,
+                    "-a",
+                    &account,
+                    "-w",
+                ])
+                .output()?;
+            if !out.status.success() {
+                let stderr = String::from_utf8_lossy(&out.stderr);
+                if stderr.contains("could not be found") || stderr.contains("errSecItemNotFound") {
+                    continue;
+                }
+                return Err(SecretError::Keychain(stderr.into_owned()));
             }
-            return Err(SecretError::Keychain(stderr.into_owned()));
+            return Ok(Some(
+                String::from_utf8(out.stdout)
+                    .map_err(|e| SecretError::Crypto(e.to_string()))?
+                    .trim_end_matches('\n')
+                    .to_string(),
+            ));
         }
-        Ok(Some(
-            String::from_utf8(out.stdout)
-                .map_err(|e| SecretError::Crypto(e.to_string()))?
-                .trim_end_matches('\n')
-                .to_string(),
-        ))
+        Ok(None)
     }
 
     fn delete(&self, key: &str) -> Result<(), SecretError> {
-        let out = Command::new("security")
-            .args([
-                "delete-generic-password",
-                "-s",
-                &self.service,
-                "-a",
-                &self.account(key),
-            ])
-            .output()?;
-        if !out.status.success() {
-            let stderr = String::from_utf8_lossy(&out.stderr);
-            if stderr.contains("could not be found") || stderr.contains("errSecItemNotFound") {
-                return Ok(());
+        for account in self.account_candidates(key) {
+            let out = Command::new("security")
+                .args([
+                    "delete-generic-password",
+                    "-s",
+                    &self.service,
+                    "-a",
+                    &account,
+                ])
+                .output()?;
+            if !out.status.success() {
+                let stderr = String::from_utf8_lossy(&out.stderr);
+                if stderr.contains("could not be found") || stderr.contains("errSecItemNotFound") {
+                    continue;
+                }
+                return Err(SecretError::Keychain(stderr.into_owned()));
             }
-            return Err(SecretError::Keychain(stderr.into_owned()));
         }
         Ok(())
     }
@@ -230,6 +247,23 @@ mod tests {
         assert_eq!(
             store.account("providers/harness/example"),
             "providers/harness/example"
+        );
+    }
+
+    #[test]
+    fn keychain_reference_candidates_include_legacy_prefixed_account() {
+        let store = KeychainStore::new("coding-harness-manager");
+
+        assert_eq!(
+            store.account_candidates("coding-harness-manager/providers/zai"),
+            vec![
+                "providers/zai".to_string(),
+                "coding-harness-manager/providers/zai".to_string()
+            ]
+        );
+        assert_eq!(
+            store.account_candidates("providers/zai"),
+            vec!["providers/zai".to_string()]
         );
     }
 }

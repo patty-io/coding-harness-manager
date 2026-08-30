@@ -1,5 +1,5 @@
 use chm_core::domain::provider::*;
-use chm_providers::{HealthStatus, discover_models, health_check};
+use chm_providers::{HealthStatus, ProviderError, discover_models, health_check};
 use wiremock::matchers::{method, path};
 use wiremock::{Mock, MockServer, ResponseTemplate};
 
@@ -73,13 +73,21 @@ async fn discovery_parses_openai_model_list() {
     let http = reqwest::Client::new();
     let models = discover_models(
         &endpoint(&server.uri(), Protocol::OpenAiChatCompletions),
-        None,
+        Some("test-token"),
         &http,
     )
     .await
     .unwrap();
     assert_eq!(models.len(), 2);
     assert_eq!(models[0].id, "glm-5");
+}
+
+#[tokio::test]
+async fn discovery_reports_missing_credential_before_request() {
+    let http = reqwest::Client::new();
+    let e = endpoint("http://127.0.0.1:1", Protocol::OpenAiChatCompletions);
+    let error = discover_models(&e, None, &http).await.unwrap_err();
+    assert!(matches!(error, ProviderError::CredentialMissing));
 }
 
 #[tokio::test]
