@@ -468,6 +468,7 @@ export interface HarnessModelRow {
   inLibrary: boolean;
   libraryRouteId: string | null;
   libraryDisplayName: string | null;
+  libraryMatch: "exact" | "qualified-id" | null;
   providerName: string | null;
   providerMatch:
     | "harness"

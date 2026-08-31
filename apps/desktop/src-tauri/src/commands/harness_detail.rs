@@ -258,6 +258,54 @@ fn harness_provider_map_from_declarations(
     map
 }
 
+/// Compare a harness model id with a My Models route id without losing the
+/// provider-qualified forms used by several harnesses. For example,
+/// `zai/glm-5.3` and `glm-5.3` refer to the same model for the purpose of
+/// deciding whether an import candidate is already configured. Two unrelated
+/// namespaces such as `zai/glm-5.3` and `openrouter/glm-5.3` are deliberately
+/// not treated as a match.
+fn model_id_match_kind(harness_id: &str, route_id: &str) -> Option<&'static str> {
+    let harness_id = harness_id.trim().to_ascii_lowercase();
+    let route_id = route_id.trim().to_ascii_lowercase();
+    if harness_id.is_empty() || route_id.is_empty() {
+        return None;
+    }
+    if harness_id == route_id {
+        return Some("exact");
+    }
+
+    let route_suffix = format!("/{route_id}");
+    let harness_suffix = format!("/{harness_id}");
+    if harness_id.ends_with(&route_suffix) || route_id.ends_with(&harness_suffix) {
+        Some("qualified-id")
+    } else {
+        None
+    }
+}
+
+/// Find the best My Models route for a harness row. Exact model ids win over
+/// provider-qualified suffix matches; the native id is also considered for
+/// adapters that expose a provider alias as their native key.
+fn library_route_match<'a>(
+    routes: &'a [chm_core::domain::models::ModelRoute],
+    model: &chm_harness_sdk::adapter::types::HarnessModel,
+) -> Option<(&'a chm_core::domain::models::ModelRoute, &'static str)> {
+    let exact = routes.iter().find_map(|route| {
+        let matches_remote = model_id_match_kind(&model.route.remote_model_id, &route.remote_model_id)
+            == Some("exact");
+        let matches_native = model_id_match_kind(&model.native_id, &route.remote_model_id)
+            == Some("exact");
+        (matches_remote || matches_native).then_some((route, "exact"))
+    });
+    exact.or_else(|| {
+        routes.iter().find_map(|route| {
+            let matches_remote = model_id_match_kind(&model.route.remote_model_id, &route.remote_model_id)
+                == Some("qualified-id");
+            matches_remote.then_some((route, "qualified-id"))
+        })
+    })
+}
+
 #[derive(Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct HarnessModelRow {
@@ -269,6 +317,9 @@ pub struct HarnessModelRow {
     pub in_library: bool,
     pub library_route_id: Option<String>,
     pub library_display_name: Option<String>,
+    /// How this harness row matched a My Models route: exact id or a
+    /// provider-qualified id suffix such as `zai/glm-5.3` → `glm-5.3`.
+    pub library_match: Option<String>,
     /// Provider serving this model, when we can attribute it.
     pub provider_name: Option<String>,
     /// How the provider was attributed. Best first: "harness" (the harness
@@ -362,10 +413,9 @@ pub async fn harness_models_view_cmd(
         .models
         .iter()
         .map(|m| {
-            let remote_lower = m.route.remote_model_id.to_lowercase();
-            let match_route = routes
-                .iter()
-                .find(|r| r.remote_model_id.to_lowercase() == remote_lower);
+            let library_match = library_route_match(&routes, m);
+            let match_route = library_match.map(|(route, _)| route);
+            let library_match_kind = library_match.map(|(_, kind)| kind.to_string());
             let keys = attribution_keys(&m.route.remote_model_id);
             let find_in = |map: &std::collections::HashMap<String, (uuid::Uuid, String)>| {
                 keys.iter().find_map(|k| map.get(k).cloned())
@@ -468,6 +518,7 @@ pub async fn harness_models_view_cmd(
                 in_library: match_route.is_some(),
                 library_route_id: match_route.map(|r| r.id.to_string()),
                 library_display_name: match_route.map(|r| r.display_name.clone()),
+                library_match: library_match_kind,
                 provider_name,
                 provider_match,
                 provider_base_url,
@@ -1713,12 +1764,50 @@ pub async fn ensure_provider_from_harness_cmd(
 mod activity_tests {
     use super::{
         HarnessApiKeySource, HarnessModelOp, harness_provider_declarations,
-        harness_provider_for_model, harness_provider_models, model_edit_activity_summary,
-        pi_api_key_source,
+        harness_provider_for_model, harness_provider_models, library_route_match,
+        model_edit_activity_summary, model_id_match_kind, pi_api_key_source,
     };
     use chm_core::domain::models::ModelRoute;
     use chm_harness_sdk::adapter::plan::{PlanAction, ReconciliationPlan, RemoveAction};
     use chm_harness_sdk::adapter::types::{HarnessModel, ParsedState};
+
+    #[test]
+    fn provider_qualified_model_ids_match_library_routes() {
+        assert_eq!(
+            model_id_match_kind("zai/glm-5.3", "glm-5.3"),
+            Some("qualified-id")
+        );
+        assert_eq!(
+            model_id_match_kind("glm-5.3", "glm-5.3"),
+            Some("exact")
+        );
+        assert_eq!(
+            model_id_match_kind("zai/glm-5.3", "openrouter/glm-5.3"),
+            None
+        );
+
+        let actual = HarnessModel {
+            native_id: "glm-5.3".into(),
+            route: ModelRoute::new(
+                "zai/glm-5.3".into(),
+                "GLM 5.3".into(),
+                Some(200_000),
+                serde_json::json!({}),
+                serde_json::json!({"native_provider_id": "zai"}),
+            ),
+        };
+        let route = ModelRoute::new(
+            "glm-5.3".into(),
+            "GLM 5.3".into(),
+            Some(200_000),
+            serde_json::json!({}),
+            serde_json::json!({}),
+        );
+        let matched = library_route_match(&[route], &actual)
+            .map(|(_, kind)| kind)
+            .expect("qualified harness id should match the portable route");
+        assert_eq!(matched, "qualified-id");
+    }
 
     #[test]
     fn model_edit_summary_names_deleted_model_and_provider() {

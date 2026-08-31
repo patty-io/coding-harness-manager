@@ -84,6 +84,30 @@ function EmptyState({ children }: { children: React.ReactNode }) {
   );
 }
 
+/**
+ * Harnesses such as OpenCode can qualify a model id with their provider
+ * namespace (`zai/glm-5.3`) while My Models stores the portable id
+ * (`glm-5.3`). Treat a provider-qualified form as the same model for the
+ * import picker, but do not collapse unrelated namespaces into one model.
+ */
+function sameModelId(left: string, right: string): boolean {
+  const a = left.trim().toLowerCase();
+  const b = right.trim().toLowerCase();
+  if (!a || !b) return false;
+  return a === b || a.endsWith(`/${b}`) || b.endsWith(`/${a}`);
+}
+
+function routeAlreadyOnHarness(
+  routeId: string,
+  rows: HarnessModelRow[],
+): boolean {
+  return rows.some(
+    (row) =>
+      sameModelId(routeId, row.remoteModelId) ||
+      routeId.trim().toLowerCase() === row.nativeId.trim().toLowerCase(),
+  );
+}
+
 export default function HarnessDetailScreen() {
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
@@ -137,13 +161,15 @@ export default function HarnessDetailScreen() {
 
   // Library models not present on this harness (for "Add from library").
   const missingFromLibrary = (() => {
-    const onHarness = new Set(
-      (modelRows ?? []).map((r) => r.remoteModelId.toLowerCase()),
-    );
     return (routes ?? []).filter(
-      (r) => r.enabled && !onHarness.has(r.remote_model_id.toLowerCase()),
+      (r) =>
+        r.enabled && !routeAlreadyOnHarness(r.remote_model_id, modelRows ?? []),
     );
   })();
+  const configuredLibraryCount = (routes ?? []).filter(
+    (route) =>
+      route.enabled && routeAlreadyOnHarness(route.remote_model_id, modelRows ?? []),
+  ).length;
 
   const [addMenuOpen, setAddMenuOpen] = useState(false);
   const [selectedLibraryModels, setSelectedLibraryModels] = useState<string[]>([]);
@@ -605,6 +631,13 @@ export default function HarnessDetailScreen() {
                               {missingFromLibrary.length} enabled model
                               {missingFromLibrary.length === 1 ? "" : "s"} not
                               already on this harness.
+                              {configuredLibraryCount > 0 && (
+                                <>
+                                  {" "}
+                                  {configuredLibraryCount} already configured
+                                  {configuredLibraryCount === 1 ? " model is" : " models are"} hidden.
+                                </>
+                              )}
                             </p>
                           </div>
                           <div className="flex gap-1">
@@ -792,9 +825,15 @@ export default function HarnessDetailScreen() {
                         {m.inLibrary ? (
                           <span
                             className="whitespace-nowrap rounded bg-green-500/15 px-2 py-0.5 text-xs text-green-400"
-                            title={m.libraryDisplayName ?? undefined}
+                            title={
+                              m.libraryMatch === "qualified-id"
+                                ? `Matches My Models by provider-qualified id${m.libraryDisplayName ? `: ${m.libraryDisplayName}` : ""}`
+                                : m.libraryDisplayName ?? undefined
+                            }
                           >
-                            in library
+                            {m.libraryMatch === "qualified-id"
+                              ? "in library · same model"
+                              : "in library"}
                           </span>
                         ) : (
                           <span className="text-xs text-slate-600">—</span>
