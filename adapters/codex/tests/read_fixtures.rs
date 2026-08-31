@@ -33,21 +33,50 @@ fn codex_full_config_parses_without_warnings() {
         &std::fs::read_to_string("tests/golden/0.150.0.json").expect("golden missing for 0.150.0"),
     )
     .unwrap();
+    let mut models = state
+        .models
+        .iter()
+        .map(|m| {
+            serde_json::json!({
+                "native_id": m.native_id,
+                "remote_model_id": m.route.remote_model_id,
+                "display_name": m.route.display_name,
+                "context_window": m.route.context_window,
+                "capabilities": m.route.capabilities,
+                "overrides": m.route.overrides,
+            })
+        })
+        .collect::<Vec<_>>();
+    models.sort_by(|left, right| left["native_id"].as_str().cmp(&right["native_id"].as_str()));
+
+    let mut providers = state.providers;
+    providers.sort_by(|left, right| {
+        left["native_provider_id"]
+            .as_str()
+            .cmp(&right["native_provider_id"].as_str())
+    });
+
+    let mut mcp = state
+        .mcp
+        .iter()
+        .map(|m| {
+            serde_json::json!({
+                "native_name": m.native_name,
+                "command": m.server.command,
+                "args": m.server.args,
+            })
+        })
+        .collect::<Vec<_>>();
+    mcp.sort_by(|left, right| {
+        left["native_name"]
+            .as_str()
+            .cmp(&right["native_name"].as_str())
+    });
+
     let actual = serde_json::json!({
-        "models": state.models.iter().map(|m| serde_json::json!({
-            "native_id": m.native_id,
-            "remote_model_id": m.route.remote_model_id,
-            "display_name": m.route.display_name,
-            "context_window": m.route.context_window,
-            "capabilities": m.route.capabilities,
-            "overrides": m.route.overrides,
-        })).collect::<Vec<_>>(),
-        "providers": state.providers,
-        "mcp": state.mcp.iter().map(|m| serde_json::json!({
-            "native_name": m.native_name,
-            "command": m.server.command,
-            "args": m.server.args,
-        })).collect::<Vec<_>>(),
+        "models": models,
+        "providers": providers,
+        "mcp": mcp,
         "profiles": state.profiles,
         "skills": state.skills.iter().map(|s| serde_json::json!({
             "name": s.name,
