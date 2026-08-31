@@ -13,6 +13,27 @@ fn fixture_dir() -> PathBuf {
     p
 }
 
+fn normalize_fixture_paths(value: &mut Value) {
+    match value {
+        Value::String(path) => {
+            if let Some(index) = path.find("/fixtures/pi/") {
+                *path = format!("<repo>{}", &path[index..]);
+            }
+        }
+        Value::Array(values) => {
+            for value in values {
+                normalize_fixture_paths(value);
+            }
+        }
+        Value::Object(values) => {
+            for value in values.values_mut() {
+                normalize_fixture_paths(value);
+            }
+        }
+        Value::Null | Value::Bool(_) | Value::Number(_) => {}
+    }
+}
+
 fn install(config_file: PathBuf, _home: PathBuf) -> HarnessInstallation {
     HarnessInstallation {
         id: uuid::Uuid::new_v4(),
@@ -52,12 +73,12 @@ fn pi_full_config_parses_without_warnings() {
         let state = adapter.read_state(&inst).expect("read_state ok");
         assert!(state.warnings.is_empty(), "warnings: {:?}", state.warnings);
 
-        let expected: Value = serde_json::from_str(
+        let mut expected: Value = serde_json::from_str(
             &std::fs::read_to_string(&golden_path)
                 .unwrap_or_else(|_| panic!("golden missing for {golden_path}")),
         )
         .unwrap();
-        let actual = serde_json::json!({
+        let mut actual = serde_json::json!({
             "models": state.models.iter().map(|m| serde_json::json!({
                 "native_id": m.native_id,
                 "display_name": m.route.display_name,
@@ -81,6 +102,8 @@ fn pi_full_config_parses_without_warnings() {
                 "symlinked": s.symlinked,
             })).collect::<Vec<_>>(),
         });
+        normalize_fixture_paths(&mut expected);
+        normalize_fixture_paths(&mut actual);
         assert_eq!(
             actual,
             expected,
