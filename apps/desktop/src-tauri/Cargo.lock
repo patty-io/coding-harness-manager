@@ -4,7 +4,7 @@ version = 4
 
 [[package]]
 name = "adapters"
-version = "0.1.1"
+version = "0.1.2"
 dependencies = [
  "chm-harness-sdk",
  "claude-code-adapter",
@@ -372,7 +372,7 @@ dependencies = [
 
 [[package]]
 name = "chm-core"
-version = "0.1.1"
+version = "0.1.2"
 dependencies = [
  "chrono",
  "serde",
@@ -382,7 +382,7 @@ dependencies = [
 
 [[package]]
 name = "chm-database"
-version = "0.1.1"
+version = "0.1.2"
 dependencies = [
  "chm-core",
  "chrono",
@@ -395,7 +395,7 @@ dependencies = [
 
 [[package]]
 name = "chm-filesystem"
-version = "0.1.1"
+version = "0.1.2"
 dependencies = [
  "chrono",
  "libc",
@@ -405,7 +405,7 @@ dependencies = [
 
 [[package]]
 name = "chm-harness-sdk"
-version = "0.1.1"
+version = "0.1.2"
 dependencies = [
  "chm-core",
  "chm-filesystem",
@@ -419,7 +419,7 @@ dependencies = [
 
 [[package]]
 name = "chm-models-dev"
-version = "0.1.1"
+version = "0.1.2"
 dependencies = [
  "reqwest 0.12.28",
  "serde",
@@ -429,7 +429,7 @@ dependencies = [
 
 [[package]]
 name = "chm-providers"
-version = "0.1.1"
+version = "0.1.2"
 dependencies = [
  "chm-core",
  "chm-secrets",
@@ -440,7 +440,7 @@ dependencies = [
 
 [[package]]
 name = "chm-reconciliation"
-version = "0.1.1"
+version = "0.1.2"
 dependencies = [
  "chm-core",
  "chm-harness-sdk",
@@ -451,7 +451,7 @@ dependencies = [
 
 [[package]]
 name = "chm-secrets"
-version = "0.1.1"
+version = "0.1.2"
 dependencies = [
  "thiserror 2.0.20",
 ]
@@ -472,7 +472,7 @@ dependencies = [
 
 [[package]]
 name = "claude-code-adapter"
-version = "0.1.1"
+version = "0.1.2"
 dependencies = [
  "chm-core",
  "chm-filesystem",
@@ -484,7 +484,7 @@ dependencies = [
 
 [[package]]
 name = "codex-adapter"
-version = "0.1.1"
+version = "0.1.2"
 dependencies = [
  "chm-core",
  "chm-filesystem",
@@ -498,7 +498,7 @@ dependencies = [
 
 [[package]]
 name = "coding-harness-manager"
-version = "0.1.1"
+version = "0.1.2"
 dependencies = [
  "adapters",
  "chm-core",
@@ -851,7 +851,7 @@ dependencies = [
 
 [[package]]
 name = "detection-adapter"
-version = "0.1.1"
+version = "0.1.2"
 dependencies = [
  "chm-core",
  "chm-filesystem",
@@ -2798,7 +2798,7 @@ checksum = "9f7c3e4beb33f85d45ae3e3a1792185706c8e16d043238c593331cc7cd313b50"
 
 [[package]]
 name = "opencode-adapter"
-version = "0.1.1"
+version = "0.1.2"
 dependencies = [
  "chm-core",
  "chm-filesystem",
@@ -2939,7 +2939,7 @@ dependencies = [
 
 [[package]]
 name = "pi-adapter"
-version = "0.1.1"
+version = "0.1.2"
 dependencies = [
  "chm-core",
  "chm-filesystem",
@@ -3283,7 +3283,7 @@ checksum = "20675572f6f24e9e76ef639bc5552774ed45f1c30e2951e1e99c59888861c539"
 
 [[package]]
 name = "reasonix-adapter"
-version = "0.1.1"
+version = "0.1.2"
 dependencies = [
  "chm-core",
  "chm-filesystem",

@@ -21,7 +21,7 @@ members = [
 exclude = ["apps/desktop/src-tauri"]
 
 [workspace.package]
-version = "0.1.1"
+version = "0.1.2"
 edition = "2024"
 license = "LicenseRef-Patty-Public-1.0"
 
