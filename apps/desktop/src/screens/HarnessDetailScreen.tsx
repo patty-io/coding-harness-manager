@@ -29,6 +29,7 @@ import {
   smartAdoptHarnessModel,
 } from "../lib/api";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
+import { useFeatureFlags } from "../hooks/useFeatureFlags";
 
 const STATUS_STYLES: Record<string, string> = {
   installed: "bg-green-500/15 text-green-400 border border-green-500/30",
@@ -93,6 +94,8 @@ export default function HarnessDetailScreen() {
   const [presetMenuOpen, setPresetMenuOpen] = useState(false);
   const [launchNote, setLaunchNote] = useState<string | null>(null);
   const qc = useQueryClient();
+  const { data: featureFlags } = useFeatureFlags();
+  const profilesAndSetsEnabled = featureFlags?.profilesAndSets === true;
 
   const { data: installations } = useInstallations();
   const installation = (installations ?? []).find((i) => i.id === id);
@@ -103,7 +106,7 @@ export default function HarnessDetailScreen() {
   const { data: profiles } = useQuery({
     queryKey: ["profiles"],
     queryFn: listProfilesForHarness,
-    enabled: !!installation?.harness_type,
+    enabled: profilesAndSetsEnabled && !!installation?.harness_type,
   });
 
   const { data: state, isLoading: stateLoading, error: stateError } = useQuery({
@@ -311,57 +314,59 @@ export default function HarnessDetailScreen() {
           </span>
         )}
         <div className="ml-auto flex items-center gap-2">
-          <div className="relative">
-            <button
-              onClick={() => setPresetMenuOpen((v) => !v)}
-              className="rounded border border-slate-600 px-3 py-1 text-sm text-slate-200 hover:bg-slate-800"
-            >
-              Launch ▾
-            </button>
-            {presetMenuOpen && (
-              <div className="absolute right-0 z-10 mt-1 w-64 rounded border border-slate-700 bg-slate-800 py-1 shadow-lg">
-                {(() => {
-                  const mine = (profiles ?? []).filter(
-                    (p) => p.harnessType === installation?.harness_type,
-                  );
-                  if (mine.length === 0) {
-                    return (
-                      <p className="px-3 py-2 text-xs text-slate-500">
-                        No profiles for this harness yet.{" "}
-                        <Link to="/profiles" className="text-blue-400 hover:underline">
-                          Create one →
-                        </Link>
-                      </p>
+          {profilesAndSetsEnabled && (
+            <div className="relative">
+              <button
+                onClick={() => setPresetMenuOpen((v) => !v)}
+                className="rounded border border-slate-600 px-3 py-1 text-sm text-slate-200 hover:bg-slate-800"
+              >
+                Launch ▾
+              </button>
+              {presetMenuOpen && (
+                <div className="absolute right-0 z-10 mt-1 w-64 rounded border border-slate-700 bg-slate-800 py-1 shadow-lg">
+                  {(() => {
+                    const mine = (profiles ?? []).filter(
+                      (p) => p.harnessType === installation?.harness_type,
                     );
-                  }
-                  return mine.map((p) => (
-                    <button
-                      key={p.id}
-                      onClick={async () => {
-                        setPresetMenuOpen(false);
-                        setLaunchNote(null);
-                        try {
-                          const r = await launchProfile(p.id);
-                          setLaunchNote(`Launched (pid ${r.pid ?? "?"})`);
-                        } catch (e) {
-                          setLaunchNote(`Launch failed: ${String(e)}`);
-                        }
-                        void qc;
-                      }}
-                      className="block w-full px-3 py-1.5 text-left text-sm text-slate-200 hover:bg-slate-700"
-                    >
-                      {p.name}
-                      {p.modelDisplay && (
-                        <span className="ml-2 text-xs text-slate-500">
-                          {p.modelDisplay}
-                        </span>
-                      )}
-                    </button>
-                  ));
-                })()}
-              </div>
-            )}
-          </div>
+                    if (mine.length === 0) {
+                      return (
+                        <p className="px-3 py-2 text-xs text-slate-500">
+                          No profiles for this harness yet.{" "}
+                          <Link to="/profiles" className="text-blue-400 hover:underline">
+                            Create one →
+                          </Link>
+                        </p>
+                      );
+                    }
+                    return mine.map((p) => (
+                      <button
+                        key={p.id}
+                        onClick={async () => {
+                          setPresetMenuOpen(false);
+                          setLaunchNote(null);
+                          try {
+                            const r = await launchProfile(p.id);
+                            setLaunchNote(`Launched (pid ${r.pid ?? "?"})`);
+                          } catch (e) {
+                            setLaunchNote(`Launch failed: ${String(e)}`);
+                          }
+                          void qc;
+                        }}
+                        className="block w-full px-3 py-1.5 text-left text-sm text-slate-200 hover:bg-slate-700"
+                      >
+                        {p.name}
+                        {p.modelDisplay && (
+                          <span className="ml-2 text-xs text-slate-500">
+                            {p.modelDisplay}
+                          </span>
+                        )}
+                      </button>
+                    ));
+                  })()}
+                </div>
+              )}
+            </div>
+          )}
           <div className="flex items-center gap-1">
             <button
               type="button"

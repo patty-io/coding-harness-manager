@@ -263,7 +263,9 @@ undoable from History.
 2. CHM groups detections by logical server name while retaining each distinct
    transport, command, URL, and source harness.
 3. Review the configuration details and add the server to the library once.
-4. Use **Sync to harness** and review the target's native plan before applying.
+4. Click **Sync from library…**. All enabled MCP servers start selected; clear
+   or narrow the checklist when you only want to sync a subset.
+5. Choose the target harness, then review its native plan before applying.
 
 ### Skills
 
@@ -273,6 +275,11 @@ undoable from History.
    surface.
 
 ## How to use profiles and sets
+
+Profiles and configuration sets are release-gated and hidden by default while
+their workflow is being finalized. Enable **Settings → Experimental features →
+Profiles and configuration sets** to try them; the setting is stored in
+`~/.coding-harness-manager/feature-flags.json` under `profilesAndSets`.
 
 - **Profiles** pair a harness with a selected model/endpoint configuration so
   you can launch a repeatable coding setup.

@@ -30,6 +30,18 @@ export async function scanHarnesses(): Promise<HarnessInstallation[]> {
 export async function listInstallations(): Promise<HarnessInstallation[]> {
   return invoke<HarnessInstallation[]>("list_installations_cmd");
 }
+
+export interface FeatureFlags {
+  profilesAndSets: boolean;
+}
+
+export async function getFeatureFlags(): Promise<FeatureFlags> {
+  return invoke<FeatureFlags>("get_feature_flags_cmd");
+}
+
+export async function setFeatureFlags(flags: FeatureFlags): Promise<void> {
+  return invoke<void>("set_feature_flags_cmd", { flags });
+}
 export interface DashboardStats {
   harnesses: number;
   providers: number;

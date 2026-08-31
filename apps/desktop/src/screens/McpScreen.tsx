@@ -154,7 +154,6 @@ export default function McpScreen() {
   const [args, setArgs] = useState("");
   const [url, setUrl] = useState("");
   const [lastResults, setLastResults] = useState<Record<string, { check: string; passed: boolean; detail: string }[]>>({});
-  const [selectedServers, setSelectedServers] = useState<string[]>([]);
   const [showManual, setShowManual] = useState(false);
 
   const submit = () => {
@@ -189,13 +188,25 @@ export default function McpScreen() {
         <h1 className="text-2xl font-bold">MCP Servers</h1>
         <div className="flex gap-2">
           <SyncToHarnessButton
-            selection={{ mcpIds: selectedServers }}
-            disabled={selectedServers.length === 0}
-            label={selectedServers.length ? `Push selected (${selectedServers.length})…` : "Push selected…"}
+            label="Sync from library…"
+            disabled={isLoading || !(servers ?? []).some((server) => server.enabled)}
+            resourcePicker={{
+              title: "Choose MCP servers to sync",
+              selectionKey: "mcpIds",
+              resources: (servers ?? [])
+                .filter((server) => server.enabled)
+                .map((server) => ({
+                  id: server.id,
+                  label: server.name,
+                  detail: server.url ?? server.command ?? server.transport,
+                })),
+            }}
           />
-          <SyncToHarnessButton label="Sync entire library…" />
         </div>
       </div>
+      <p className="mt-1 text-xs text-slate-500">
+        Sync from library starts with all enabled MCP servers selected; you can clear or narrow the list before choosing a harness.
+      </p>
 
       <div className="mt-4">
         <button
@@ -283,7 +294,6 @@ export default function McpScreen() {
       <table className="mt-4 w-full bg-slate-800 text-sm">
         <thead>
           <tr className="border-b text-left">
-            <th className="p-2"><span className="sr-only">Select</span></th>
             <th className="p-2">Name</th>
             <th className="p-2">Transport</th>
             <th className="p-2">Command / URL</th>
@@ -294,20 +304,6 @@ export default function McpScreen() {
         <tbody>
           {(servers ?? []).map((s) => (
             <tr key={s.id} className="border-b">
-              <td className="p-2">
-                <input
-                  type="checkbox"
-                  aria-label={`Select ${s.name}`}
-                  checked={selectedServers.includes(s.id)}
-                  onChange={() =>
-                    setSelectedServers((previous) =>
-                      previous.includes(s.id)
-                        ? previous.filter((id) => id !== s.id)
-                        : [...previous, s.id],
-                    )
-                  }
-                />
-              </td>
               <td className="p-2 font-medium">{s.name}</td>
               <td className="p-2">{s.transport}</td>
               <td className="p-2 font-mono text-xs">

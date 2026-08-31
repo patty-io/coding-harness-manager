@@ -82,9 +82,24 @@ export function SyncDialog({
   const hasBlockers = preview.data?.hasBlockers ?? false;
   const routeBlockers = preview.data?.routeBlockers ?? [];
   const hasRouteBlockers = routeBlockers.length > 0;
+  const warnings = preview.data?.warnings ?? [];
+  const files = preview.data?.files ?? [];
   const noOp =
     (preview.data?.writableChanges ?? 0) === 0 &&
     (preview.data?.protectedChanges ?? 0) === 0;
+  const selectedResourceSummary = [
+    selection?.modelIds
+      ? `${selection.modelIds.length} model${selection.modelIds.length === 1 ? "" : "s"}`
+      : null,
+    selection?.mcpIds
+      ? `${selection.mcpIds.length} MCP server${selection.mcpIds.length === 1 ? "" : "s"}`
+      : null,
+    selection?.skillIds
+      ? `${selection.skillIds.length} skill${selection.skillIds.length === 1 ? "" : "s"}`
+      : null,
+  ]
+    .filter((value): value is string => value !== null)
+    .join(", ");
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/30">
@@ -100,13 +115,13 @@ export function SyncDialog({
               Sync {harnessType}
               <HelpTip label="Sync mode" side="right">
                 Review the planned changes before applying them. A selected
-                sync only includes the models you chose; a full sync compares
-                the complete enabled library.
+                sync only includes the resources you chose; a full sync
+                compares the complete enabled library.
               </HelpTip>
             </h2>
             <p className="text-xs text-slate-400">
               {selectionScoped
-                ? `Preview of ${selection?.modelIds?.length ?? 0} selected library model${selection?.modelIds?.length === 1 ? "" : "s"}. `
+                ? `Preview of ${selectedResourceSummary || "the selected library resources"}. `
                 : "Preview of the complete enabled library. "}
               Nothing is written until you press Apply.
             </p>
@@ -154,11 +169,11 @@ export function SyncDialog({
             )}
           </div>
           {selectionScoped && (
-            <p className="mt-2 text-xs text-slate-500">
-              This is a selection-scoped sync, so it only appends or updates
-              the chosen resources. Replace Managed is available when syncing
-              the full library.
-            </p>
+              <p className="mt-2 text-xs text-slate-500">
+                This is a selection-scoped sync, so it only appends or updates
+                the chosen resources. Replace Managed is available when
+                syncing the full library.
+              </p>
           )}
           {preview.isLoading && <p className="mt-3 text-sm" role="status">Computing diff…</p>}
           {preview.isError && (
@@ -216,7 +231,7 @@ export function SyncDialog({
                   </p>
                 </div>
               )}
-              {preview.data.warnings.length > 0 && (
+              {warnings.length > 0 && (
                 <div
                   className="mt-3 rounded border border-amber-500/50 bg-amber-950/30 p-3"
                   role="alert"
@@ -225,7 +240,7 @@ export function SyncDialog({
                     Adapter warnings
                   </h3>
                   <ul className="mt-1 list-inside list-disc text-xs text-amber-200">
-                    {preview.data.warnings.map((warning, index) => (
+                    {warnings.map((warning, index) => (
                       <li key={`${warning}:${index}`}>{warning}</li>
                     ))}
                   </ul>
@@ -235,10 +250,10 @@ export function SyncDialog({
                   </p>
                 </div>
               )}
-              {preview.data.files.length > 0 && (
+              {files.length > 0 && (
                 <div className="mt-3">
                   <h3 className="text-sm font-medium">Files</h3>
-                  {preview.data.files.map((f) => (
+                  {files.map((f) => (
                     <div key={f.path} className="mt-1">
                       <button
                         onClick={() =>

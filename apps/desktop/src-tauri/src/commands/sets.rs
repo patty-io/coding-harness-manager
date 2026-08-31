@@ -32,6 +32,7 @@ pub struct SetView {
 
 #[tauri::command]
 pub async fn list_sets_cmd(state: State<'_, AppState>) -> Result<Vec<SetView>, String> {
+    crate::commands::settings::require_profiles_and_sets_enabled()?;
     let pool = &state.pool;
     let sets = list_sets(pool).await.map_err(|e| e.to_string())?;
     let set_ids: Vec<_> = sets.iter().map(|set| set.id).collect();
@@ -63,6 +64,7 @@ pub async fn create_set_cmd(
     name: String,
     description: Option<String>,
 ) -> Result<String, String> {
+    crate::commands::settings::require_profiles_and_sets_enabled()?;
     let set = chm_database::repos::profiles::create_set(&state.pool, &name, description)
         .await
         .map_err(|e| e.to_string())?;
@@ -71,6 +73,7 @@ pub async fn create_set_cmd(
 
 #[tauri::command]
 pub async fn delete_set_cmd(state: State<'_, AppState>, set_id: String) -> Result<(), String> {
+    crate::commands::settings::require_profiles_and_sets_enabled()?;
     let set_id = Uuid::parse_str(&set_id).map_err(|e| e.to_string())?;
     delete_set(&state.pool, set_id)
         .await
@@ -84,6 +87,7 @@ pub async fn add_set_item_cmd(
     item_type: String,
     item_id: String,
 ) -> Result<(), String> {
+    crate::commands::settings::require_profiles_and_sets_enabled()?;
     let set_id = Uuid::parse_str(&set_id).map_err(|e| e.to_string())?;
     let item_id = Uuid::parse_str(&item_id).map_err(|e| e.to_string())?;
     let item_type = SetItemType::parse_str(&item_type);
@@ -105,6 +109,7 @@ pub async fn remove_set_item_cmd(
     item_type: String,
     item_id: String,
 ) -> Result<(), String> {
+    crate::commands::settings::require_profiles_and_sets_enabled()?;
     let pool = &state.pool;
     let sid = Uuid::parse_str(&set_id).map_err(|e| e.to_string())?;
     let iid = Uuid::parse_str(&item_id).map_err(|e| e.to_string())?;
@@ -119,6 +124,7 @@ pub async fn set_filtered_desired(
     pool: &Pool<Sqlite>,
     set_id: &str,
 ) -> Result<chm_harness_sdk::adapter::plan::DesiredState, String> {
+    crate::commands::settings::require_profiles_and_sets_enabled()?;
     let sid = Uuid::parse_str(set_id).map_err(|e| e.to_string())?;
     let items = list_set_items(pool, sid).await.map_err(|e| e.to_string())?;
     if items
@@ -212,6 +218,7 @@ pub async fn apply_set_preview_cmd(
     installation_id: String,
     mode: String,
 ) -> Result<crate::commands::sync::PreviewReport, String> {
+    crate::commands::settings::require_profiles_and_sets_enabled()?;
     let pool = &state.pool;
     let desired = set_filtered_desired(pool, &set_id).await?;
     let mode = crate::commands::sync::parse_mode(&mode);
@@ -233,6 +240,7 @@ pub async fn apply_set_cmd(
     mode: String,
     plan_hash: String,
 ) -> Result<crate::commands::sync::ApplyReport, String> {
+    crate::commands::settings::require_profiles_and_sets_enabled()?;
     let pool = &state.pool;
     let m = crate::commands::sync::parse_mode(&mode);
     let desired = set_filtered_desired(pool, &set_id).await?;

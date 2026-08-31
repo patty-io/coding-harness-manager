@@ -96,6 +96,7 @@ pub async fn profile_views(pool: &Pool<Sqlite>) -> Result<Vec<ProfileView>, Stri
 
 #[tauri::command]
 pub async fn list_profiles_cmd(state: State<'_, AppState>) -> Result<Vec<ProfileView>, String> {
+    crate::commands::settings::require_profiles_and_sets_enabled()?;
     profile_views(&state.pool).await
 }
 
@@ -104,6 +105,7 @@ pub async fn create_profile_cmd(
     state: State<'_, AppState>,
     input: ProfileInput,
 ) -> Result<String, String> {
+    crate::commands::settings::require_profiles_and_sets_enabled()?;
     let profile = profile_from_input(Uuid::new_v4(), input)?;
     create_profile(&state.pool, &profile)
         .await
@@ -117,6 +119,7 @@ pub async fn update_profile_cmd(
     id: String,
     input: ProfileInput,
 ) -> Result<(), String> {
+    crate::commands::settings::require_profiles_and_sets_enabled()?;
     let profile_id = Uuid::parse_str(&id).map_err(|e| e.to_string())?;
     let existing = list_profiles(&state.pool)
         .await
@@ -135,6 +138,7 @@ pub async fn update_profile_cmd(
 
 #[tauri::command]
 pub async fn delete_profile_cmd(state: State<'_, AppState>, id: String) -> Result<(), String> {
+    crate::commands::settings::require_profiles_and_sets_enabled()?;
     let pid = Uuid::parse_str(&id).map_err(|e| e.to_string())?;
     sqlx::query("DELETE FROM launch_profiles WHERE id = ?")
         .bind(pid.to_string())
@@ -186,6 +190,7 @@ pub async fn launch_profile_cmd(
     state: State<'_, AppState>,
     profile_id: String,
 ) -> Result<crate::commands::launcher::LaunchResult, String> {
+    crate::commands::settings::require_profiles_and_sets_enabled()?;
     let pid = Uuid::parse_str(&profile_id).map_err(|e| e.to_string())?;
     let profiles = list_profiles(&state.pool)
         .await

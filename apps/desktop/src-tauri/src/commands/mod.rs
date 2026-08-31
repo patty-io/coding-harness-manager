@@ -15,6 +15,7 @@ pub mod profiles;
 pub mod provider_actions;
 pub mod providers;
 pub mod scan;
+pub mod settings;
 pub mod sets;
 pub mod skills;
 pub mod sync;

@@ -18,12 +18,15 @@ import HarnessProviderDetailScreen from "./screens/HarnessProviderDetailScreen";
 import { ToastViewport } from "./components/Toast";
 import NotFoundScreen from "./screens/NotFoundScreen";
 import DoctorScreen from "./screens/DoctorScreen";
+import { useFeatureFlags } from "./hooks/useFeatureFlags";
 
 export default function App() {
   useBackForwardNavigation();
+  const { data: featureFlags, isError: featureFlagsError } = useFeatureFlags();
+  const profilesAndSetsEnabled = featureFlags?.profilesAndSets === true;
   return (
     <div className="flex h-screen min-h-0 overflow-hidden bg-slate-950 text-slate-200">
-      <Sidebar />
+      <Sidebar profilesAndSetsEnabled={profilesAndSetsEnabled} />
       <a
         href="#main-content"
         className="sr-only focus:not-sr-only focus:fixed focus:left-3 focus:top-3 focus:z-50 focus:rounded focus:bg-blue-600 focus:px-3 focus:py-2"
@@ -46,8 +49,34 @@ export default function App() {
           <Route path="/models" element={<ModelsScreen />} />
           <Route path="/mcp" element={<McpScreen />} />
           <Route path="/skills" element={<SkillsScreen />} />
-          <Route path="/profiles" element={<ProfilesScreen />} />
-          <Route path="/sets" element={<SetsScreen />} />
+          <Route
+            path="/profiles"
+            element={
+              featureFlags === undefined ? featureFlagsError ? (
+                <Navigate to="/" replace />
+              ) : (
+                <p className="text-sm text-slate-400" role="status">Loading feature configuration…</p>
+              ) : profilesAndSetsEnabled ? (
+                <ProfilesScreen />
+              ) : (
+                <Navigate to="/" replace />
+              )
+            }
+          />
+          <Route
+            path="/sets"
+            element={
+              featureFlags === undefined ? featureFlagsError ? (
+                <Navigate to="/" replace />
+              ) : (
+                <p className="text-sm text-slate-400" role="status">Loading feature configuration…</p>
+              ) : profilesAndSetsEnabled ? (
+                <SetsScreen />
+              ) : (
+                <Navigate to="/" replace />
+              )
+            }
+          />
           <Route path="/history" element={<HistoryScreen />} />
           <Route path="/settings" element={<SettingsScreen />} />
           <Route path="/doctor" element={<DoctorScreen />} />

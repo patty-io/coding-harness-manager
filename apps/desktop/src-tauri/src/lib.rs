@@ -157,6 +157,8 @@ pub fn run() {
             commands::skills::adopt_canonical_dir,
             commands::skills::bind_skill_cmd,
             commands::skills::unbind_skill_cmd,
+            commands::settings::get_feature_flags_cmd,
+            commands::settings::set_feature_flags_cmd,
             commands::profiles::list_profiles_cmd,
             commands::profiles::create_profile_cmd,
             commands::profiles::update_profile_cmd,

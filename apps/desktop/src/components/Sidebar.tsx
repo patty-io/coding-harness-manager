@@ -36,7 +36,14 @@ const SECTIONS: Section[] = [
   },
 ];
 
-export default function Sidebar() {
+export default function Sidebar({ profilesAndSetsEnabled }: { profilesAndSetsEnabled: boolean }) {
+  const sections = SECTIONS.map((section) => ({
+    ...section,
+    items: section.items.filter(
+      (item) => profilesAndSetsEnabled || !["/profiles", "/sets"].includes(item.to),
+    ),
+  })).filter((section) => section.items.length > 0);
+
   return (
     <nav className="flex min-h-0 w-56 shrink-0 flex-col border-r border-slate-700 bg-slate-900 p-3">
       <div className="mb-1 flex items-center gap-2 px-2">
@@ -51,7 +58,7 @@ export default function Sidebar() {
         </div>
       </div>
       <div className="flex-1 overflow-auto">
-        {SECTIONS.map((section) => (
+        {sections.map((section) => (
           <div key={section.heading} className="mt-4">
             <div className="px-2 pb-1 text-[10px] font-semibold uppercase tracking-wider text-slate-500">
               {section.heading}

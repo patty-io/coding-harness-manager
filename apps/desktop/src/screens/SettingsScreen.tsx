@@ -11,8 +11,11 @@ import {
   listBackups,
   previewImport,
   restoreBackup,
+  setFeatureFlags,
+  type FeatureFlags,
   type ImportPreview,
 } from "../lib/api";
+import { useFeatureFlags } from "../hooks/useFeatureFlags";
 
 function Row({ label, children }: { label: string; children: React.ReactNode }) {
   return (
@@ -54,6 +57,10 @@ export default function SettingsScreen() {
   const [status, setStatus] = useState<string | null>(null);
   const [retentionDays, setRetentionDays] = useState("90");
   const [confirmDestructive, setConfirmDestructive] = useState(true);
+  const featureFlags = useFeatureFlags();
+  const [featureFlagDraft, setFeatureFlagDraft] = useState<FeatureFlags>({
+    profilesAndSets: false,
+  });
   const { confirm, confirmDialog } = useConfirm();
 
   useEffect(() => {
@@ -62,6 +69,10 @@ export default function SettingsScreen() {
     setConfirmDestructive(localStorage.getItem("chm.confirmDestructive") !== "false");
     void listBackups(backupDir).then(setBackups).catch(() => setBackups([]));
   }, []);
+
+  useEffect(() => {
+    if (featureFlags.data) setFeatureFlagDraft(featureFlags.data);
+  }, [featureFlags.data]);
 
   const savePreference = (key: string, value: string) => localStorage.setItem(key, value);
   const run = async (operation: () => Promise<string>, success: (value: string) => string) => {
@@ -140,9 +151,55 @@ export default function SettingsScreen() {
         {backups.length > 0 && <details className="mt-3 text-xs text-slate-500"><summary className="cursor-pointer">Existing backups ({backups.length})</summary><ul className="mt-1 space-y-1">{backups.slice(0, 10).map((path) => <li key={path} className="break-all font-mono">{path}</li>)}</ul></details>}
       </section>
 
+      <section className="mt-6 rounded border border-amber-500/30 bg-slate-800/60 p-4" aria-labelledby="feature-flags-heading">
+        <h2 id="feature-flags-heading" className="font-medium text-slate-200">Experimental features</h2>
+        <p className="mt-1 text-sm text-slate-400">
+          Release-gated features are stored in <code className="text-xs text-slate-300">~/.coding-harness-manager/feature-flags.json</code>.
+          Changes take effect immediately for navigation and are fail-closed when the file is missing or invalid.
+        </p>
+        <label className="mt-3 flex items-start gap-2 text-sm text-slate-300">
+          <input
+            type="checkbox"
+            checked={featureFlagDraft.profilesAndSets}
+            disabled={featureFlags.isLoading || featureFlags.isError}
+            onChange={(event) =>
+              setFeatureFlagDraft((current) => ({
+                ...current,
+                profilesAndSets: event.target.checked,
+              }))
+            }
+          />
+          <span>
+            <span className="block">Profiles and configuration sets</span>
+            <span className="block text-xs text-slate-500">Enables launch profiles, configuration sets, and their harness actions.</span>
+          </span>
+        </label>
+        <button
+          type="button"
+          disabled={featureFlags.isLoading || featureFlags.isError}
+          onClick={() =>
+            void run(
+              async () => {
+                await setFeatureFlags(featureFlagDraft);
+                await featureFlags.refetch();
+                return featureFlagDraft.profilesAndSets ? "enabled" : "disabled";
+              },
+              (value) => `Profiles and configuration sets ${value}`,
+            )
+          }
+          className="mt-3 rounded border border-amber-500 px-3 py-1 text-sm text-amber-300 hover:bg-amber-500/10 disabled:opacity-50"
+        >
+          Save feature flags
+        </button>
+        {featureFlags.isError && <p className="mt-2 text-xs text-red-400">Could not read feature flags: {featureFlags.error.message}</p>}
+      </section>
+
       <section className="mt-6 rounded border border-slate-700 bg-slate-800/60 p-4" aria-labelledby="portable-heading">
         <h2 id="portable-heading" className="font-medium text-slate-200">Portable configuration</h2>
-        <p className="mt-1 text-sm text-slate-400">Export providers, endpoints, models, MCP, skills, profiles, and sets. Secret values are never read or exported.</p>
+        <p className="mt-1 text-sm text-slate-400">
+          Export providers, endpoints, models, MCP, and skills
+          {featureFlagDraft.profilesAndSets ? ", profiles, and sets" : ""}. Secret values are never read or exported.
+        </p>
         <div className="mt-3 flex flex-wrap gap-2">
           <input aria-label="Export directory" value={exportDir} onChange={(event) => setExportDir(event.target.value)} className="min-w-72 rounded border border-slate-600 bg-slate-900 px-2 py-1 text-sm" />
           <button type="button" onClick={() => void run(() => exportConfig(exportDir, { historyRetentionDays: retentionDays, confirmDestructive }), (path) => `Configuration exported to ${path}`)} className="rounded bg-blue-600 px-3 py-1 text-sm text-white hover:bg-blue-500">Export configuration</button>
