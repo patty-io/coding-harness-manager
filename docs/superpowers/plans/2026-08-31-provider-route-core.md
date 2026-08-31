@@ -72,9 +72,12 @@ Expected: FAIL because `adapter::route` and the route types are undefined.
 
 ```rust
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
-pub struct CredentialRequirement {
-    pub credential_ref: CredentialRef,
-    pub auth_type: AuthType,
+pub enum CredentialRequirement {
+    None,
+    Secret {
+        credential_ref: CredentialRef,
+        auth_type: AuthType,
+    },
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]

@@ -136,9 +136,12 @@ struct ProviderRouteBundle {
     models: Vec<ModelRoute>,
 }
 
-struct CredentialRequirement {
-    credential_ref: CredentialRef,
-    auth_type: AuthType,
+enum CredentialRequirement {
+    None,
+    Secret {
+        credential_ref: CredentialRef,
+        auth_type: AuthType,
+    },
 }
 ```
 

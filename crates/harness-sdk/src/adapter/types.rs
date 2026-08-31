@@ -5,6 +5,8 @@ use chm_core::domain::mcp::McpServer;
 use chm_core::domain::models::ModelRoute;
 use thiserror::Error;
 
+use super::route::RouteDeploymentCapabilities;
+
 #[derive(Debug, Error)]
 pub enum AdapterError {
     #[error("harness {harness} version {version:?} is not supported by this adapter")]
@@ -24,6 +26,7 @@ pub enum AdapterError {
 
 #[derive(Debug, Clone)]
 pub struct HarnessCapabilities {
+    pub route_deployment: RouteDeploymentCapabilities,
     pub supports_custom_models: bool,
     pub supports_custom_providers: bool,
     pub supports_model_catalog: bool,
@@ -40,6 +43,7 @@ pub struct HarnessCapabilities {
 impl HarnessCapabilities {
     pub fn none() -> Self {
         Self {
+            route_deployment: RouteDeploymentCapabilities::unsupported(),
             supports_custom_models: false,
             supports_custom_providers: false,
             supports_model_catalog: false,
@@ -56,6 +60,10 @@ impl HarnessCapabilities {
 
     pub fn with_models(mut self, v: bool) -> Self {
         self.supports_custom_models = v;
+        self
+    }
+    pub fn with_route_deployment(mut self, capabilities: RouteDeploymentCapabilities) -> Self {
+        self.route_deployment = capabilities;
         self
     }
     pub fn with_providers(mut self, v: bool) -> Self {
