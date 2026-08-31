@@ -114,7 +114,7 @@ Add Codex test asserting `[model_providers.yolo-auto.auth] command = <helper>` o
 
 - [ ] **Step 2: Run and verify failures**
 
-Run: `cargo test -p coding-harness-manager --test credential_helper && cargo test -p codex-adapter -p claude-code-adapter -p reasonix-adapter`  
+Run: `cargo test --manifest-path apps/desktop/src-tauri/Cargo.toml --test credential_helper && cargo test -p codex-adapter -p claude-code-adapter -p reasonix-adapter`
 Expected: FAIL because the helper and protected strategies are undefined.
 
 - [ ] **Step 3: Implement helper authorization and writers**
@@ -123,7 +123,7 @@ The helper accepts a binding UUID, loads only its bound credential reference, re
 
 - [ ] **Step 4: Run tests**
 
-Run: `cargo test -p coding-harness-manager --test credential_helper && cargo test -p codex-adapter -p claude-code-adapter -p reasonix-adapter`  
+Run: `cargo test --manifest-path apps/desktop/src-tauri/Cargo.toml --test credential_helper && cargo test -p codex-adapter -p claude-code-adapter -p reasonix-adapter`
 Expected: PASS.
 
 - [ ] **Step 5: Commit**

@@ -52,6 +52,7 @@ fn skill(name: &str) -> Skill {
 fn reconcile_dispatches_all_three_kinds() {
     let endpoint = Uuid::new_v4();
     let desired = DesiredState {
+        provider_routes: vec![],
         routes: vec![route(endpoint, "glm-5", Some(1_048_576))],
         mcp_servers: vec![mcp_server("github")],
         skills: vec![skill("brainstorming")],
@@ -85,6 +86,7 @@ fn reconcile_rejects_empty_remote_model_id() {
 fn filter_unsupported_converts_actions() {
     let endpoint = Uuid::new_v4();
     let desired = DesiredState {
+        provider_routes: vec![],
         routes: vec![route(endpoint, "glm-5", Some(1_048_576))],
         mcp_servers: vec![mcp_server("github")],
         skills: vec![],
@@ -109,6 +111,7 @@ fn filter_unsupported_converts_actions() {
 fn summary_renders_stable_dry_run_line() {
     let endpoint = Uuid::new_v4();
     let desired = DesiredState {
+        provider_routes: vec![],
         routes: vec![route(endpoint, "glm-5", Some(1_048_576))],
         mcp_servers: vec![mcp_server("github")],
         skills: vec![skill("brainstorming")],

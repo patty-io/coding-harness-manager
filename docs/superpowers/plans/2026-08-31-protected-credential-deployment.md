@@ -180,7 +180,7 @@ fn protected_failure_restores_ordinary_and_protected_state() {
 
 - [ ] **Step 2: Run and verify failure**
 
-Run: `cargo test -p coding-harness-manager credential_deployment -- --nocapture`  
+Run: `cargo test --manifest-path apps/desktop/src-tauri/Cargo.toml credential_deployment -- --nocapture`
 Expected: FAIL because the coordinator does not exist and sync begins ordinary backups before credential preflight.
 
 - [ ] **Step 3: Implement preflight-first coordinated apply**
@@ -191,7 +191,7 @@ Serialize only `RedactedNativePlan::from(&native_plan)` into `begin_transaction`
 
 - [ ] **Step 4: Run sync transaction tests**
 
-Run: `cargo test -p coding-harness-manager credential_deployment commands::sync services::transactions -- --nocapture`  
+Run: `cargo test --manifest-path apps/desktop/src-tauri/Cargo.toml credential_deployment commands::sync services::transactions -- --nocapture`
 Expected: PASS.
 
 - [ ] **Step 5: Commit**
@@ -246,7 +246,7 @@ Read an absent file as `{}` and reject malformed/non-object JSON. Merge exactly 
 
 - [ ] **Step 4: Run OpenCode and sync tests**
 
-Run: `cargo test -p opencode-adapter && cargo test -p coding-harness-manager credential_deployment -- --nocapture`  
+Run: `cargo test -p opencode-adapter && cargo test --manifest-path apps/desktop/src-tauri/Cargo.toml credential_deployment -- --nocapture`
 Expected: PASS.
 
 - [ ] **Step 5: Commit**
@@ -284,7 +284,7 @@ async fn protected_snapshot_never_stores_secret_and_is_deleted_with_history() {
 
 - [ ] **Step 2: Run and verify failure**
 
-Run: `cargo test -p coding-harness-manager protected_snapshot -- --nocapture`  
+Run: `cargo test --manifest-path apps/desktop/src-tauri/Cargo.toml protected_snapshot -- --nocapture`
 Expected: FAIL because protected snapshot metadata and cleanup do not exist.
 
 - [ ] **Step 3: Implement opaque snapshot references and cleanup**

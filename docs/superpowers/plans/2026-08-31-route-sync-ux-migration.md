@@ -58,7 +58,7 @@ async fn legacy_model_only_binding_is_marked_needs_repair_without_writing_harnes
 
 - [ ] **Step 2: Run and verify failure**
 
-Run: `cargo test -p coding-harness-manager legacy_model_only_binding -- --nocapture`  
+Run: `cargo test --manifest-path apps/desktop/src-tauri/Cargo.toml legacy_model_only_binding -- --nocapture`
 Expected: FAIL because binding readiness is not stored or audited.
 
 - [ ] **Step 3: Add safe status columns and audit logic**
@@ -67,7 +67,7 @@ Add non-null status with a conservative `needs_repair` default for legacy rows a
 
 - [ ] **Step 4: Run migration and sync tests**
 
-Run: `cargo test -p chm-database && cargo test -p coding-harness-manager sync_flow_tests -- --nocapture`  
+Run: `cargo test -p chm-database && cargo test --manifest-path apps/desktop/src-tauri/Cargo.toml sync_flow_tests -- --nocapture`
 Expected: PASS.
 
 - [ ] **Step 5: Commit**
@@ -253,7 +253,7 @@ async fn yolo_route_is_ready_or_precisely_blocked_for_every_adapter() {
 
 - [ ] **Step 2: Run and expose remaining integration failures**
 
-Run: `cargo test -p coding-harness-manager --test route_portability_e2e -- --nocapture`  
+Run: `cargo test --manifest-path apps/desktop/src-tauri/Cargo.toml --test route_portability_e2e -- --nocapture`
 Expected: FAIL until every adapter returns Ready or a precise pre-write Blocked result.
 
 - [ ] **Step 3: Fix integration boundaries and add CI gate**

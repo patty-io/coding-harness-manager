@@ -156,6 +156,7 @@ pub async fn set_filtered_desired(
         .collect();
 
     Ok(chm_harness_sdk::adapter::plan::DesiredState {
+        provider_routes: vec![],
         routes: routes
             .into_iter()
             .filter(|r| r.enabled)

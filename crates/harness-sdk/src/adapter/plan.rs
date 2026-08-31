@@ -1,5 +1,6 @@
 //! Plan types + summary rendering.
 
+use crate::adapter::route::ProviderRouteBundle;
 use crate::adapter::types::{HarnessMcp, HarnessModel, HarnessSkill};
 use chm_core::domain::mcp::McpServer;
 use chm_core::domain::models::ModelRoute;
@@ -16,6 +17,10 @@ pub enum Mode {
 
 #[derive(Debug, Clone, Default)]
 pub struct DesiredState {
+    /// Complete provider routes used for compatibility checks and native
+    /// provider/credential deployment. `routes` remains the flattened model
+    /// view consumed by the reconciliation engine and harness-local edits.
+    pub provider_routes: Vec<ProviderRouteBundle>,
     pub routes: Vec<ModelRoute>,
     pub mcp_servers: Vec<McpServer>,
     pub skills: Vec<Skill>,

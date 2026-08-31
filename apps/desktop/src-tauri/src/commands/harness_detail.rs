@@ -1067,6 +1067,7 @@ pub async fn apply_harness_model_edits_cmd(
     }
 
     let desired = DesiredState {
+        provider_routes: vec![],
         routes: desired_routes,
         mcp_servers: vec![],
         skills: vec![],

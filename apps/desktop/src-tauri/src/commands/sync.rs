@@ -6,6 +6,7 @@ use chm_core::domain::harness::{
 };
 use chm_core::domain::history::{ConfigSnapshot, TransactionStatus, TransactionType};
 use chm_core::domain::models::ModelRoute;
+use chm_core::domain::provider::{AuthType, Provider, ProviderEndpoint};
 use chm_database::repos::harness::{list_model_bindings, upsert_model_binding};
 use chm_database::repos::history::{add_snapshot, begin_transaction, finish_transaction};
 use chm_database::repos::mcp::{list_mcp_bindings, list_mcp_servers, upsert_mcp_binding};
@@ -16,6 +17,7 @@ use chm_filesystem::backup_file;
 use chm_harness_sdk::adapter::plan::{
     ActualState, DesiredState, Mode, PlanAction, ReconciliationPlan,
 };
+use chm_harness_sdk::adapter::route::{CredentialRequirement, ProviderRouteBundle};
 use chm_harness_sdk::adapter::types::{ApplyResult, HarnessAdapter, NativePlan, ValidationReport};
 use chm_reconciliation::engine::{filter_unsupported, reconcile};
 use serde::{Deserialize, Serialize};
@@ -98,47 +100,68 @@ fn effective_mode(mode: &str, selection: Option<&SyncSelection>) -> Result<Mode,
     })
 }
 
-/// Routes created from provider discovery may predate native-provider
-/// metadata, but their endpoint still identifies the canonical provider.
-/// Supply that identity to the harness adapter at sync time without mutating
-/// the user's stored route or inventing a `custom` provider.
-#[derive(Debug, Clone)]
-struct EndpointProviderInfo {
-    provider_id: String,
-    display_name: String,
-    base_url: String,
-    protocol: String,
-    api_key_env: Option<String>,
-}
+fn group_provider_routes(
+    routes: &[ModelRoute],
+    providers: &[Provider],
+    endpoints: &[ProviderEndpoint],
+) -> Result<Vec<ProviderRouteBundle>, String> {
+    let provider_by_id = providers
+        .iter()
+        .map(|provider| (provider.id, provider))
+        .collect::<std::collections::HashMap<_, _>>();
+    let endpoint_by_id = endpoints
+        .iter()
+        .map(|endpoint| (endpoint.id, endpoint))
+        .collect::<std::collections::HashMap<_, _>>();
+    let mut bundle_index = std::collections::HashMap::<Uuid, usize>::new();
+    let mut bundles = Vec::<ProviderRouteBundle>::new();
 
-fn route_with_endpoint_provider(
-    mut route: ModelRoute,
-    provider_by_endpoint: &std::collections::HashMap<Uuid, EndpointProviderInfo>,
-) -> ModelRoute {
-    let Some(provider) = provider_by_endpoint.get(&route.endpoint_id) else {
-        return route;
-    };
-    let route_provider = native_provider_id(&route).map(str::to_string);
-    if route_provider.is_none() {
-        route.overrides["native_provider_id"] =
-            serde_json::Value::String(provider.provider_id.clone());
-    }
-    let provider_matches_endpoint = route_provider
-        .as_deref()
-        .map(|id| id.eq_ignore_ascii_case(&provider.provider_id))
-        .unwrap_or(true);
-    if route.overrides.get("native_provider_config").is_none() && provider_matches_endpoint {
-        let mut config = serde_json::json!({
-            "display_name": provider.display_name,
-            "base_url": provider.base_url,
-            "protocol": provider.protocol,
-        });
-        if let Some(api_key_env) = &provider.api_key_env {
-            config["api_key_env"] = serde_json::Value::String(api_key_env.clone());
+    for route in routes {
+        let endpoint = endpoint_by_id.get(&route.endpoint_id).ok_or_else(|| {
+            format!(
+                "model {} references endpoint {} which does not exist",
+                route.remote_model_id, route.endpoint_id
+            )
+        })?;
+        let provider = provider_by_id.get(&endpoint.provider_id).ok_or_else(|| {
+            format!(
+                "endpoint {} for model {} references provider {} which does not exist",
+                endpoint.id, route.remote_model_id, endpoint.provider_id
+            )
+        })?;
+        let credential = if endpoint.auth_type == AuthType::None {
+            CredentialRequirement::None
+        } else {
+            CredentialRequirement::Secret {
+                credential_ref: endpoint.credential_ref.clone().ok_or_else(|| {
+                    format!(
+                        "endpoint {} for model {} requires {} authentication but has no credential",
+                        endpoint.name,
+                        route.remote_model_id,
+                        endpoint.auth_type.as_str()
+                    )
+                })?,
+                auth_type: endpoint.auth_type,
+            }
+        };
+
+        if let Some(index) = bundle_index.get(&endpoint.id).copied() {
+            bundles[index].models.push(route.clone());
+        } else {
+            bundle_index.insert(endpoint.id, bundles.len());
+            bundles.push(ProviderRouteBundle {
+                provider_id: provider.name.clone(),
+                display_name: provider.display_name.clone(),
+                endpoint_id: endpoint.id,
+                base_url: endpoint.base_url.clone(),
+                protocol: endpoint.protocol,
+                credential,
+                models: vec![route.clone()],
+            });
         }
-        route.overrides["native_provider_config"] = config;
     }
-    route
+
+    Ok(bundles)
 }
 
 async fn desired_state(
@@ -149,41 +172,29 @@ async fn desired_state(
     let mcp_ids = selection.map(|s| s.mcp_ids.iter().collect::<std::collections::HashSet<_>>());
     let skill_ids = selection.map(|s| s.skill_ids.iter().collect::<std::collections::HashSet<_>>());
     let providers = list_providers(pool).await.map_err(|e| e.to_string())?;
-    let mut provider_by_endpoint = std::collections::HashMap::new();
+    let mut endpoints = Vec::new();
     for provider in &providers {
-        for endpoint in list_endpoints(pool, provider.id)
-            .await
-            .map_err(|e| e.to_string())?
-        {
-            let api_key_env = endpoint.credential_ref.as_ref().and_then(|credential| {
-                (credential.kind == chm_core::domain::credentials::CredentialKind::Env)
-                    .then(|| credential.reference.clone())
-            });
-            provider_by_endpoint.insert(
-                endpoint.id,
-                EndpointProviderInfo {
-                    provider_id: provider.name.clone(),
-                    display_name: provider.display_name.clone(),
-                    base_url: endpoint.base_url,
-                    protocol: endpoint.protocol.as_str().to_string(),
-                    api_key_env,
-                },
-            );
-        }
+        endpoints.extend(
+            list_endpoints(pool, provider.id)
+                .await
+                .map_err(|e| e.to_string())?,
+        );
     }
+    let routes = list_routes(pool)
+        .await
+        .map_err(|e| e.to_string())?
+        .into_iter()
+        .filter(|r| r.enabled)
+        .filter(|r| {
+            route_ids
+                .as_ref()
+                .is_none_or(|ids| ids.contains(&r.id.to_string()))
+        })
+        .collect::<Vec<_>>();
+    let provider_routes = group_provider_routes(&routes, &providers, &endpoints)?;
     Ok(DesiredState {
-        routes: list_routes(pool)
-            .await
-            .map_err(|e| e.to_string())?
-            .into_iter()
-            .filter(|r| r.enabled)
-            .filter(|r| {
-                route_ids
-                    .as_ref()
-                    .is_none_or(|ids| ids.contains(&r.id.to_string()))
-            })
-            .map(|route| route_with_endpoint_provider(route, &provider_by_endpoint))
-            .collect(),
+        provider_routes,
+        routes,
         mcp_servers: list_mcp_servers(pool)
             .await
             .map_err(|e| e.to_string())?
@@ -1099,56 +1110,129 @@ pub async fn bind_mcp_sync(
 #[cfg(test)]
 mod tests {
     use super::{
-        EndpointProviderInfo, SyncSelection, activity_summary, effective_mode,
-        route_with_endpoint_provider, validate_apply_request,
+        SyncSelection, activity_summary, effective_mode, group_provider_routes,
+        validate_apply_request,
     };
+    use chm_core::domain::credentials::{CredentialKind, CredentialRef};
     use chm_harness_sdk::adapter::plan::{
         AddAction, Mode, PlanAction, ReconciliationPlan, RemoveAction, UpdateAction,
     };
     use chm_core::domain::models::ModelRoute;
-    use std::collections::HashMap;
+    use chm_core::domain::provider::{AuthType, Protocol, Provider, ProviderEndpoint};
+    use chm_harness_sdk::adapter::route::CredentialRequirement;
+    use chrono::Utc;
     use uuid::Uuid;
 
     #[test]
-    fn route_without_native_provider_uses_its_endpoint_provider() {
+    fn groups_models_by_endpoint_without_resolving_credentials() {
+        let provider_id = Uuid::new_v4();
         let endpoint_id = Uuid::new_v4();
+        let now = Utc::now();
+        let provider = Provider {
+            id: provider_id,
+            name: "yolo-auto".into(),
+            display_name: "Yolo-Auto".into(),
+            enabled: true,
+            notes: None,
+            created_at: now,
+            updated_at: now,
+        };
+        let credential = CredentialRef {
+            id: Uuid::new_v4(),
+            kind: CredentialKind::Keychain,
+            reference: "coding-harness-manager/providers/yolo-auto".into(),
+            created_at: now,
+            updated_at: now,
+        };
+        let endpoint = ProviderEndpoint {
+            id: endpoint_id,
+            provider_id,
+            name: "API".into(),
+            base_url: "https://yolo-auto.example/v1".into(),
+            protocol: Protocol::OpenAiChatCompletions,
+            discovery_path: Some("/models".into()),
+            auth_type: AuthType::BearerToken,
+            credential_ref: Some(credential),
+            headers: Default::default(),
+            enabled: true,
+            created_at: now,
+            updated_at: now,
+        };
+        let routes = ["qwen-a", "qwen-b"]
+            .into_iter()
+            .map(|id| {
+                let mut route = ModelRoute::new(
+                    id.into(),
+                    id.into(),
+                    None,
+                    serde_json::json!({}),
+                    serde_json::json!({}),
+                );
+                route.endpoint_id = endpoint_id;
+                route
+            })
+            .collect::<Vec<_>>();
+
+        let bundles = group_provider_routes(&routes, &[provider], &[endpoint]).unwrap();
+
+        assert_eq!(bundles.len(), 1);
+        assert_eq!(bundles[0].provider_id, "yolo-auto");
+        assert_eq!(bundles[0].models.len(), 2);
+        assert!(matches!(
+            &bundles[0].credential,
+            CredentialRequirement::Secret { credential_ref, .. }
+                if credential_ref.kind == CredentialKind::Keychain
+        ));
+    }
+
+    #[test]
+    fn endpoint_without_provider_or_credential_is_an_error() {
         let mut route = ModelRoute::new(
-            "qwen3.8-27b".into(),
-            "Qwen 3.8 27B".into(),
+            "qwen".into(),
+            "Qwen".into(),
+            None,
+            serde_json::json!({}),
+            serde_json::json!({}),
+        );
+        route.endpoint_id = Uuid::new_v4();
+        assert!(group_provider_routes(&[route], &[], &[]).is_err());
+
+        let provider_id = Uuid::new_v4();
+        let endpoint_id = Uuid::new_v4();
+        let now = Utc::now();
+        let provider = Provider {
+            id: provider_id,
+            name: "missing-secret".into(),
+            display_name: "Missing Secret".into(),
+            enabled: true,
+            notes: None,
+            created_at: now,
+            updated_at: now,
+        };
+        let endpoint = ProviderEndpoint {
+            id: endpoint_id,
+            provider_id,
+            name: "API".into(),
+            base_url: "https://example.test/v1".into(),
+            protocol: Protocol::OpenAiChatCompletions,
+            discovery_path: None,
+            auth_type: AuthType::BearerToken,
+            credential_ref: None,
+            headers: Default::default(),
+            enabled: true,
+            created_at: now,
+            updated_at: now,
+        };
+        let mut route = ModelRoute::new(
+            "qwen".into(),
+            "Qwen".into(),
             None,
             serde_json::json!({}),
             serde_json::json!({}),
         );
         route.endpoint_id = endpoint_id;
-        let providers = HashMap::from([(
-            endpoint_id,
-            EndpointProviderInfo {
-                provider_id: "yolo-auto".into(),
-                display_name: "Yolo-Auto".into(),
-                base_url: "https://yolo-auto.example/v1".into(),
-                protocol: "openai-chat".into(),
-                api_key_env: Some("YOLO_AUTO_API_KEY".into()),
-            },
-        )]);
-
-        let route = route_with_endpoint_provider(route, &providers);
-
-        assert_eq!(
-            route.overrides["native_provider_id"],
-            serde_json::json!("yolo-auto")
-        );
-        assert_eq!(
-            route.overrides["native_provider_config"]["display_name"],
-            serde_json::json!("Yolo-Auto")
-        );
-        assert_eq!(
-            route.overrides["native_provider_config"]["base_url"],
-            serde_json::json!("https://yolo-auto.example/v1")
-        );
-        assert_eq!(
-            route.overrides["native_provider_config"]["api_key_env"],
-            serde_json::json!("YOLO_AUTO_API_KEY")
-        );
+        let error = group_provider_routes(&[route], &[provider], &[endpoint]).unwrap_err();
+        assert!(error.contains("has no credential"));
     }
 
     #[test]

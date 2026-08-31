@@ -139,7 +139,7 @@ fn endpoint_without_provider_or_credential_is_an_error() {
 
 - [ ] **Step 2: Run the failing sync tests**
 
-Run: `cargo test -p coding-harness-manager commands::sync::tests::groups_models -- --nocapture`  
+Run: `cargo test --manifest-path apps/desktop/src-tauri/Cargo.toml commands::sync::tests::groups_models -- --nocapture`
 Expected: FAIL because desired state still decorates flat routes and drops non-env credentials.
 
 - [ ] **Step 3: Implement `group_provider_routes` and change desired state**
@@ -158,7 +158,7 @@ Retain `routes()` as a flattening iterator only where model reconciliation still
 
 - [ ] **Step 4: Run sync and reconciliation tests**
 
-Run: `cargo test -p coding-harness-manager commands::sync -- --nocapture && cargo test -p chm-reconciliation`  
+Run: `cargo test --manifest-path apps/desktop/src-tauri/Cargo.toml commands::sync -- --nocapture && cargo test -p chm-reconciliation`
 Expected: PASS.
 
 - [ ] **Step 5: Commit**
@@ -215,7 +215,7 @@ Run `capabilities.check(bundle)` before `reconcile_models`. Add one safe `Unsupp
 
 - [ ] **Step 4: Run targeted tests**
 
-Run: `cargo test -p chm-reconciliation && cargo test -p coding-harness-manager commands::sync && npm test -- SyncDialog.test.tsx`  
+Run: `cargo test -p chm-reconciliation && cargo test --manifest-path apps/desktop/src-tauri/Cargo.toml commands::sync && npm test -- SyncDialog.test.tsx`
 Expected: PASS.
 
 - [ ] **Step 5: Commit**
@@ -258,7 +258,7 @@ fn binding_records_complete_safe_route_identity() {
 
 - [ ] **Step 2: Run tests and observe the detection writer's `custom` fallback**
 
-Run: `cargo test -p coding-harness-manager known_provider -- --nocapture`  
+Run: `cargo test --manifest-path apps/desktop/src-tauri/Cargo.toml known_provider -- --nocapture`
 Expected: FAIL while `adapters/detection/src/writer.rs` still uses `unwrap_or("custom")`.
 
 - [ ] **Step 3: Require provider identity and persist complete safe bindings**
