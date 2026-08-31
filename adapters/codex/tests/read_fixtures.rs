@@ -67,7 +67,7 @@ fn codex_full_config_parses_without_warnings() {
         &std::fs::read_to_string("tests/golden/0.150.0.json").expect("golden missing for 0.150.0"),
     )
     .unwrap();
-    let mut models = state
+    let models = state
         .models
         .iter()
         .map(|m| {
@@ -83,7 +83,7 @@ fn codex_full_config_parses_without_warnings() {
         .collect::<Vec<_>>();
     let providers = state.providers;
 
-    let mut mcp = state
+    let mcp = state
         .mcp
         .iter()
         .map(|m| {
