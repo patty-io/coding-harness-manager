@@ -10,7 +10,12 @@ mod parser;
 mod writer;
 
 use chm_core::domain::harness::HarnessInstallation;
+use chm_core::domain::provider::Protocol;
 use chm_harness_sdk::adapter::plan::ReconciliationPlan;
+use chm_harness_sdk::adapter::route::{
+    CredentialTarget, ModelIdentityRules, ModelMetadataCapabilities, ProviderTopology,
+    RouteDeploymentCapabilities,
+};
 use chm_harness_sdk::adapter::types::{
     AdapterError, ApplyResult, HarnessAdapter, HarnessCapabilities, NativePlan, ParsedState,
     ValidationReport,
@@ -42,6 +47,121 @@ pub(crate) struct DetectionSpec {
 }
 
 const NONE: &[&str] = &[];
+
+fn route_capabilities(spec: &DetectionSpec) -> RouteDeploymentCapabilities {
+    let all_protocols = vec![
+        Protocol::OpenAiChatCompletions,
+        Protocol::OpenAiResponses,
+        Protocol::AnthropicMessages,
+        Protocol::OpenRouterOpenAi,
+    ];
+    let env_target = vec![CredentialTarget::HarnessEnvFile];
+    match spec.id {
+        // These extensions keep provider credentials in VS Code SecretStorage;
+        // CHM has no documented write API for that store yet. Keep their MCP
+        // and profile surfaces available while blocking incomplete routes.
+        "cline" | "roo-code" => RouteDeploymentCapabilities::unsupported(),
+        "gemini-cli" => RouteDeploymentCapabilities {
+            provider_topology: ProviderTopology::FixedProvider {
+                provider_id: "gemini".into(),
+            },
+            protocols: vec![Protocol::Custom],
+            credential_targets: env_target.clone(),
+            model_identity: ModelIdentityRules {
+                case_sensitive: true,
+                allow_namespaced_ids: false,
+            },
+            metadata: ModelMetadataCapabilities {
+                context_window: false,
+                max_input: false,
+                max_output: false,
+            },
+        },
+        "cursor" => RouteDeploymentCapabilities {
+            provider_topology: ProviderTopology::SingleGlobalOverride,
+            protocols: vec![Protocol::OpenAiChatCompletions],
+            credential_targets: env_target.clone(),
+            model_identity: ModelIdentityRules {
+                case_sensitive: true,
+                allow_namespaced_ids: false,
+            },
+            metadata: ModelMetadataCapabilities {
+                context_window: false,
+                max_input: false,
+                max_output: false,
+            },
+        },
+        "amp" => RouteDeploymentCapabilities::unsupported(),
+        // Kimi resolves credentials from config.toml, so its adapter emits a
+        // protected-config descriptor instead of an ambient shell variable.
+        "kimi-cli" => RouteDeploymentCapabilities {
+            provider_topology: ProviderTopology::Multiple,
+            protocols: all_protocols.clone(),
+            credential_targets: vec![CredentialTarget::ProtectedConfig],
+            model_identity: ModelIdentityRules {
+                case_sensitive: true,
+                allow_namespaced_ids: true,
+            },
+            metadata: ModelMetadataCapabilities {
+                context_window: true,
+                max_input: true,
+                max_output: true,
+            },
+        },
+        // Qwen, Continue, Reasonix, and Goose have isolated harness-owned
+        // environment/config surfaces that CHM can write.
+        "qwen-code" | "continue" | "reasonix" => RouteDeploymentCapabilities {
+            provider_topology: ProviderTopology::Multiple,
+            protocols: all_protocols.clone(),
+            credential_targets: env_target.clone(),
+            model_identity: ModelIdentityRules {
+                case_sensitive: true,
+                allow_namespaced_ids: true,
+            },
+            metadata: ModelMetadataCapabilities {
+                context_window: true,
+                max_input: true,
+                max_output: true,
+            },
+        },
+        "aider" => RouteDeploymentCapabilities {
+            // Aider exposes one active model and one global API base. It can
+            // switch that global selection, but cannot represent several
+            // independent provider endpoints at once.
+            provider_topology: ProviderTopology::SingleGlobalOverride,
+            protocols: vec![
+                Protocol::OpenAiChatCompletions,
+                Protocol::AnthropicMessages,
+                Protocol::OpenRouterOpenAi,
+            ],
+            credential_targets: env_target.clone(),
+            model_identity: ModelIdentityRules {
+                case_sensitive: true,
+                allow_namespaced_ids: true,
+            },
+            metadata: ModelMetadataCapabilities {
+                context_window: true,
+                max_input: true,
+                max_output: true,
+            },
+        },
+        "goose" => RouteDeploymentCapabilities {
+            provider_topology: ProviderTopology::Multiple,
+            protocols: all_protocols,
+            credential_targets: env_target,
+            model_identity: ModelIdentityRules {
+                case_sensitive: true,
+                allow_namespaced_ids: true,
+            },
+            metadata: ModelMetadataCapabilities {
+                context_window: true,
+                max_input: true,
+                max_output: true,
+            },
+        },
+        _ => RouteDeploymentCapabilities::unsupported(),
+    }
+}
 
 // Roo Code and Cline are also VS Code extensions. Their global MCP files live
 // in the editor's globalStorage directory rather than under the CLI dot-dir.
@@ -117,8 +237,8 @@ pub(crate) static QWEN: DetectionSpec = DetectionSpec {
     format: ConfigFormat::Json,
     mcp_rels: NONE,
     skill_rels: NONE,
-    supports_models: false,
-    supports_providers: false,
+    supports_models: true,
+    supports_providers: true,
     supports_profiles: true,
     supports_mcp: true,
     supports_runtime_env: true,
@@ -222,8 +342,8 @@ pub(crate) static AIDER: DetectionSpec = DetectionSpec {
     format: ConfigFormat::Yaml,
     mcp_rels: NONE,
     skill_rels: NONE,
-    supports_models: false,
-    supports_providers: false,
+    supports_models: true,
+    supports_providers: true,
     supports_profiles: true,
     supports_mcp: false,
     supports_runtime_env: true,
@@ -293,6 +413,7 @@ macro_rules! adapter_type {
 
             fn capabilities(&self) -> HarnessCapabilities {
                 HarnessCapabilities::none()
+                    .with_route_deployment(route_capabilities(&$spec))
                     .with_models($spec.supports_models)
                     .with_providers($spec.supports_providers)
                     .with_profiles($spec.supports_profiles)

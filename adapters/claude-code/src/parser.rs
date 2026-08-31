@@ -27,7 +27,33 @@ pub fn parse_config(
             })?;
         if let Some(env) = json.get("env").and_then(|e| e.as_object()) {
             for (key, value) in env {
-                if let Some((_, role)) = ROLE_ENV_VARS.iter().find(|(k, _)| *k == key) {
+                if key == "ANTHROPIC_MODEL" {
+                    if let Some(model) = value.as_str().map(str::trim).filter(|m| !m.is_empty()) {
+                        let mut overrides = serde_json::json!({
+                            "protocol": "anthropic-messages",
+                            "env_key": key,
+                        });
+                        if let Some(base_url) = env
+                            .get("ANTHROPIC_BASE_URL")
+                            .and_then(|value| value.as_str())
+                            .map(str::trim)
+                            .filter(|url| !url.is_empty())
+                        {
+                            overrides["base_url"] = serde_json::Value::String(base_url.into());
+                        }
+                        let route = ModelRoute::new(
+                            model.to_string(),
+                            model.to_string(),
+                            None,
+                            serde_json::json!({}),
+                            overrides,
+                        );
+                        state.models.push(HarnessModel {
+                            native_id: model.to_string(),
+                            route,
+                        });
+                    }
+                } else if let Some((_, role)) = ROLE_ENV_VARS.iter().find(|(k, _)| *k == key) {
                     if let Some(model) = value.as_str() {
                         let route = ModelRoute::new(
                             model.to_string(),

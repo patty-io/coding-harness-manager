@@ -1,6 +1,7 @@
 //! Sync flow: desired -> actual -> plan -> native plan -> preview/apply -> verify.
 
 use adapters::all_adapters;
+use chm_core::domain::credentials::CredentialRef;
 use chm_core::domain::harness::{
     BindingType, HarnessInstallation, HarnessMcpBinding, HarnessModelBinding, HarnessSkillBinding,
 };
@@ -20,12 +21,14 @@ use chm_harness_sdk::adapter::plan::{
 use chm_harness_sdk::adapter::route::{CredentialRequirement, ProviderRouteBundle};
 use chm_harness_sdk::adapter::types::{ApplyResult, HarnessAdapter, NativePlan, ValidationReport};
 use chm_reconciliation::engine::filter_unsupported;
+use chm_secrets::SecretStore;
 use serde::{Deserialize, Serialize};
 use sqlx::{Pool, Sqlite};
 use tauri::State;
 use uuid::Uuid;
 
 use crate::AppState;
+use crate::services::credential_deployment::{self, AppliedFile};
 
 #[derive(Debug, Clone, Serialize)]
 #[serde(rename_all = "camelCase")]
@@ -51,7 +54,9 @@ pub struct PreviewReport {
     pub files: Vec<FilePreview>,
     pub plan_hash: String,
     pub writable_changes: usize,
+    pub protected_changes: usize,
     pub has_blockers: bool,
+    pub warnings: Vec<String>,
     pub route_blockers: Vec<RouteBlockerView>,
 }
 
@@ -109,7 +114,7 @@ fn effective_mode(mode: &str, selection: Option<&SyncSelection>) -> Result<Mode,
     })
 }
 
-fn group_provider_routes(
+pub(crate) fn group_provider_routes(
     routes: &[ModelRoute],
     providers: &[Provider],
     endpoints: &[ProviderEndpoint],
@@ -173,6 +178,56 @@ fn group_provider_routes(
     Ok(bundles)
 }
 
+pub(crate) fn route_for_provider_bundle(
+    mut route: ModelRoute,
+    bundle: &ProviderRouteBundle,
+) -> ModelRoute {
+    if !route.overrides.is_object() {
+        route.overrides = serde_json::json!({});
+    }
+    let overrides = route.overrides.as_object_mut().expect("overrides object");
+    overrides.insert(
+        "native_provider_id".into(),
+        serde_json::Value::String(bundle.provider_id.clone()),
+    );
+    overrides.insert(
+        "base_url".into(),
+        serde_json::Value::String(bundle.base_url.clone()),
+    );
+    overrides.insert(
+        "protocol".into(),
+        serde_json::Value::String(bundle.protocol.as_str().into()),
+    );
+    let mut config = serde_json::json!({
+        "display_name": bundle.display_name,
+        "base_url": bundle.base_url,
+        "protocol": bundle.protocol.as_str(),
+        "endpoint_id": bundle.endpoint_id,
+    });
+    match &bundle.credential {
+        CredentialRequirement::None => {}
+        CredentialRequirement::Secret { credential_ref, .. } => {
+            config["credential_ref_id"] = serde_json::Value::String(credential_ref.id.to_string());
+            config["credential_kind"] = serde_json::Value::String(credential_ref.kind.as_str().into());
+            config["credential_reference"] =
+                serde_json::Value::String(credential_ref.reference.clone());
+            if credential_ref.kind == chm_core::domain::credentials::CredentialKind::Env {
+                overrides.insert(
+                    "env_key".into(),
+                    serde_json::Value::String(credential_ref.reference.clone()),
+                );
+                overrides.insert(
+                    "api_key_env".into(),
+                    serde_json::Value::String(credential_ref.reference.clone()),
+                );
+                config["api_key_env"] = serde_json::Value::String(credential_ref.reference.clone());
+            }
+        }
+    }
+    overrides.insert("native_provider_config".into(), config);
+    route
+}
+
 async fn desired_state(
     pool: &Pool<Sqlite>,
     selection: Option<&SyncSelection>,
@@ -201,6 +256,16 @@ async fn desired_state(
         })
         .collect::<Vec<_>>();
     let provider_routes = group_provider_routes(&routes, &providers, &endpoints)?;
+    let routes = provider_routes
+        .iter()
+        .flat_map(|bundle| {
+            bundle
+                .models
+                .iter()
+                .cloned()
+                .map(|route| route_for_provider_bundle(route, bundle))
+        })
+        .collect();
     Ok(DesiredState {
         provider_routes,
         routes,
@@ -314,6 +379,31 @@ fn native_provider_id(route: &chm_core::domain::models::ModelRoute) -> Option<&s
         })
 }
 
+fn route_base_url(route: &ModelRoute) -> Option<&str> {
+    route
+        .overrides
+        .get("base_url")
+        .and_then(|value| value.as_str())
+        .or_else(|| {
+            route
+                .overrides
+                .get("native_provider_config")
+                .and_then(|config| config.get("base_url"))
+                .and_then(|value| value.as_str())
+        })
+        .or_else(|| {
+            route
+                .overrides
+                .get("native")
+                .and_then(|native| native.get("base_url"))
+                .and_then(|value| value.as_str())
+        })
+}
+
+fn normalized_base_url(value: &str) -> String {
+    value.trim().trim_end_matches('/').to_ascii_lowercase()
+}
+
 /// Persist the ownership records for resources that are present after a
 /// successful write. We only bind rows that the adapter can read back, so a
 /// no-op/unsupported action never becomes falsely managed.
@@ -341,13 +431,37 @@ async fn record_bindings(
         }
         let provider = native_provider_id(route);
         if let Some(actual) = parsed.models.iter().find(|m| {
-            m.route
+            if !m
+                .route
                 .remote_model_id
                 .eq_ignore_ascii_case(&route.remote_model_id)
-                && native_provider_id(&m.route)
-                    .map(|p| provider.is_some_and(|wanted| p.eq_ignore_ascii_case(wanted)))
-                    .unwrap_or(provider.is_none())
+            {
+                return false;
+            }
+            let same_provider = native_provider_id(&m.route)
+                .map(|p| provider.is_some_and(|wanted| p.eq_ignore_ascii_case(wanted)))
+                .unwrap_or(provider.is_none());
+            same_provider
+                || matches!(
+                    (route_base_url(&m.route), route_base_url(route)),
+                    (Some(actual), Some(desired))
+                        if normalized_base_url(actual) == normalized_base_url(desired)
+                )
         }) {
+            let native_config = serde_json::json!({
+                "native_provider_id": provider,
+                "remote_model_id": route.remote_model_id,
+                "base_url": route_base_url(route),
+                "protocol": route.overrides.get("protocol"),
+                "endpoint_id": route
+                    .overrides
+                    .get("native_provider_config")
+                    .and_then(|config| config.get("endpoint_id")),
+                "credential_ref_id": route
+                    .overrides
+                    .get("native_provider_config")
+                    .and_then(|config| config.get("credential_ref_id")),
+            });
             upsert_model_binding(
                 pool,
                 &HarnessModelBinding {
@@ -355,10 +469,7 @@ async fn record_bindings(
                     harness_installation_id: install.id,
                     model_route_id: route.id,
                     native_id: actual.native_id.clone(),
-                    native_config: serde_json::json!({
-                        "native_provider_id": provider,
-                        "remote_model_id": route.remote_model_id,
-                    }),
+                    native_config,
                     managed: true,
                     created_at: now,
                     updated_at: now,
@@ -440,8 +551,151 @@ pub(crate) fn plan_hash(
     plan: &ReconciliationPlan,
     native_plan: &NativePlan,
 ) -> Result<String, String> {
-    let bytes = serde_json::to_vec(&(plan, native_plan)).map_err(|e| e.to_string())?;
+    // Native changes are also used for previews, hashes, and audit records.
+    // Adapters still retain the complete bytes for the actual write, but the
+    // representation that leaves this process must not carry an API key from
+    // an existing config file.
+    let safe_native_plan = secret_free_native_plan(native_plan);
+    let bytes = serde_json::to_vec(&(plan, safe_native_plan)).map_err(|e| e.to_string())?;
     Ok(crate::drift::sha256_hex_bytes(&bytes))
+}
+
+pub(crate) fn secret_free_native_plan(native_plan: &NativePlan) -> NativePlan {
+    let mut safe = native_plan.clone();
+    safe.changes = native_plan
+        .changes
+        .iter()
+        .map(|change| chm_harness_sdk::adapter::types::NativeChange {
+            file_path: change.file_path.clone(),
+            before: change
+                .before
+                .as_deref()
+                .map(|content| redact_native_content(&change.file_path, content)),
+            after: change
+                .after
+                .as_deref()
+                .map(|content| redact_native_content(&change.file_path, content)),
+        })
+        .collect();
+    safe
+}
+
+fn redact_native_content(path: &str, content: &str) -> String {
+    let extension = std::path::Path::new(path)
+        .extension()
+        .and_then(|extension| extension.to_str())
+        .unwrap_or_default()
+        .to_ascii_lowercase();
+    if matches!(extension.as_str(), "json" | "jsonc") {
+        let parsed = if extension == "jsonc" {
+            serde_json::from_reader::<_, serde_json::Value>(
+                json_comments::StripComments::new(content.as_bytes()),
+            )
+        } else {
+            serde_json::from_str(content)
+        };
+        if let Ok(mut value) = parsed {
+            redact_json_value(&mut value);
+            return serde_json::to_string_pretty(&value).unwrap_or_else(|_| "<redacted>".into());
+        }
+    }
+    if matches!(extension.as_str(), "yaml" | "yml")
+        && let Ok(mut value) = serde_yaml::from_str::<serde_yaml::Value>(content)
+    {
+        redact_yaml_value(&mut value);
+        return serde_yaml::to_string(&value).unwrap_or_else(|_| "<redacted>\n".into());
+    }
+    redact_assignment_lines(content)
+}
+
+fn redact_json_value(value: &mut serde_json::Value) {
+    match value {
+        serde_json::Value::Object(object) => {
+            for (key, child) in object.iter_mut() {
+                if is_secret_field(key) {
+                    *child = serde_json::Value::String("<redacted>".into());
+                } else {
+                    redact_json_value(child);
+                }
+            }
+        }
+        serde_json::Value::Array(values) => {
+            for value in values {
+                redact_json_value(value);
+            }
+        }
+        _ => {}
+    }
+}
+
+fn redact_yaml_value(value: &mut serde_yaml::Value) {
+    match value {
+        serde_yaml::Value::Mapping(mapping) => {
+            for (key, child) in mapping.iter_mut() {
+                if key
+                    .as_str()
+                    .is_some_and(is_secret_field)
+                {
+                    *child = serde_yaml::Value::String("<redacted>".into());
+                } else {
+                    redact_yaml_value(child);
+                }
+            }
+        }
+        serde_yaml::Value::Sequence(values) => {
+            for value in values {
+                redact_yaml_value(value);
+            }
+        }
+        _ => {}
+    }
+}
+
+fn redact_assignment_lines(content: &str) -> String {
+    let lines = content
+        .lines()
+        .map(|line| {
+            let Some((index, separator)) = line
+                .char_indices()
+                .find_map(|(index, character)| matches!(character, '=' | ':').then_some((index, character)))
+            else {
+                return line.to_string();
+            };
+            let key = line[..index]
+                .trim()
+                .trim_start_matches('-')
+                .trim()
+                .trim_matches(['"', '\'']);
+            if is_secret_field(key) {
+                format!("{}{} \"<redacted>\"", &line[..index], separator)
+            } else {
+                line.to_string()
+            }
+        })
+        .collect::<Vec<_>>();
+    let mut output = lines.join("\n");
+    if content.ends_with('\n') {
+        output.push('\n');
+    }
+    output
+}
+
+fn is_secret_field(key: &str) -> bool {
+    let key = key.to_ascii_lowercase();
+    [
+        "secret",
+        "token",
+        "password",
+        "passwd",
+        "api_key",
+        "apikey",
+        "access_key",
+        "private_key",
+        "authorization",
+        "cookie",
+    ]
+    .iter()
+    .any(|needle| key.contains(needle))
 }
 
 pub(crate) fn validate_apply_request(
@@ -700,7 +954,8 @@ pub(crate) fn preview_report(
     native_plan: &NativePlan,
 ) -> Result<PreviewReport, String> {
     let actions = action_views(plan);
-    let files = native_plan
+    let safe_native_plan = secret_free_native_plan(native_plan);
+    let files = safe_native_plan
         .changes
         .iter()
         .map(|change| FilePreview {
@@ -709,9 +964,11 @@ pub(crate) fn preview_report(
             after: change.after.clone(),
         })
         .collect();
+    let warnings = native_plan.warnings.clone();
     let has_blockers = actions
         .iter()
-        .any(|action| action.action == "conflict" || action.action == "unsupported");
+        .any(|action| action.action == "conflict" || action.action == "unsupported")
+        || !warnings.is_empty();
     let route_blockers = plan
         .actions
         .iter()
@@ -732,7 +989,9 @@ pub(crate) fn preview_report(
         files,
         plan_hash: plan_hash(plan, native_plan)?,
         writable_changes: native_plan.changes.len(),
+        protected_changes: native_plan.protected_changes.len(),
         has_blockers,
+        warnings,
         route_blockers,
     })
 }
@@ -826,7 +1085,17 @@ pub async fn execute_sync(
     mode: &Mode,
     force: bool,
 ) -> Result<ApplyReport, String> {
-    execute_sync_with_plan(pool, installation_id, mode, force, None, None).await
+    let secrets = chm_secrets::default_store();
+    execute_sync_with_plan_using_secrets(
+        pool,
+        installation_id,
+        mode,
+        force,
+        None,
+        None,
+        &*secrets,
+    )
+    .await
 }
 
 pub async fn execute_sync_with_plan(
@@ -837,8 +1106,30 @@ pub async fn execute_sync_with_plan(
     expected_plan_hash: Option<&str>,
     selection: Option<&SyncSelection>,
 ) -> Result<ApplyReport, String> {
+    let secrets = chm_secrets::default_store();
+    execute_sync_with_plan_using_secrets(
+        pool,
+        installation_id,
+        mode,
+        force,
+        expected_plan_hash,
+        selection,
+        &*secrets,
+    )
+    .await
+}
+
+async fn execute_sync_with_plan_using_secrets(
+    pool: &Pool<Sqlite>,
+    installation_id: &str,
+    mode: &Mode,
+    force: bool,
+    expected_plan_hash: Option<&str>,
+    selection: Option<&SyncSelection>,
+    secrets: &dyn SecretStore,
+) -> Result<ApplyReport, String> {
     let desired = desired_state(pool, selection).await?;
-    execute_desired_with_plan(
+    execute_desired_with_plan_using_secrets(
         pool,
         installation_id,
         mode,
@@ -846,6 +1137,7 @@ pub async fn execute_sync_with_plan(
         expected_plan_hash,
         selection,
         desired,
+        secrets,
     )
     .await
 }
@@ -862,6 +1154,31 @@ pub async fn execute_desired_with_plan(
     expected_plan_hash: Option<&str>,
     selection: Option<&SyncSelection>,
     desired: DesiredState,
+) -> Result<ApplyReport, String> {
+    let secrets = chm_secrets::default_store();
+    execute_desired_with_plan_using_secrets(
+        pool,
+        installation_id,
+        mode,
+        force,
+        expected_plan_hash,
+        selection,
+        desired,
+        &*secrets,
+    )
+    .await
+}
+
+#[allow(clippy::too_many_arguments)]
+pub(crate) async fn execute_desired_with_plan_using_secrets(
+    pool: &Pool<Sqlite>,
+    installation_id: &str,
+    mode: &Mode,
+    force: bool,
+    expected_plan_hash: Option<&str>,
+    selection: Option<&SyncSelection>,
+    desired: DesiredState,
+    secrets: &dyn SecretStore,
 ) -> Result<ApplyReport, String> {
     if selection.is_some() && matches!(mode, Mode::ReplaceManaged) {
         return Err(
@@ -882,11 +1199,15 @@ pub async fn execute_desired_with_plan(
     let blockers = plan
         .actions
         .iter()
-        .any(|action| matches!(action, PlanAction::Conflict(_) | PlanAction::Unsupported(_)));
+        .any(|action| matches!(action, PlanAction::Conflict(_) | PlanAction::Unsupported(_)))
+        || !native_plan.warnings.is_empty();
     let route_blockers = plan.actions.iter().any(
         |action| matches!(action, PlanAction::Unsupported(action) if action.kind == "provider-route"),
     );
-    let writable_changes = native_plan.changes.len();
+    // Protected credential writes are real apply work even when a native
+    // adapter only needs to update an auth file. The preview keeps the two
+    // counts separate for the UI, while apply validation considers both.
+    let writable_changes = native_plan.changes.len() + native_plan.protected_changes.len();
     validate_apply_request(
         expected_plan_hash,
         &current_hash,
@@ -895,10 +1216,33 @@ pub async fn execute_desired_with_plan(
         route_blockers,
         force,
     )?;
-    let tx = begin_transaction(pool, TransactionType::Sync, serde_json::json!(native_plan))
+
+    // Resolve every credential and capture every protected auth target before
+    // beginning the transaction or mutating any ordinary harness file. This
+    // keeps a missing key from producing a half-applied sync.
+    let credential_refs = desired
+        .provider_routes
+        .iter()
+        .filter_map(|bundle| match &bundle.credential {
+            CredentialRequirement::None => None,
+            CredentialRequirement::Secret { credential_ref, .. } => {
+                Some((credential_ref.id, credential_ref.clone()))
+            }
+        })
+        .collect::<std::collections::HashMap<_, CredentialRef>>();
+    let mut prepared_credentials = credential_deployment::preflight(
+        &native_plan.protected_changes,
+        &credential_refs,
+        secrets,
+    )
+    .map_err(|error| error.to_string())?;
+
+    let audit_native_plan = secret_free_native_plan(&native_plan);
+    let tx = begin_transaction(pool, TransactionType::Sync, serde_json::json!(audit_native_plan))
         .await
         .map_err(|e| e.to_string())?;
     let mut backups = Vec::new();
+    let mut protected_applied: Vec<AppliedFile> = Vec::new();
     let mut result = ApplyReport {
         summary: String::new(),
         files_written: Vec::new(),
@@ -923,6 +1267,7 @@ pub async fn execute_desired_with_plan(
                     &inst,
                     &native_plan,
                     &backups,
+                    &mut protected_applied,
                     std::slice::from_ref(&msg),
                 )
                 .await?;
@@ -932,10 +1277,19 @@ pub async fn execute_desired_with_plan(
     }
 
     let apply_outcome: Result<ApplyResult, String> = (async {
+        credential_deployment::verify_preflight(&prepared_credentials)
+            .map_err(|error| error.to_string())?;
         let apply_result: Result<ApplyResult, String> = adapter
             .apply(&inst, &native_plan)
             .map_err(|e| e.to_string());
         let apply_result = apply_result?;
+        credential_deployment::rebase_for_native_changes(
+            &mut prepared_credentials,
+            &native_plan.changes,
+        )
+        .map_err(|error| error.to_string())?;
+        protected_applied = credential_deployment::apply(&prepared_credentials)
+            .map_err(|error| error.to_string())?;
         for (file, backup) in &backups {
             let before = std::fs::read_to_string(backup).ok();
             let after = std::fs::read_to_string(file).ok();
@@ -964,6 +1318,12 @@ pub async fn execute_desired_with_plan(
     match apply_outcome {
         Ok(apply_result) => {
             result.files_written = apply_result.files_written;
+            for protected in &protected_applied {
+                let path = protected.path().display().to_string();
+                if !result.files_written.contains(&path) {
+                    result.files_written.push(path);
+                }
+            }
             result.links_created = apply_result.links_created;
             match adapter.validate(&inst) {
                 Ok(v) => {
@@ -982,6 +1342,7 @@ pub async fn execute_desired_with_plan(
                                     &inst,
                                     &native_plan,
                                     &backups,
+                                    &mut protected_applied,
                                     std::slice::from_ref(&message),
                                 )
                                 .await?;
@@ -1001,6 +1362,7 @@ pub async fn execute_desired_with_plan(
                                 &inst,
                                 &native_plan,
                                 &backups,
+                                &mut protected_applied,
                                 std::slice::from_ref(&error),
                             )
                             .await?;
@@ -1025,6 +1387,7 @@ pub async fn execute_desired_with_plan(
                             &inst,
                             &native_plan,
                             &backups,
+                            &mut protected_applied,
                             &result.validation.errors,
                         )
                         .await?;
@@ -1042,6 +1405,7 @@ pub async fn execute_desired_with_plan(
                         &inst,
                         &native_plan,
                         &backups,
+                        &mut protected_applied,
                         &[e.to_string()],
                     )
                     .await?;
@@ -1057,6 +1421,7 @@ pub async fn execute_desired_with_plan(
                 &inst,
                 &native_plan,
                 &backups,
+                &mut protected_applied,
                 std::slice::from_ref(&e),
             )
             .await?;
@@ -1072,6 +1437,7 @@ pub async fn execute_desired_with_plan(
     Ok(result)
 }
 
+#[allow(clippy::too_many_arguments)]
 async fn rollback_all(
     pool: &Pool<Sqlite>,
     tx_id: Uuid,
@@ -1079,9 +1445,13 @@ async fn rollback_all(
     inst: &HarnessInstallation,
     native_plan: &NativePlan,
     backups: &[(String, std::path::PathBuf)],
+    protected_applied: &mut Vec<AppliedFile>,
     errors: &[String],
 ) -> Result<(), String> {
-    crate::services::transactions::rollback_native_transaction(
+    let protected_error = credential_deployment::rollback(protected_applied)
+        .err()
+        .map(|error| error.to_string());
+    let native_result = crate::services::transactions::rollback_native_transaction(
         pool,
         tx_id,
         adapter,
@@ -1090,7 +1460,16 @@ async fn rollback_all(
         backups,
         errors,
     )
-    .await
+    .await;
+    match (protected_error, native_result) {
+        (None, result) => result,
+        (Some(protected), Ok(())) => Err(format!(
+            "{protected}; native harness changes were rolled back"
+        )),
+        (Some(protected), Err(native)) => Err(format!(
+            "{native}; protected credential rollback also failed: {protected}"
+        )),
+    }
 }
 
 #[tauri::command]
@@ -1102,13 +1481,14 @@ pub async fn sync_apply(
     plan_hash: String,
     selection: Option<SyncSelection>,
 ) -> Result<ApplyReport, String> {
-    execute_sync_with_plan(
+    execute_sync_with_plan_using_secrets(
         &state.pool,
         &installation_id,
         &parse_mode(&mode),
         force,
         Some(&plan_hash),
         selection.as_ref(),
+        &*state.secrets,
     )
     .await
 }
@@ -1149,7 +1529,7 @@ pub async fn bind_mcp_sync(
 mod tests {
     use super::{
         SyncSelection, activity_summary, effective_mode, group_provider_routes,
-        validate_apply_request,
+        redact_native_content, secret_free_native_plan, validate_apply_request,
     };
     use chm_core::domain::credentials::{CredentialKind, CredentialRef};
     use chm_harness_sdk::adapter::plan::{
@@ -1158,6 +1538,7 @@ mod tests {
     use chm_core::domain::models::ModelRoute;
     use chm_core::domain::provider::{AuthType, Protocol, Provider, ProviderEndpoint};
     use chm_harness_sdk::adapter::route::CredentialRequirement;
+    use chm_harness_sdk::adapter::types::{NativeChange, NativePlan};
     use chrono::Utc;
     use uuid::Uuid;
 
@@ -1351,5 +1732,26 @@ mod tests {
         assert!(summary.contains("Pi: Added model qwen3.8-27b (Qwen 3.8 27B) via Yolo-Auto"));
         assert!(summary.contains("Updated model glm-5.2 (GLM 5.2) via pattycode: context window 128000 → 200000"));
         assert!(summary.contains("Deleted model old-model via pattycode"));
+    }
+
+    #[test]
+    fn native_plan_preview_redacts_existing_credentials() {
+        let before = r#"{"provider":{"apiKey":"sk-live-secret","baseUrl":"https://example.test/v1"}}"#;
+        let after = r#"{"provider":{"apiKey":"sk-new-secret","baseUrl":"https://example.test/v1"}}"#;
+        let plan = NativePlan {
+            changes: vec![NativeChange {
+                file_path: "/tmp/opencode.json".into(),
+                before: Some(before.into()),
+                after: Some(after.into()),
+            }],
+            ..Default::default()
+        };
+        let safe = secret_free_native_plan(&plan);
+        let serialized = serde_json::to_string(&safe).unwrap();
+        assert!(!serialized.contains("sk-live-secret"));
+        assert!(!serialized.contains("sk-new-secret"));
+        assert!(serialized.contains("<redacted>"));
+        assert!(redact_native_content("/tmp/settings.yaml", "api_key: sk-secret\n")
+            .contains("<redacted>"));
     }
 }

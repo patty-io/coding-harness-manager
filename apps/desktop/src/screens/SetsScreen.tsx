@@ -68,7 +68,9 @@ function SetCard({
       files: result.filesWritten.map((path) => ({ path, before: null, after: null })),
       planHash: "applied",
       writableChanges: result.filesWritten.length,
+      protectedChanges: 0,
       hasBlockers: !result.validation.ok,
+      warnings: [],
       routeBlockers: [],
     }),
   });
@@ -142,9 +144,14 @@ function SetCard({
         {previewMutation.isError && <p className="mt-2 text-xs text-red-400">Preview failed: {previewMutation.error.message}</p>}
         {preview && (
           <div className="mt-3 text-xs text-slate-300">
-            <p>{preview.summary} · {preview.writableChanges} writable file change(s){preview.hasBlockers ? " · blockers need review" : ""}</p>
+            <p>
+              {preview.summary} · {preview.writableChanges} native file change(s)
+              {preview.protectedChanges > 0 &&
+                ` · ${preview.protectedChanges} protected credential change${preview.protectedChanges === 1 ? "" : "s"}`}
+              {preview.hasBlockers ? " · blockers need review" : ""}
+            </p>
             {preview.actions.length > 0 && <ul className="mt-1 list-inside list-disc text-slate-400">{preview.actions.map((action, index) => <li key={`${action.kind}:${action.identity}:${index}`}><span className={action.action === "conflict" || action.action === "unsupported" ? "text-red-300" : undefined}>{action.action}</span> {action.kind} {action.identity}</li>)}</ul>}
-            <button type="button" onClick={() => apply.mutate()} disabled={apply.isPending || preview.hasBlockers || preview.writableChanges === 0} className="mt-2 rounded bg-blue-600 px-3 py-1 text-white disabled:opacity-50">{apply.isPending ? "Applying…" : "Apply set"}</button>
+            <button type="button" onClick={() => apply.mutate()} disabled={apply.isPending || preview.hasBlockers || (preview.writableChanges === 0 && preview.protectedChanges === 0)} className="mt-2 rounded bg-blue-600 px-3 py-1 text-white disabled:opacity-50">{apply.isPending ? "Applying…" : "Apply set"}</button>
             {apply.isError && <p className="mt-2 text-red-400">Apply failed: {apply.error.message}</p>}
           </div>
         )}

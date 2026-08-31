@@ -84,6 +84,100 @@ pub fn fold_model_with_provider(
     models.insert(model_id.to_string(), Value::Object(entry));
 }
 
+/// Update the metadata of a model already present in an OpenCode provider.
+/// Returns false when the provider/model pair cannot be found. Limits are
+/// merged so provider-specific fields (for example reasoning or modalities)
+/// are preserved while CHM-owned context/output values are refreshed.
+pub fn update_model_in_provider(
+    doc: &mut Value,
+    provider_id: Option<&str>,
+    model_id: &str,
+    display_name: &str,
+    context_window: Option<i64>,
+    max_output: Option<i64>,
+) -> bool {
+    let Some(providers) = doc
+        .as_object_mut()
+        .and_then(|object| object.get_mut("provider"))
+        .and_then(Value::as_object_mut)
+    else {
+        return false;
+    };
+    for (name, provider) in providers.iter_mut() {
+        if provider_id.is_some_and(|wanted| !name.eq_ignore_ascii_case(wanted)) {
+            continue;
+        }
+        let Some(models) = provider.get_mut("models").and_then(Value::as_object_mut) else {
+            continue;
+        };
+        let Some(model) = models.get_mut(model_id).and_then(Value::as_object_mut) else {
+            continue;
+        };
+        model.insert("name".into(), Value::String(display_name.to_string()));
+        update_limits(model, context_window, max_output);
+        return true;
+    }
+    false
+}
+
+fn update_limits(
+    model: &mut Map<String, Value>,
+    context_window: Option<i64>,
+    max_output: Option<i64>,
+) {
+    if context_window.is_none() && max_output.is_none() {
+        // Do not disturb an existing provider-specific limit object when the
+        // route carries no limits.
+        return;
+    }
+    let limits = model
+        .entry("limit")
+        .or_insert_with(|| Value::Object(Map::new()))
+        .as_object_mut()
+        .expect("model limit must be an object");
+    if let Some(context) = context_window {
+        limits.insert("context".into(), Value::Number(context.into()));
+    } else {
+        limits.remove("context");
+    }
+    if let Some(output) = max_output {
+        limits.insert("output".into(), Value::Number(output.into()));
+    } else {
+        limits.remove("output");
+    }
+    if limits.is_empty() {
+        model.remove("limit");
+    }
+}
+
+/// Remove one model from an OpenCode provider. The provider itself is kept so
+/// its endpoint/auth settings remain available for future models.
+pub fn remove_model_in_provider(
+    doc: &mut Value,
+    provider_id: Option<&str>,
+    model_id: &str,
+) -> bool {
+    let Some(providers) = doc
+        .as_object_mut()
+        .and_then(|object| object.get_mut("provider"))
+        .and_then(Value::as_object_mut)
+    else {
+        return false;
+    };
+    for (name, provider) in providers.iter_mut() {
+        if provider_id.is_some_and(|wanted| !name.eq_ignore_ascii_case(wanted)) {
+            continue;
+        }
+        let Some(models) = provider.get_mut("models").and_then(Value::as_object_mut) else {
+            continue;
+        };
+        if models.remove(model_id).is_some() {
+            return true;
+        }
+    }
+    false
+}
+
 fn configure_provider(provider: &mut Map<String, Value>, config: Option<&Value>) {
     let Some(config) = config.and_then(Value::as_object) else {
         return;

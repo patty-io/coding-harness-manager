@@ -1,5 +1,6 @@
 pub mod helpers;
 pub mod plan;
+pub mod protected;
 pub mod route;
 pub mod types;
 

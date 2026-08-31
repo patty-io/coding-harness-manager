@@ -38,7 +38,7 @@ pub fn parse_main_config(raw: &str, home: &std::path::Path) -> Result<ParsedStat
                     .and_then(|mps| mps.get(provider_id))
                     .and_then(|pv| pv.get("wire_api"))
                     .and_then(|v| v.as_str())
-                    .unwrap_or("chat");
+                    .unwrap_or("responses");
                 push_model(&mut state, mid, mv, provider_id, wire_api);
             }
         }
@@ -142,7 +142,7 @@ fn parse_provider_file(raw: &str, file_id: &str, state: &mut ParsedState) {
             .and_then(|m| m.get(provider_id))
             .and_then(|pv| pv.get("wire_api"))
             .and_then(|v| v.as_str())
-            .unwrap_or("chat");
+            .unwrap_or("responses");
         // strip provider prefix from the selected model id ("zai/glm-5.2" -> "glm-5.2")
         let remote_id = model_id
             .split('/')

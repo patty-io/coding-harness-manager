@@ -572,6 +572,10 @@ fn parse_continue(raw: &str, path: &Path) -> Result<ParsedState, AdapterError> {
                 .get("model")
                 .and_then(Value::as_str)
                 .unwrap_or(native_id);
+            let protocol_provider = object
+                .get("provider")
+                .and_then(Value::as_str)
+                .unwrap_or("openai");
             let display = object
                 .get("name")
                 .and_then(Value::as_str)
@@ -586,14 +590,16 @@ fn parse_continue(raw: &str, path: &Path) -> Result<ParsedState, AdapterError> {
                 display.to_string(),
                 context,
                 serde_json::json!({
-                    "provider": object.get("provider"),
+                    "provider": protocol_provider,
                     "api_base": object.get("apiBase"),
                     "wire_model": wire_model,
                 }),
                 serde_json::json!({
-                    "native_provider_id": object.get("provider").and_then(Value::as_str),
+                    "native_provider_id": protocol_provider,
+                    "provider": protocol_provider,
                     "native_alias": native_id,
                     "wire_model": wire_model,
+                    "base_url": object.get("apiBase"),
                     "config_format": "continue-yaml",
                 }),
             );
@@ -638,6 +644,60 @@ fn parse_aider(raw: &str, path: &Path) -> Result<ParsedState, AdapterError> {
             }));
         }
     }
+
+    // Aider has one active model (the `model` option) and uses a provider
+    // prefix to select the LiteLLM implementation. Treat that selection as a
+    // real harness model so CHM can round-trip a custom OpenAI-compatible
+    // endpoint instead of exposing it as profile-only metadata.
+    if let Some(model_value) = object.get("model").and_then(Value::as_str) {
+        let (provider, wire_model) = aider_provider_and_model(model_value);
+        let base_url = object
+            .get("openai-api-base")
+            .and_then(Value::as_str)
+            .or_else(|| object.get("openai_api_base").and_then(Value::as_str));
+        let metadata = aider_model_metadata(path, model_value, wire_model);
+        let mut overrides = serde_json::json!({
+            "native_provider_id": provider,
+            "wire_model": wire_model,
+            "config_format": "aider-yaml",
+        });
+        if let Some(base_url) = base_url {
+            overrides["base_url"] = Value::String(base_url.into());
+        }
+        let mut route = ModelRoute::new(
+            wire_model.to_string(),
+            wire_model.to_string(),
+            metadata
+                .as_ref()
+                .and_then(|value| value.get("max_input_tokens"))
+                .and_then(Value::as_i64),
+            serde_json::json!({
+                "provider": provider,
+                "wire_model": wire_model,
+                "base_url": base_url,
+            }),
+            overrides,
+        );
+        route.max_input = metadata
+            .as_ref()
+            .and_then(|value| value.get("max_input_tokens"))
+            .and_then(Value::as_i64);
+        route.max_output = metadata
+            .as_ref()
+            .and_then(|value| {
+                value
+                    .get("max_output_tokens")
+                    .or_else(|| value.get("max_tokens"))
+            })
+            .and_then(Value::as_i64);
+        if let Some(metadata) = metadata {
+            route.capabilities = metadata;
+        }
+        state.models.push(HarnessModel {
+            native_id: wire_model.to_string(),
+            route,
+        });
+    }
     if let Some(aliases) = object.get("alias") {
         state.profiles.push(serde_json::json!({
             "aliases": redact_value(aliases, None),
@@ -645,6 +705,31 @@ fn parse_aider(raw: &str, path: &Path) -> Result<ParsedState, AdapterError> {
         }));
     }
     Ok(state)
+}
+
+fn aider_provider_and_model(model: &str) -> (&str, &str) {
+    if let Some((provider, wire)) = model.split_once('/') {
+        match provider.to_ascii_lowercase().as_str() {
+            "anthropic" => ("anthropic", wire),
+            "openrouter" => ("openrouter", wire),
+            "openai" => ("openai", wire),
+            _ => ("openai", model),
+        }
+    } else {
+        ("openai", model)
+    }
+}
+
+fn aider_model_metadata(path: &Path, model: &str, wire_model: &str) -> Option<Value> {
+    let metadata_path = path
+        .parent()
+        .map(|parent| parent.join(".aider.model.metadata.json"))?;
+    let raw = std::fs::read_to_string(metadata_path).ok()?;
+    let doc: Value = serde_json::from_str(&raw).ok()?;
+    doc.get(model)
+        .or_else(|| doc.get(wire_model))
+        .filter(|value| value.is_object())
+        .cloned()
 }
 
 fn parse_goose(raw: &str, path: &Path) -> Result<ParsedState, AdapterError> {
@@ -765,9 +850,73 @@ fn parse_json_main(
             }
         }
         "qwen-code" => {
-            // Qwen's settings file selects one model; it does not contain a
-            // model registry. Keep the selection as profile metadata rather
-            // than fabricating a model row that CHM could sync back.
+            // Current Qwen Code exposes a real model registry under
+            // modelProviders. Custom provider ids are mapped to a wire
+            // protocol through providerProtocol.
+            if let Some(provider_models) = doc.get("modelProviders").and_then(Value::as_object) {
+                let protocols = doc.get("providerProtocol").and_then(Value::as_object);
+                for (provider_id, models) in provider_models {
+                    let protocol = protocols
+                        .and_then(|entries| entries.get(provider_id))
+                        .and_then(Value::as_str);
+                    let Some(models) = models.as_array() else {
+                        continue;
+                    };
+                    for model in models {
+                        let Some(object) = model.as_object() else {
+                            continue;
+                        };
+                        let Some(id) = object.get("id").and_then(Value::as_str) else {
+                            continue;
+                        };
+                        let display = object.get("name").and_then(Value::as_str).unwrap_or(id);
+                        let context = object
+                            .get("generationConfig")
+                            .and_then(Value::as_object)
+                            .and_then(|config| config.get("contextWindowSize"))
+                            .and_then(Value::as_i64);
+                        let max_output = object
+                            .get("generationConfig")
+                            .and_then(Value::as_object)
+                            .and_then(|config| config.get("samplingParams"))
+                            .and_then(Value::as_object)
+                            .and_then(|sampling| sampling.get("max_tokens"))
+                            .and_then(Value::as_i64);
+                        let mut overrides = serde_json::json!({
+                            "native_provider_id": provider_id,
+                            "wire_model": id,
+                            "config_format": "qwen-json",
+                        });
+                        if let Some(base_url) = object.get("baseUrl") {
+                            overrides["base_url"] = base_url.clone();
+                        }
+                        if let Some(env_key) = object.get("envKey") {
+                            overrides["env_key"] = env_key.clone();
+                        }
+                        if let Some(protocol) = protocol {
+                            overrides["provider_protocol"] = Value::String(protocol.into());
+                        }
+                        let mut route = ModelRoute::new(
+                            id.to_string(),
+                            display.to_string(),
+                            context,
+                            serde_json::json!({
+                                "provider": provider_id,
+                                "wire_model": id,
+                                "base_url": object.get("baseUrl"),
+                                "env_key": object.get("envKey"),
+                                "provider_protocol": protocol,
+                            }),
+                            overrides,
+                        );
+                        route.max_output = max_output;
+                        state.models.push(HarnessModel {
+                            native_id: id.to_string(),
+                            route,
+                        });
+                    }
+                }
+            }
             if let Some(model) = doc.get("model").and_then(Value::as_str) {
                 state.profiles.push(serde_json::json!({"model": model}));
             }
@@ -1006,11 +1155,17 @@ fn parse_goose_custom_provider(doc: &Value, path: &Path, state: &mut ParsedState
     let Some(object) = doc.as_object() else {
         return;
     };
-    let id = object
+    let Some(id) = object
         .get("name")
         .and_then(Value::as_str)
         .or_else(|| path.file_stem().and_then(|s| s.to_str()))
-        .unwrap_or("custom");
+    else {
+        state.warnings.push(format!(
+            "Goose custom provider {} has no name and was skipped",
+            path.display()
+        ));
+        return;
+    };
     let mut provider = Map::new();
     provider.insert("native_provider_id".into(), Value::String(id.into()));
     for key in ["name", "engine", "display_name", "base_url", "api_key_env"] {

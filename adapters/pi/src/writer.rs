@@ -77,6 +77,94 @@ pub fn fold_model(
     }
 }
 
+/// Set the native Pi limits on one model entry while preserving all other
+/// provider/model metadata. Pi calls the output limit `maxTokens`.
+pub fn set_model_limits(
+    doc: &mut Value,
+    provider_id: &str,
+    model_id: &str,
+    context_window: Option<i64>,
+    max_output: Option<i64>,
+) -> bool {
+    let Some(provider) = doc
+        .as_object_mut()
+        .and_then(|root| root.get_mut("providers"))
+        .and_then(Value::as_object_mut)
+        .and_then(|providers| providers.get_mut(provider_id))
+        .and_then(Value::as_object_mut)
+    else {
+        return false;
+    };
+    let Some(models) = provider.get_mut("models").and_then(Value::as_array_mut) else {
+        return false;
+    };
+    let Some(model) = models
+        .iter_mut()
+        .find(|model| model.get("id").and_then(Value::as_str) == Some(model_id))
+    else {
+        return false;
+    };
+    let Some(model) = model.as_object_mut() else {
+        return false;
+    };
+    if let Some(context) = context_window {
+        model.insert("contextWindow".into(), Value::Number(context.into()));
+    } else {
+        model.remove("contextWindow");
+    }
+    if let Some(output) = max_output {
+        model.insert("maxTokens".into(), Value::Number(output.into()));
+    } else {
+        model.remove("maxTokens");
+    }
+    true
+}
+
+/// Ensure a provider has a secret-free API-key reference. Pi resolves
+/// environment names and `!command` values when it sends a request; CHM
+/// writes the actual key to auth.json in the apply coordinator.
+pub fn configure_provider_auth(
+    doc: &mut Value,
+    provider_id: &str,
+    credential_kind: Option<&str>,
+    credential_reference: Option<&str>,
+) {
+    let (Some(kind), Some(reference)) = (credential_kind, credential_reference) else {
+        return;
+    };
+    let value = match kind {
+        // Pi's models.json uses shell-style interpolation for environment
+        // values. A bare `MY_API_KEY` is a literal according to Pi's docs,
+        // so always emit the explicit `$` marker when CHM stores an Env ref.
+        "env" => {
+            if reference.starts_with('$') {
+                reference.to_string()
+            } else {
+                format!("${reference}")
+            }
+        }
+        "keychain" => format!(
+            "!security find-generic-password -w -s 'coding-harness-manager' -a '{}'",
+            reference
+                .strip_prefix("coding-harness-manager/")
+                .unwrap_or(reference)
+        ),
+        _ => return,
+    };
+    let Some(provider) = doc
+        .as_object_mut()
+        .and_then(|root| root.get_mut("providers"))
+        .and_then(|providers| providers.as_object_mut())
+        .and_then(|providers| providers.get_mut(provider_id))
+        .and_then(|provider| provider.as_object_mut())
+    else {
+        return;
+    };
+    provider
+        .entry("apiKey")
+        .or_insert_with(|| Value::String(value));
+}
+
 /// Update an existing model entry (matched by id) under any provider.
 /// Returns false when no provider carries that model id.
 pub fn update_model(
@@ -85,7 +173,7 @@ pub fn update_model(
     display_name: &str,
     context_window: Option<i64>,
 ) -> bool {
-    update_model_in_provider(doc, None, model_id, display_name, context_window)
+    update_model_in_provider_with_limits(doc, None, model_id, display_name, context_window, None)
 }
 
 /// Update only the matching provider's model entry. `None` retains the
@@ -97,6 +185,24 @@ pub fn update_model_in_provider(
     display_name: &str,
     context_window: Option<i64>,
 ) -> bool {
+    update_model_in_provider_with_limits(
+        doc,
+        provider_id,
+        model_id,
+        display_name,
+        context_window,
+        None,
+    )
+}
+
+pub fn update_model_in_provider_with_limits(
+    doc: &mut Value,
+    provider_id: Option<&str>,
+    model_id: &str,
+    display_name: &str,
+    context_window: Option<i64>,
+    max_output: Option<i64>,
+) -> bool {
     let Some(providers) = doc
         .as_object_mut()
         .and_then(|o| o.get_mut("providers"))
@@ -106,7 +212,7 @@ pub fn update_model_in_provider(
     };
     let mut found = false;
     for (pname, pv) in providers.iter_mut() {
-        if provider_id.is_some_and(|wanted| wanted != pname) {
+        if provider_id.is_some_and(|wanted| !wanted.eq_ignore_ascii_case(pname)) {
             continue;
         }
         let Some(models) = pv.get_mut("models").and_then(|m| m.as_array_mut()) else {
@@ -123,6 +229,14 @@ pub fn update_model_in_provider(
                     }
                     None => {
                         obj.remove("contextWindow");
+                    }
+                }
+                match max_output {
+                    Some(value) => {
+                        obj.insert("maxTokens".into(), Value::Number(value.into()));
+                    }
+                    None => {
+                        obj.remove("maxTokens");
                     }
                 }
                 found = true;
@@ -155,7 +269,7 @@ pub fn remove_model_in_provider(
     let mut removed = 0;
     let mut empty_stubs = Vec::new();
     for (pname, pv) in providers.iter_mut() {
-        if provider_id.is_some_and(|wanted| wanted != pname) {
+        if provider_id.is_some_and(|wanted| !wanted.eq_ignore_ascii_case(pname)) {
             continue;
         }
         let Some(models) = pv.get_mut("models").and_then(|m| m.as_array_mut()) else {

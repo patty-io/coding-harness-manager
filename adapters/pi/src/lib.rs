@@ -1,11 +1,19 @@
-//! Pi read-only adapter.
+//! Pi adapter for models.json, MCP, skills, and provider credentials.
 
 pub mod parser;
 pub mod writer;
 
 use chm_core::domain::harness::HarnessInstallation;
+use chm_core::domain::provider::Protocol;
 use chm_harness_sdk::adapter::parse_version_supported;
 use chm_harness_sdk::adapter::plan::PlanAction;
+use chm_harness_sdk::adapter::protected::{
+    JsonAuthFormat, ProtectedChangePlan, ProtectedOperation, ProtectedTarget,
+};
+use chm_harness_sdk::adapter::route::{
+    CredentialTarget, ModelIdentityRules, ModelMetadataCapabilities, ProviderTopology,
+    RouteDeploymentCapabilities,
+};
 use chm_harness_sdk::adapter::types::{
     AdapterError, ApplyResult, HarnessAdapter, HarnessCapabilities, NativePlan, ParsedState,
     ValidationReport,
@@ -20,6 +28,28 @@ impl HarnessAdapter for PiAdapter {
 
     fn capabilities(&self) -> HarnessCapabilities {
         HarnessCapabilities::none()
+            .with_route_deployment(RouteDeploymentCapabilities {
+                provider_topology: ProviderTopology::Multiple,
+                protocols: vec![
+                    Protocol::OpenAiChatCompletions,
+                    Protocol::OpenAiResponses,
+                    Protocol::AnthropicMessages,
+                    Protocol::OpenRouterOpenAi,
+                ],
+                credential_targets: vec![
+                    CredentialTarget::NativeSecretStore,
+                    CredentialTarget::HarnessEnvFile,
+                ],
+                model_identity: ModelIdentityRules {
+                    case_sensitive: true,
+                    allow_namespaced_ids: true,
+                },
+                metadata: ModelMetadataCapabilities {
+                    context_window: true,
+                    max_input: true,
+                    max_output: true,
+                },
+            })
             .with_models(true)
             .with_providers(true)
             .with_mcp_global(true)
@@ -65,6 +95,7 @@ impl HarnessAdapter for PiAdapter {
             return Ok(NativePlan {
                 changes: vec![],
                 links: vec![],
+                protected_changes: vec![],
                 warnings: vec![format!(
                     "Pi {:?} untested — read-only mode",
                     install.version
@@ -80,6 +111,8 @@ impl HarnessAdapter for PiAdapter {
             detail: e,
         })?;
         let mut folded = false;
+        let mut protected_changes = Vec::new();
+        let mut protected_providers = std::collections::HashSet::new();
         for action in &plan.actions {
             match action {
                 PlanAction::Add(a) if a.kind == "model" => {
@@ -88,12 +121,23 @@ impl HarnessAdapter for PiAdapter {
                         .get("native_provider_id")
                         .and_then(|v| v.as_str())
                         .or(a.native_provider_id.as_deref())
-                        .unwrap_or("custom");
+                        .ok_or_else(|| {
+                            AdapterError::Invalid(format!(
+                                "Pi model {} is missing its provider identity",
+                                a.identity
+                            ))
+                        })?;
                     let model_id = a
                         .payload
                         .get("remote_model_id")
                         .and_then(|v| v.as_str())
-                        .unwrap_or("");
+                        .filter(|value| !value.trim().is_empty())
+                        .ok_or_else(|| {
+                            AdapterError::Invalid(format!(
+                                "Pi model {} is missing its remote model id",
+                                a.identity
+                            ))
+                        })?;
                     let display = a
                         .payload
                         .get("display_name")
@@ -106,6 +150,49 @@ impl HarnessAdapter for PiAdapter {
                         display,
                         a.payload.get("context_window").and_then(|v| v.as_i64()),
                     );
+                    let _ = writer::set_model_limits(
+                        &mut doc,
+                        provider_id,
+                        model_id,
+                        a.payload.get("context_window").and_then(|v| v.as_i64()),
+                        a.payload.get("max_output").and_then(|v| v.as_i64()),
+                    );
+                    if let Some(config) = a
+                        .payload
+                        .get("overrides")
+                        .and_then(|value| value.get("native_provider_config"))
+                    {
+                        writer::configure_provider_auth(
+                            &mut doc,
+                            provider_id,
+                            config.get("credential_kind").and_then(|v| v.as_str()),
+                            config.get("credential_reference").and_then(|v| v.as_str()),
+                        );
+                        if config.get("credential_kind").and_then(|v| v.as_str()) != Some("env")
+                            && let Some(credential_ref_id) = a
+                                .payload
+                                .get("credential_ref_id")
+                                .or_else(|| {
+                                    a.payload
+                                        .get("overrides")
+                                        .and_then(|value| value.get("native_provider_config"))
+                                        .and_then(|value| value.get("credential_ref_id"))
+                                })
+                                .and_then(|value| value.as_str())
+                                .and_then(|value| uuid::Uuid::parse_str(value).ok())
+                            && protected_providers.insert(provider_id.to_string())
+                        {
+                            protected_changes.push(ProtectedChangePlan {
+                                target: ProtectedTarget::JsonAuthFile {
+                                    path: auth_path(&config_path),
+                                    provider_id: provider_id.to_string(),
+                                    format: JsonAuthFormat::Pi,
+                                },
+                                credential_ref_id,
+                                operation: ProtectedOperation::Upsert,
+                            });
+                        }
+                    }
                     folded = true;
                 }
                 PlanAction::Update(u) if u.kind == "model" => {
@@ -116,7 +203,7 @@ impl HarnessAdapter for PiAdapter {
                         .and_then(|v| v.as_str())
                         .unwrap_or(model_id);
                     let ctx = u.desired.get("context_window").and_then(|v| v.as_i64());
-                    if writer::update_model_in_provider(
+                    if writer::update_model_in_provider_with_limits(
                         &mut doc,
                         u.native_provider_id.as_deref().or_else(|| {
                             u.desired
@@ -127,6 +214,7 @@ impl HarnessAdapter for PiAdapter {
                         model_id,
                         display,
                         ctx,
+                        u.desired.get("max_output").and_then(|v| v.as_i64()),
                     ) {
                         folded = true;
                     } else {
@@ -173,6 +261,7 @@ impl HarnessAdapter for PiAdapter {
         Ok(NativePlan {
             changes,
             links: vec![],
+            protected_changes,
             warnings,
         })
     }
@@ -200,6 +289,13 @@ impl HarnessAdapter for PiAdapter {
     ) -> Result<(), AdapterError> {
         Ok(())
     }
+}
+
+fn auth_path(config_path: &str) -> String {
+    chm_harness_sdk::adapter::helpers::install_home_from_config(config_path, ".pi")
+        .join(".pi/agent/auth.json")
+        .display()
+        .to_string()
 }
 
 fn home_config(install: &HarnessInstallation, name: &str) -> String {

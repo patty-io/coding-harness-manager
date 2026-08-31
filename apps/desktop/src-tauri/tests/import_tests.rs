@@ -251,7 +251,8 @@ async fn import_matches_existing_provider_endpoint_by_declared_base_url() {
         providers: vec![serde_json::json!({
             "native_provider_id": "gateway",
             "base_url": "https://declared.example/v1",
-            "api": "openai-chat"
+            "api": "openai-chat",
+            "env_key": "GATEWAY_API_KEY"
         })],
         models: vec![HarnessModel {
             native_id: "model-a".into(),
@@ -283,6 +284,15 @@ async fn import_matches_existing_provider_endpoint_by_declared_base_url() {
     let routes = list_routes(&pool).await.unwrap();
     assert_eq!(routes.len(), 1);
     assert_eq!(routes[0].endpoint_id, declared.id);
+    let endpoints = chm_database::repos::providers::list_endpoints(&pool, provider.id)
+        .await
+        .unwrap();
+    let imported = endpoints.iter().find(|endpoint| endpoint.id == declared.id).unwrap();
+    assert_eq!(
+        imported.credential_ref.as_ref().map(|credential| credential.reference.as_str()),
+        Some("GATEWAY_API_KEY")
+    );
+    assert_eq!(imported.auth_type, AuthType::BearerToken);
 }
 
 #[tokio::test]

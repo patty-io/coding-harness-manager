@@ -114,7 +114,10 @@ async fn execute_sync_applies_and_records_snapshots() {
         base_url: "https://api.z.ai/api/anthropic".into(),
         protocol: chm_core::domain::provider::Protocol::AnthropicMessages,
         discovery_path: Some("/v1/models".into()),
-        auth_type: chm_core::domain::provider::AuthType::BearerToken,
+        // This fixture exercises native route materialization, not secret
+        // lookup. An authenticated endpoint must carry a credential ref so
+        // sync cannot produce a harness config that can never authenticate.
+        auth_type: chm_core::domain::provider::AuthType::None,
         credential_ref: None,
         headers: Default::default(),
         enabled: true,
@@ -186,7 +189,7 @@ async fn providerless_discovery_route_syncs_under_its_endpoint_provider() {
         base_url: "https://yolo-auto.example/v1".into(),
         protocol: chm_core::domain::provider::Protocol::OpenAiChatCompletions,
         discovery_path: Some("/v1/models".into()),
-        auth_type: chm_core::domain::provider::AuthType::BearerToken,
+        auth_type: chm_core::domain::provider::AuthType::None,
         credential_ref: None,
         headers: Default::default(),
         enabled: true,
@@ -258,7 +261,7 @@ async fn sync_preview_is_idempotent_after_apply() {
         base_url: "https://api.z.ai/api/anthropic".into(),
         protocol: chm_core::domain::provider::Protocol::AnthropicMessages,
         discovery_path: Some("/v1/models".into()),
-        auth_type: chm_core::domain::provider::AuthType::BearerToken,
+        auth_type: chm_core::domain::provider::AuthType::None,
         credential_ref: None,
         headers: Default::default(),
         enabled: true,

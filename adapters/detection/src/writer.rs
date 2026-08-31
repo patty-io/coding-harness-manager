@@ -2,6 +2,9 @@ use crate::parser::{home_for_install, path_for_rel, resolve_config_path};
 use crate::{ConfigFormat, DetectionSpec};
 use chm_core::domain::mcp::{McpServer, McpTransport};
 use chm_harness_sdk::adapter::plan::{PlanAction, ReconciliationPlan};
+use chm_harness_sdk::adapter::protected::{
+    ProtectedChangePlan, ProtectedOperation, ProtectedTarget,
+};
 use chm_harness_sdk::adapter::types::{AdapterError, NativeChange, NativePlan};
 use serde_json::{Map, Value};
 use std::path::{Path, PathBuf};
@@ -15,7 +18,9 @@ pub(crate) fn plan(
     match spec.id {
         "kimi-cli" => plan_kimi(spec, reconciliation, install),
         "continue" => plan_continue(spec, reconciliation, install),
+        "aider" => plan_aider(spec, reconciliation, install),
         "gemini-cli" => plan_gemini(spec, reconciliation, install),
+        "qwen-code" => plan_qwen(spec, reconciliation, install),
         "cline" => plan_cline(spec, reconciliation, install),
         "goose" => plan_goose(spec, reconciliation, install),
         _ => plan_json_mcp(spec, reconciliation, install),
@@ -44,6 +49,8 @@ fn plan_kimi(
         })?;
     let mut warnings = Vec::new();
     let mut folded = false;
+    let mut protected_changes = Vec::new();
+    let mut protected_providers = std::collections::HashSet::new();
     for action in &reconciliation.actions {
         match action {
             PlanAction::Add(add) if add.kind == "model" => {
@@ -59,17 +66,23 @@ fn plan_kimi(
                     ));
                     continue;
                 };
-                if doc
-                    .get("providers")
-                    .and_then(Item::as_table)
-                    .and_then(|providers| providers.get(provider))
-                    .is_none()
-                {
-                    warnings.push(format!(
-                        "Kimi model {} skipped: provider {provider} is not defined",
-                        add.identity
-                    ));
-                    continue;
+                let providers = doc
+                    .entry("providers")
+                    .or_insert(Item::Table(Table::new()))
+                    .as_table_mut()
+                    .ok_or_else(|| {
+                        AdapterError::Invalid("Kimi providers must be a table".into())
+                    })?;
+                let provider_config = providers
+                    .entry(provider)
+                    .or_insert(Item::Table(Table::new()))
+                    .as_table_mut()
+                    .ok_or_else(|| {
+                        AdapterError::Invalid(format!("Kimi provider {provider} must be a table"))
+                    })?;
+                provider_config["type"] = toml_value(kimi_provider_type(add));
+                if let Some(base_url) = add.payload.get("base_url").and_then(Value::as_str) {
+                    provider_config["base_url"] = toml_value(base_url);
                 }
                 let mut model = Table::new();
                 model["provider"] = toml_value(provider);
@@ -105,6 +118,22 @@ fn plan_kimi(
                     .as_table_mut()
                     .ok_or_else(|| AdapterError::Invalid("Kimi models must be a table".into()))?;
                 models[&add.identity] = Item::Table(model);
+                if let Some(credential_ref_id) = add
+                    .payload
+                    .get("credential_ref_id")
+                    .and_then(Value::as_str)
+                    .and_then(|value| uuid::Uuid::parse_str(value).ok())
+                    && protected_providers.insert(provider.to_string())
+                {
+                    protected_changes.push(ProtectedChangePlan {
+                        target: ProtectedTarget::KimiTomlFile {
+                            path: path.display().to_string(),
+                            provider_id: provider.to_string(),
+                        },
+                        credential_ref_id,
+                        operation: ProtectedOperation::Upsert,
+                    });
+                }
                 folded = true;
             }
             PlanAction::Update(update) if update.kind == "model" => {
@@ -174,8 +203,28 @@ fn plan_kimi(
     Ok(NativePlan {
         changes,
         links: vec![],
+        protected_changes,
         warnings,
     })
+}
+
+fn kimi_provider_type(add: &chm_harness_sdk::adapter::plan::AddAction) -> &'static str {
+    match add
+        .payload
+        .get("protocol")
+        .and_then(Value::as_str)
+        .or_else(|| {
+            add.payload
+                .get("overrides")
+                .and_then(|value| value.get("protocol"))
+                .and_then(Value::as_str)
+        })
+        .unwrap_or("openai-chat")
+    {
+        "anthropic-messages" => "anthropic",
+        "openai-responses" => "openai_responses",
+        _ => "openai",
+    }
 }
 
 fn plan_kimi_json(
@@ -191,6 +240,8 @@ fn plan_kimi_json(
         .ok_or_else(|| AdapterError::Invalid("Kimi config root must be an object".into()))?;
     let mut warnings = Vec::new();
     let mut folded = false;
+    let mut protected_changes = Vec::new();
+    let mut protected_providers = std::collections::HashSet::new();
     for action in &reconciliation.actions {
         match action {
             PlanAction::Add(add) if add.kind == "model" => {
@@ -209,16 +260,21 @@ fn plan_kimi_json(
                 let providers = root
                     .entry("providers")
                     .or_insert_with(|| Value::Object(Map::new()))
-                    .as_object()
+                    .as_object_mut()
                     .ok_or_else(|| {
                         AdapterError::Invalid("Kimi providers must be an object".into())
                     })?;
-                if !providers.contains_key(provider) {
-                    warnings.push(format!(
-                        "Kimi model {} skipped: provider {provider} is not defined",
-                        add.identity
-                    ));
-                    continue;
+                let provider_config = providers
+                    .entry(provider.to_string())
+                    .or_insert_with(|| Value::Object(Map::new()))
+                    .as_object_mut()
+                    .ok_or_else(|| {
+                        AdapterError::Invalid(format!("Kimi provider {provider} must be an object"))
+                    })?;
+                provider_config
+                    .insert("type".into(), Value::String(kimi_provider_type(add).into()));
+                if let Some(base_url) = add.payload.get("base_url").and_then(Value::as_str) {
+                    provider_config.insert("base_url".into(), Value::String(base_url.into()));
                 }
                 let wire_model = add
                     .payload
@@ -257,6 +313,22 @@ fn plan_kimi_json(
                     .as_object_mut()
                     .ok_or_else(|| AdapterError::Invalid("Kimi models must be an object".into()))?
                     .insert(add.identity.clone(), Value::Object(model));
+                if let Some(credential_ref_id) = add
+                    .payload
+                    .get("credential_ref_id")
+                    .and_then(Value::as_str)
+                    .and_then(|value| uuid::Uuid::parse_str(value).ok())
+                    && protected_providers.insert(provider.to_string())
+                {
+                    protected_changes.push(ProtectedChangePlan {
+                        target: ProtectedTarget::KimiJsonFile {
+                            path: path.display().to_string(),
+                            provider_id: provider.to_string(),
+                        },
+                        credential_ref_id,
+                        operation: ProtectedOperation::Upsert,
+                    });
+                }
                 folded = true;
             }
             PlanAction::Update(update) if update.kind == "model" => {
@@ -315,6 +387,7 @@ fn plan_kimi_json(
     Ok(NativePlan {
         changes,
         links: vec![],
+        protected_changes,
         warnings,
     })
 }
@@ -369,6 +442,286 @@ fn kimi_mcp_path(spec: &DetectionSpec, config: &Path, home: &Path) -> PathBuf {
         .unwrap_or_else(|| path_for_rel(spec, home, ".kimi/mcp.json"))
 }
 
+fn plan_qwen(
+    spec: &DetectionSpec,
+    reconciliation: &ReconciliationPlan,
+    install: &chm_core::domain::harness::HarnessInstallation,
+) -> Result<NativePlan, AdapterError> {
+    let home = home_for_install(spec, install);
+    let path = resolve_config_path(spec, install, &home);
+    let raw = std::fs::read_to_string(&path).unwrap_or_else(|_| "{}".into());
+    let mut doc = parse_json(&raw, &path)?;
+    let mut warnings = Vec::new();
+    let mut folded = false;
+    let mut protected_changes = Vec::new();
+    let mut protected_keys = std::collections::HashSet::new();
+
+    for action in &reconciliation.actions {
+        match action {
+            PlanAction::Add(add) if add.kind == "model" => {
+                let provider = add
+                    .native_provider_id
+                    .as_deref()
+                    .or_else(|| {
+                        add.payload
+                            .get("native_provider_id")
+                            .and_then(Value::as_str)
+                    })
+                    .ok_or_else(|| {
+                        AdapterError::Invalid(format!(
+                            "Qwen model {} is missing its provider identity",
+                            add.identity
+                        ))
+                    })?;
+                let env_key = qwen_env_key(add, provider);
+                let protocol = qwen_protocol_key(add);
+                let models = doc
+                    .as_object_mut()
+                    .ok_or_else(|| {
+                        AdapterError::Invalid("Qwen settings root must be an object".into())
+                    })?
+                    .entry("modelProviders")
+                    .or_insert_with(|| Value::Object(Map::new()))
+                    .as_object_mut()
+                    .ok_or_else(|| {
+                        AdapterError::Invalid("Qwen modelProviders must be an object".into())
+                    })?;
+                let entries = models
+                    .entry(provider.to_string())
+                    .or_insert_with(|| Value::Array(Vec::new()))
+                    .as_array_mut()
+                    .ok_or_else(|| {
+                        AdapterError::Invalid(format!(
+                            "Qwen modelProviders.{provider} must be an array"
+                        ))
+                    })?;
+                let mut model = Map::new();
+                model.insert("id".into(), Value::String(add.identity.clone()));
+                model.insert(
+                    "name".into(),
+                    Value::String(
+                        add.payload
+                            .get("display_name")
+                            .and_then(Value::as_str)
+                            .unwrap_or(&add.identity)
+                            .into(),
+                    ),
+                );
+                model.insert("envKey".into(), Value::String(env_key.clone()));
+                if let Some(base_url) = add.payload.get("base_url").and_then(Value::as_str) {
+                    model.insert("baseUrl".into(), Value::String(base_url.into()));
+                }
+                let mut generation = Map::new();
+                if let Some(context) = add.payload.get("context_window").and_then(Value::as_i64) {
+                    generation.insert("contextWindowSize".into(), Value::Number(context.into()));
+                }
+                if let Some(max_output) = add.payload.get("max_output").and_then(Value::as_i64) {
+                    generation.insert(
+                        "samplingParams".into(),
+                        serde_json::json!({"max_tokens": max_output}),
+                    );
+                }
+                if !generation.is_empty() {
+                    model.insert("generationConfig".into(), Value::Object(generation));
+                }
+                if let Some(existing) = entries.iter_mut().find(|entry| {
+                    entry.get("id").and_then(Value::as_str) == Some(add.identity.as_str())
+                }) {
+                    *existing = Value::Object(model);
+                } else {
+                    entries.push(Value::Object(model));
+                }
+                let protocols = doc
+                    .as_object_mut()
+                    .expect("Qwen settings root checked")
+                    .entry("providerProtocol")
+                    .or_insert_with(|| Value::Object(Map::new()))
+                    .as_object_mut()
+                    .ok_or_else(|| {
+                        AdapterError::Invalid("Qwen providerProtocol must be an object".into())
+                    })?;
+                protocols.insert(provider.into(), Value::String(protocol));
+                if let Some(credential_ref_id) = add
+                    .payload
+                    .get("credential_ref_id")
+                    .and_then(Value::as_str)
+                    .and_then(|value| uuid::Uuid::parse_str(value).ok())
+                    && protected_keys.insert(env_key.clone())
+                {
+                    protected_changes.push(ProtectedChangePlan {
+                        target: ProtectedTarget::EnvFile {
+                            path: home.join(".qwen/.env").display().to_string(),
+                            key: env_key,
+                        },
+                        credential_ref_id,
+                        operation: ProtectedOperation::Upsert,
+                    });
+                }
+                folded = true;
+            }
+            PlanAction::Update(update) if update.kind == "model" => {
+                let provider = update.native_provider_id.as_deref().or_else(|| {
+                    update
+                        .desired
+                        .get("overrides")
+                        .and_then(|value| value.get("native_provider_id"))
+                        .and_then(Value::as_str)
+                });
+                let Some(provider) = provider else {
+                    warnings.push(format!(
+                        "Qwen model {} has no provider identity",
+                        update.identity
+                    ));
+                    continue;
+                };
+                let Some(model) = doc
+                    .get_mut("modelProviders")
+                    .and_then(Value::as_object_mut)
+                    .and_then(|providers| providers.get_mut(provider))
+                    .and_then(Value::as_array_mut)
+                    .and_then(|models| {
+                        models.iter_mut().find(|model| {
+                            model.get("id").and_then(Value::as_str)
+                                == Some(update.identity.as_str())
+                        })
+                    })
+                else {
+                    warnings.push(format!("Qwen model {} not found", update.identity));
+                    continue;
+                };
+                if let Some(object) = model.as_object_mut() {
+                    if let Some(name) = update.desired.get("display_name").and_then(Value::as_str) {
+                        object.insert("name".into(), Value::String(name.into()));
+                    }
+                    let generation = object
+                        .entry("generationConfig")
+                        .or_insert_with(|| Value::Object(Map::new()))
+                        .as_object_mut()
+                        .ok_or_else(|| {
+                            AdapterError::Invalid("Qwen generationConfig must be an object".into())
+                        })?;
+                    if let Some(context) =
+                        update.desired.get("context_window").and_then(Value::as_i64)
+                    {
+                        generation
+                            .insert("contextWindowSize".into(), Value::Number(context.into()));
+                    } else {
+                        generation.remove("contextWindowSize");
+                    }
+                    if let Some(max_output) =
+                        update.desired.get("max_output").and_then(Value::as_i64)
+                    {
+                        generation.insert(
+                            "samplingParams".into(),
+                            serde_json::json!({"max_tokens": max_output}),
+                        );
+                    } else {
+                        generation.remove("samplingParams");
+                    }
+                }
+                folded = true;
+            }
+            PlanAction::Remove(remove) if remove.kind == "model" => {
+                let mut removed = false;
+                if let Some(providers) =
+                    doc.get_mut("modelProviders").and_then(Value::as_object_mut)
+                {
+                    for models in providers.values_mut().filter_map(Value::as_array_mut) {
+                        let before = models.len();
+                        models.retain(|model| {
+                            model.get("id").and_then(Value::as_str)
+                                != Some(remove.identity.as_str())
+                        });
+                        removed |= before != models.len();
+                    }
+                }
+                if !removed {
+                    warnings.push(format!("Qwen model {} not found", remove.identity));
+                } else {
+                    folded = true;
+                }
+            }
+            PlanAction::Unsupported(_) | PlanAction::Conflict(_) => {
+                warnings_for_action(action, &mut warnings)
+            }
+            _ => {}
+        }
+    }
+    // Qwen keeps MCP declarations in the same JSON settings document.  Keep
+    // the model-provider handling above native to Qwen while reusing the
+    // format-aware MCP writer for the existing mcpServers surface.
+    append_json_mcp_actions(
+        spec,
+        reconciliation,
+        install,
+        &mut warnings,
+        &mut folded,
+        &mut doc,
+    )?;
+    Ok(json_plan_with_protected(
+        path,
+        raw,
+        doc,
+        folded,
+        warnings,
+        protected_changes,
+    ))
+}
+
+fn qwen_protocol_key(add: &chm_harness_sdk::adapter::plan::AddAction) -> String {
+    let protocol = add
+        .payload
+        .get("protocol")
+        .and_then(Value::as_str)
+        .or_else(|| {
+            add.payload
+                .get("overrides")
+                .and_then(|value| value.get("protocol"))
+                .and_then(Value::as_str)
+        })
+        .unwrap_or("openai-chat");
+    match protocol {
+        "anthropic-messages" => "anthropic",
+        "openai-responses" | "openrouter-openai" | "openai-chat" => "openai",
+        other => other,
+    }
+    .to_string()
+}
+
+fn qwen_env_key(add: &chm_harness_sdk::adapter::plan::AddAction, provider: &str) -> String {
+    add.payload
+        .get("api_key_env")
+        .and_then(Value::as_str)
+        .or_else(|| add.payload.get("env_key").and_then(Value::as_str))
+        .filter(|key| !key.trim().is_empty())
+        .map(str::to_string)
+        .unwrap_or_else(|| {
+            let mut key = String::from("CHM_");
+            for character in provider.chars() {
+                if character.is_ascii_alphanumeric() {
+                    key.push(character.to_ascii_uppercase());
+                } else {
+                    key.push('_');
+                }
+            }
+            key.push_str("_API_KEY");
+            key
+        })
+}
+
+fn json_plan_with_protected(
+    path: PathBuf,
+    raw: String,
+    doc: Value,
+    folded: bool,
+    warnings: Vec<String>,
+    protected_changes: Vec<ProtectedChangePlan>,
+) -> NativePlan {
+    let mut plan = json_plan(path, raw, doc, folded, warnings);
+    plan.protected_changes = protected_changes;
+    plan
+}
+
 fn plan_continue(
     spec: &DetectionSpec,
     reconciliation: &ReconciliationPlan,
@@ -388,11 +741,28 @@ fn plan_continue(
         })?;
     let mut warnings = Vec::new();
     let mut folded = false;
+    let mut protected_changes = Vec::new();
+    let mut protected_keys = std::collections::HashSet::new();
     for action in &reconciliation.actions {
         match action {
             PlanAction::Add(add) if add.kind == "model" => {
                 let model = yaml_model_from_add(add);
                 yaml_array(&mut doc, "models").push(model);
+                if let Some(credential_ref_id) = add_credential_ref_id(add)
+                    && let Some(provider) = continue_native_provider_id(add)
+                {
+                    let key = continue_env_key(add, provider);
+                    if protected_keys.insert(key.clone()) {
+                        protected_changes.push(ProtectedChangePlan {
+                            target: ProtectedTarget::EnvFile {
+                                path: home.join(".continue/.env").display().to_string(),
+                                key,
+                            },
+                            credential_ref_id,
+                            operation: ProtectedOperation::Upsert,
+                        });
+                    }
+                }
                 folded = true;
             }
             PlanAction::Update(update) if update.kind == "model" => {
@@ -509,6 +879,7 @@ fn plan_continue(
             vec![]
         },
         links: vec![],
+        protected_changes,
         warnings,
     })
 }
@@ -524,6 +895,8 @@ fn plan_continue_json(
     let mut doc = parse_json(&raw, &path)?;
     let mut warnings = Vec::new();
     let mut folded = false;
+    let mut protected_changes = Vec::new();
+    let mut protected_keys = std::collections::HashSet::new();
     for action in &reconciliation.actions {
         match action {
             PlanAction::Add(add) if add.kind == "model" => {
@@ -531,6 +904,21 @@ fn plan_continue_json(
                 let json =
                     serde_json::to_value(yaml).map_err(|e| AdapterError::Invalid(e.to_string()))?;
                 json_array(&mut doc, "models").push(json);
+                if let Some(credential_ref_id) = add_credential_ref_id(add)
+                    && let Some(provider) = continue_native_provider_id(add)
+                {
+                    let key = continue_env_key(add, provider);
+                    if protected_keys.insert(key.clone()) {
+                        protected_changes.push(ProtectedChangePlan {
+                            target: ProtectedTarget::EnvFile {
+                                path: home.join(".continue/.env").display().to_string(),
+                                key,
+                            },
+                            credential_ref_id,
+                            operation: ProtectedOperation::Upsert,
+                        });
+                    }
+                }
                 folded = true;
             }
             PlanAction::Update(update) if update.kind == "model" => {
@@ -628,7 +1016,315 @@ fn plan_continue_json(
             _ => warnings_for_action(action, &mut warnings),
         }
     }
-    Ok(json_plan(path, raw, doc, folded, warnings))
+    Ok(json_plan_with_protected(
+        path,
+        raw,
+        doc,
+        folded,
+        warnings,
+        protected_changes,
+    ))
+}
+
+fn plan_aider(
+    spec: &DetectionSpec,
+    reconciliation: &ReconciliationPlan,
+    install: &chm_core::domain::harness::HarnessInstallation,
+) -> Result<NativePlan, AdapterError> {
+    let home = home_for_install(spec, install);
+    let path = resolve_config_path(spec, install, &home);
+    let raw = std::fs::read_to_string(&path).unwrap_or_default();
+    let mut doc: serde_yaml::Value = if raw.trim().is_empty() {
+        serde_yaml::Value::Mapping(serde_yaml::Mapping::new())
+    } else {
+        serde_yaml::from_str(&raw).map_err(|error| AdapterError::Parse {
+            path: path.display().to_string(),
+            detail: error.to_string(),
+        })?
+    };
+    if !doc.is_mapping() {
+        return Err(AdapterError::Invalid(
+            "Aider config root must be a YAML mapping".into(),
+        ));
+    }
+
+    let metadata_path = home.join(".aider.model.metadata.json");
+    let metadata_raw = std::fs::read_to_string(&metadata_path).unwrap_or_else(|_| "{}".into());
+    let mut metadata = parse_json(&metadata_raw, &metadata_path)?;
+    if !metadata.is_object() {
+        return Err(AdapterError::Invalid(
+            "Aider model metadata must be a JSON object".into(),
+        ));
+    }
+
+    let mut warnings = Vec::new();
+    let mut folded = false;
+    let mut metadata_folded = false;
+    let mut protected_changes = Vec::new();
+    let mut protected_keys = std::collections::HashSet::new();
+    for action in &reconciliation.actions {
+        match action {
+            PlanAction::Add(add) if add.kind == "model" => {
+                let provider = aider_provider_type(add);
+                let wire = add
+                    .payload
+                    .get("overrides")
+                    .and_then(|value| value.get("wire_model"))
+                    .and_then(Value::as_str)
+                    .or_else(|| add.payload.get("remote_model_id").and_then(Value::as_str))
+                    .unwrap_or(&add.identity);
+                let qualified = aider_qualified_model(provider, wire);
+                aider_set_yaml(
+                    &mut doc,
+                    "model",
+                    serde_yaml::Value::String(qualified.clone()),
+                );
+                if let Some(base_url) = add
+                    .payload
+                    .get("base_url")
+                    .and_then(Value::as_str)
+                    .or_else(|| add.payload.get("api_base").and_then(Value::as_str))
+                {
+                    match provider {
+                        "anthropic" => aider_add_set_env(&mut doc, "ANTHROPIC_API_BASE", base_url),
+                        _ => aider_set_yaml(
+                            &mut doc,
+                            "openai-api-base",
+                            serde_yaml::Value::String(base_url.into()),
+                        ),
+                    }
+                }
+                if let Some(credential_ref_id) = add_credential_ref_id(add)
+                    && let Some(native_provider) = continue_native_provider_id(add)
+                {
+                    let key = aider_env_key(provider, native_provider);
+                    aider_set_yaml(
+                        &mut doc,
+                        "env-file",
+                        serde_yaml::Value::String(home.join(".aider/.env").display().to_string()),
+                    );
+                    if protected_keys.insert(key.clone()) {
+                        protected_changes.push(ProtectedChangePlan {
+                            target: ProtectedTarget::EnvFile {
+                                path: home.join(".aider/.env").display().to_string(),
+                                key,
+                            },
+                            credential_ref_id,
+                            operation: ProtectedOperation::Upsert,
+                        });
+                    }
+                }
+                aider_merge_metadata(&mut metadata, &qualified, add);
+                metadata_folded = true;
+                aider_set_yaml(
+                    &mut doc,
+                    "model-metadata-file",
+                    serde_yaml::Value::String(metadata_path.display().to_string()),
+                );
+                folded = true;
+            }
+            PlanAction::Update(update) if update.kind == "model" => {
+                let current = doc
+                    .get("model")
+                    .and_then(serde_yaml::Value::as_str)
+                    .unwrap_or_default();
+                if current == update.identity
+                    || current
+                        .strip_prefix("openai/")
+                        .or_else(|| current.strip_prefix("anthropic/"))
+                        .or_else(|| current.strip_prefix("openrouter/"))
+                        == Some(update.identity.as_str())
+                {
+                    if let Some(context) = update.desired.get("context_window")
+                        && context.is_null()
+                        && let Some(entry) = metadata
+                            .as_object_mut()
+                            .and_then(|entries| entries.get_mut(current))
+                            .and_then(Value::as_object_mut)
+                    {
+                        entry.remove("max_input_tokens");
+                    }
+                    aider_merge_metadata_from_update(&mut metadata, current, update);
+                    metadata_folded = true;
+                } else {
+                    warnings.push(format!(
+                        "Aider model {} is not the active model; only the active global model can be updated",
+                        update.identity
+                    ));
+                }
+            }
+            PlanAction::Remove(remove) if remove.kind == "model" => {
+                let current = doc
+                    .get("model")
+                    .and_then(serde_yaml::Value::as_str)
+                    .unwrap_or_default()
+                    .to_string();
+                let current_wire = current
+                    .strip_prefix("openai/")
+                    .or_else(|| current.strip_prefix("anthropic/"))
+                    .or_else(|| current.strip_prefix("openrouter/"))
+                    .unwrap_or(current.as_str());
+                if current == remove.identity || current_wire == remove.identity {
+                    if let Some(mapping) = doc.as_mapping_mut() {
+                        mapping.remove(serde_yaml::Value::String("model".into()));
+                    }
+                    if let Some(entries) = metadata.as_object_mut() {
+                        entries.remove(&current);
+                        entries.remove(remove.identity.as_str());
+                    }
+                    folded = true;
+                    metadata_folded = true;
+                } else {
+                    warnings.push(format!(
+                        "Aider model {} is not the active model; nothing removed",
+                        remove.identity
+                    ));
+                }
+            }
+            _ => warnings_for_action(action, &mut warnings),
+        }
+    }
+
+    let mut changes = Vec::new();
+    if folded {
+        changes.push(NativeChange {
+            file_path: path.display().to_string(),
+            before: Some(raw),
+            after: Some(
+                serde_yaml::to_string(&doc)
+                    .map_err(|error| AdapterError::Invalid(error.to_string()))?,
+            ),
+        });
+    }
+    if metadata_folded {
+        changes.push(NativeChange {
+            file_path: metadata_path.display().to_string(),
+            before: Some(metadata_raw),
+            after: Some(
+                serde_json::to_string_pretty(&metadata)
+                    .map_err(|error| AdapterError::Invalid(error.to_string()))?,
+            ),
+        });
+    }
+    Ok(NativePlan {
+        changes,
+        links: vec![],
+        protected_changes,
+        warnings,
+    })
+}
+
+fn aider_provider_type(add: &chm_harness_sdk::adapter::plan::AddAction) -> &'static str {
+    match add_protocol(add) {
+        "anthropic-messages" => "anthropic",
+        "openrouter-openai" => "openrouter",
+        _ => "openai",
+    }
+}
+
+fn aider_qualified_model(provider: &str, wire: &str) -> String {
+    let prefix = format!("{provider}/");
+    if wire.starts_with(&prefix) {
+        wire.to_string()
+    } else {
+        format!("{prefix}{wire}")
+    }
+}
+
+fn aider_env_key(provider: &str, _native_provider: &str) -> String {
+    match provider {
+        "anthropic" => "ANTHROPIC_API_KEY".into(),
+        "openrouter" => "OPENROUTER_API_KEY".into(),
+        _ => "OPENAI_API_KEY".into(),
+    }
+}
+
+fn aider_set_yaml(doc: &mut serde_yaml::Value, key: &str, value: serde_yaml::Value) {
+    if let Some(mapping) = doc.as_mapping_mut() {
+        mapping.insert(serde_yaml::Value::String(key.into()), value);
+    }
+}
+
+fn aider_add_set_env(doc: &mut serde_yaml::Value, key: &str, value: &str) {
+    let Some(mapping) = doc.as_mapping_mut() else {
+        return;
+    };
+    let entry = mapping
+        .entry(serde_yaml::Value::String("set-env".into()))
+        .or_insert_with(|| serde_yaml::Value::Sequence(Vec::new()));
+    let Some(values) = entry.as_sequence_mut() else {
+        return;
+    };
+    let prefix = format!("{key}=");
+    values.retain(|item| {
+        !item
+            .as_str()
+            .is_some_and(|value| value.starts_with(&prefix))
+    });
+    values.push(serde_yaml::Value::String(format!("{key}={value}")));
+}
+
+fn aider_merge_metadata(
+    metadata: &mut Value,
+    qualified: &str,
+    add: &chm_harness_sdk::adapter::plan::AddAction,
+) {
+    let Some(entries) = metadata.as_object_mut() else {
+        return;
+    };
+    let mut entry = entries
+        .get(qualified)
+        .and_then(Value::as_object)
+        .cloned()
+        .unwrap_or_default();
+    if let Some(context) = add.payload.get("context_window").and_then(Value::as_i64) {
+        entry.insert("max_input_tokens".into(), Value::Number(context.into()));
+    }
+    if let Some(max_output) = add.payload.get("max_output").and_then(Value::as_i64) {
+        entry.insert("max_output_tokens".into(), Value::Number(max_output.into()));
+        entry.insert("max_tokens".into(), Value::Number(max_output.into()));
+    }
+    entry.insert(
+        "litellm_provider".into(),
+        Value::String(aider_provider_type(add).into()),
+    );
+    entries.insert(qualified.into(), Value::Object(entry));
+}
+
+fn aider_merge_metadata_from_update(
+    metadata: &mut Value,
+    qualified: &str,
+    update: &chm_harness_sdk::adapter::plan::UpdateAction,
+) {
+    let Some(entries) = metadata.as_object_mut() else {
+        return;
+    };
+    let mut entry = entries
+        .get(qualified)
+        .and_then(Value::as_object)
+        .cloned()
+        .unwrap_or_default();
+    for (field, metadata_key) in [
+        ("context_window", "max_input_tokens"),
+        ("max_output", "max_output_tokens"),
+    ] {
+        match update.desired.get(field).and_then(Value::as_i64) {
+            Some(value) => {
+                entry.insert(metadata_key.into(), Value::Number(value.into()));
+                if field == "max_output" {
+                    entry.insert("max_tokens".into(), Value::Number(value.into()));
+                }
+            }
+            None if update.desired.get(field).is_some_and(Value::is_null) => {
+                entry.remove(metadata_key);
+                if field == "max_output" {
+                    entry.remove("max_tokens");
+                }
+            }
+            _ => {}
+        }
+    }
+    entries.insert(qualified.into(), Value::Object(entry));
 }
 
 fn plan_gemini(
@@ -813,7 +1509,12 @@ fn plan_cline(
                             .get("native_provider_id")
                             .and_then(Value::as_str)
                     })
-                    .unwrap_or("custom");
+                    .ok_or_else(|| {
+                        AdapterError::Invalid(format!(
+                            "Cline model {} is missing its provider identity",
+                            add.identity
+                        ))
+                    })?;
                 match cline_model_collection(&mut doc, provider) {
                     ClineModelCollection::Array(models) => {
                         if models
@@ -837,7 +1538,12 @@ fn plan_cline(
                 }
             }
             PlanAction::Update(update) => {
-                let provider = update.native_provider_id.as_deref().unwrap_or("custom");
+                let provider = update.native_provider_id.as_deref().ok_or_else(|| {
+                    AdapterError::Invalid(format!(
+                        "Cline model {} is missing its provider identity",
+                        update.identity
+                    ))
+                })?;
                 if let Some(model) = find_cline_model(&mut doc, provider, &update.identity) {
                     if let Some(name) = update.desired.get("display_name").and_then(Value::as_str) {
                         model["name"] = Value::String(name.into());
@@ -862,7 +1568,12 @@ fn plan_cline(
                 }
             }
             PlanAction::Remove(remove) => {
-                let provider = remove.native_provider_id.as_deref().unwrap_or("custom");
+                let provider = remove.native_provider_id.as_deref().ok_or_else(|| {
+                    AdapterError::Invalid(format!(
+                        "Cline model {} is missing its provider identity",
+                        remove.identity
+                    ))
+                })?;
                 match cline_model_collection(&mut doc, provider) {
                     ClineModelCollection::Array(models) => {
                         let before = models.len();
@@ -896,8 +1607,10 @@ fn plan_goose(
     install: &chm_core::domain::harness::HarnessInstallation,
 ) -> Result<NativePlan, AdapterError> {
     let home = home_for_install(spec, install);
+    let config_path = resolve_config_path(spec, install, &home);
     let mut result = NativePlan::default();
     let mut documents: Vec<GooseDocument> = Vec::new();
+    let mut secrets_keys = std::collections::HashSet::new();
     for action in &reconciliation.actions {
         if !is_model_action(action) {
             warnings_for_action(action, &mut result.warnings);
@@ -916,6 +1629,7 @@ fn plan_goose(
             None => {
                 let raw = match std::fs::read_to_string(&path) {
                     Ok(raw) => raw,
+                    Err(error) if error.kind() == std::io::ErrorKind::NotFound => String::new(),
                     Err(error) => {
                         result.warnings.push(format!(
                             "cannot read Goose provider {}: {error}",
@@ -924,7 +1638,11 @@ fn plan_goose(
                         continue;
                     }
                 };
-                let doc = parse_json(&raw, &path)?;
+                let doc = if raw.trim().is_empty() {
+                    goose_new_provider_document(action)?
+                } else {
+                    parse_json(&raw, &path)?
+                };
                 documents.push(GooseDocument {
                     path,
                     raw,
@@ -935,6 +1653,21 @@ fn plan_goose(
             }
         };
         apply_goose_model_action(action, &mut documents[index], &mut result.warnings);
+        if let Some(credential_ref_id) = goose_credential_ref_id(action)
+            && let Some(key) = goose_api_key_env(action)
+            && secrets_keys.insert(key.clone())
+        {
+            result.protected_changes.push(ProtectedChangePlan {
+                target: ProtectedTarget::GooseSecretsFile {
+                    path: path_for_rel(spec, &home, ".config/goose/secrets.yaml")
+                        .display()
+                        .to_string(),
+                    key,
+                },
+                credential_ref_id,
+                operation: ProtectedOperation::Upsert,
+            });
+        }
     }
 
     for document in documents {
@@ -944,6 +1677,41 @@ fn plan_goose(
                 before: Some(document.raw),
                 after: Some(
                     serde_json::to_string_pretty(&document.doc)
+                        .map_err(|error| AdapterError::Invalid(error.to_string()))?,
+                ),
+            });
+        }
+    }
+
+    if !result.protected_changes.is_empty() {
+        let raw = std::fs::read_to_string(&config_path).unwrap_or_default();
+        let mut config: serde_yaml::Value = if raw.trim().is_empty() {
+            serde_yaml::Value::Mapping(serde_yaml::Mapping::new())
+        } else {
+            serde_yaml::from_str(&raw).map_err(|error| AdapterError::Parse {
+                path: config_path.display().to_string(),
+                detail: error.to_string(),
+            })?
+        };
+        let root = config.as_mapping_mut().ok_or_else(|| {
+            AdapterError::Invalid("Goose config root must be a YAML mapping".into())
+        })?;
+        let key = serde_yaml::Value::String("GOOSE_DISABLE_KEYRING".into());
+        let already_disabled = root
+            .get(&key)
+            .and_then(serde_yaml::Value::as_bool)
+            .unwrap_or(false)
+            || root
+                .get(&key)
+                .and_then(serde_yaml::Value::as_str)
+                .is_some_and(|value| matches!(value, "1" | "true" | "yes"));
+        if !already_disabled {
+            root.insert(key, serde_yaml::Value::Bool(true));
+            result.changes.push(NativeChange {
+                file_path: config_path.display().to_string(),
+                before: Some(raw),
+                after: Some(
+                    serde_yaml::to_string(&config)
                         .map_err(|error| AdapterError::Invalid(error.to_string()))?,
                 ),
             });
@@ -1034,7 +1802,110 @@ fn goose_model_path(action: &PlanAction, spec: &DetectionSpec, home: &Path) -> O
         return None;
     }
     let candidate = custom_dir.join(format!("{}.json", goose_slug(provider)));
-    candidate.is_file().then_some(candidate)
+    Some(candidate)
+}
+
+fn goose_action_payload(action: &PlanAction) -> Option<&Value> {
+    match action {
+        PlanAction::Add(action) => Some(&action.payload),
+        _ => None,
+    }
+}
+
+fn goose_native_provider_config(action: &PlanAction) -> Option<&Value> {
+    goose_action_payload(action)
+        .and_then(|payload| payload.get("overrides"))
+        .and_then(|overrides| overrides.get("native_provider_config"))
+}
+
+fn goose_credential_ref_id(action: &PlanAction) -> Option<uuid::Uuid> {
+    goose_action_payload(action)
+        .and_then(|payload| {
+            payload.get("credential_ref_id").or_else(|| {
+                goose_native_provider_config(action)
+                    .and_then(|config| config.get("credential_ref_id"))
+            })
+        })
+        .and_then(Value::as_str)
+        .and_then(|value| uuid::Uuid::parse_str(value).ok())
+}
+
+fn goose_api_key_env(action: &PlanAction) -> Option<String> {
+    let payload = goose_action_payload(action)?;
+    payload
+        .get("api_key_env")
+        .or_else(|| payload.get("env_key"))
+        .or_else(|| {
+            goose_native_provider_config(action).and_then(|config| config.get("api_key_env"))
+        })
+        .and_then(Value::as_str)
+        .map(str::to_string)
+        .filter(|key| !key.trim().is_empty())
+        .or_else(|| {
+            goose_action_provider(action)
+                .filter(|provider| !provider.trim().is_empty())
+                .map(|provider| {
+                    format!("CHM_{}_API_KEY", goose_slug(provider).to_ascii_uppercase())
+                })
+        })
+}
+
+fn goose_engine(action: &PlanAction) -> &'static str {
+    let protocol = goose_action_payload(action)
+        .and_then(|payload| payload.get("protocol"))
+        .and_then(Value::as_str)
+        .or_else(|| {
+            goose_native_provider_config(action)
+                .and_then(|config| config.get("protocol"))
+                .and_then(Value::as_str)
+        })
+        .unwrap_or("openai-chat");
+    match protocol {
+        "anthropic-messages" => "anthropic",
+        "custom" => "openai",
+        _ => "openai",
+    }
+}
+
+fn goose_new_provider_document(action: &PlanAction) -> Result<Value, AdapterError> {
+    let provider = goose_action_provider(action).ok_or_else(|| {
+        AdapterError::Invalid(format!(
+            "Goose model {} is missing its provider identity",
+            goose_action_identity(action)
+        ))
+    })?;
+    let payload = goose_action_payload(action);
+    let display = payload
+        .and_then(|payload| payload.get("display_name"))
+        .and_then(Value::as_str)
+        .unwrap_or(provider);
+    let base_url = payload
+        .and_then(|payload| payload.get("base_url"))
+        .and_then(Value::as_str)
+        .or_else(|| {
+            goose_native_provider_config(action)
+                .and_then(|config| config.get("base_url"))
+                .and_then(Value::as_str)
+        });
+    let mut doc = Map::new();
+    doc.insert("name".into(), Value::String(provider.into()));
+    doc.insert("engine".into(), Value::String(goose_engine(action).into()));
+    doc.insert("display_name".into(), Value::String(display.into()));
+    if let Some(base_url) = base_url.filter(|value| !value.trim().is_empty()) {
+        doc.insert("base_url".into(), Value::String(base_url.into()));
+    }
+    if let Some(env_key) = goose_api_key_env(action) {
+        doc.insert("api_key_env".into(), Value::String(env_key));
+        doc.insert(
+            "requires_auth".into(),
+            Value::Bool(goose_credential_ref_id(action).is_some()),
+        );
+    } else {
+        doc.insert("requires_auth".into(), Value::Bool(false));
+    }
+    doc.insert("supports_streaming".into(), Value::Bool(true));
+    doc.insert("models".into(), Value::Array(Vec::new()));
+    Ok(Value::Object(doc))
 }
 
 fn goose_slug(value: &str) -> String {
@@ -1055,7 +1926,11 @@ fn goose_slug(value: &str) -> String {
 }
 
 fn goose_models_mut(doc: &mut Value) -> Option<&mut Vec<Value>> {
-    doc.as_object_mut()?.get_mut("models")?.as_array_mut()
+    let object = doc.as_object_mut()?;
+    let models = object
+        .entry("models")
+        .or_insert_with(|| Value::Array(Vec::new()));
+    models.as_array_mut()
 }
 
 fn goose_model_id(value: &Value) -> Option<&str> {
@@ -1241,6 +2116,7 @@ fn json_plan(
             vec![]
         },
         links: vec![],
+        protected_changes: vec![],
         warnings,
     }
 }
@@ -1381,22 +2257,79 @@ fn native_mcp(spec: &DetectionSpec, server: &McpServer) -> Value {
     Value::Object(entry)
 }
 
+fn add_credential_ref_id(add: &chm_harness_sdk::adapter::plan::AddAction) -> Option<uuid::Uuid> {
+    add.payload
+        .get("credential_ref_id")
+        .or_else(|| {
+            add.payload
+                .get("overrides")
+                .and_then(|value| value.get("native_provider_config"))
+                .and_then(|value| value.get("credential_ref_id"))
+        })
+        .and_then(Value::as_str)
+        .and_then(|value| uuid::Uuid::parse_str(value).ok())
+}
+
+fn add_protocol(add: &chm_harness_sdk::adapter::plan::AddAction) -> &str {
+    add.payload
+        .get("protocol")
+        .and_then(Value::as_str)
+        .or_else(|| {
+            add.payload
+                .get("overrides")
+                .and_then(|value| value.get("protocol"))
+                .and_then(Value::as_str)
+        })
+        .unwrap_or("openai-chat")
+}
+
+fn continue_provider_type(add: &chm_harness_sdk::adapter::plan::AddAction) -> &'static str {
+    match add_protocol(add) {
+        "anthropic-messages" => "anthropic",
+        "openrouter-openai" => "openrouter",
+        // Continue uses the OpenAI provider for both chat-completions and
+        // Responses-compatible OpenAI gateways, including custom endpoints.
+        _ => "openai",
+    }
+}
+
+fn continue_native_provider_id(add: &chm_harness_sdk::adapter::plan::AddAction) -> Option<&str> {
+    add.native_provider_id.as_deref().or_else(|| {
+        add.payload
+            .get("native_provider_id")
+            .and_then(Value::as_str)
+    })
+}
+
+fn generated_env_key(provider: &str) -> String {
+    let mut key = String::from("CHM_");
+    for character in provider.chars() {
+        if character.is_ascii_alphanumeric() {
+            key.push(character.to_ascii_uppercase());
+        } else {
+            key.push('_');
+        }
+    }
+    key.push_str("_API_KEY");
+    key
+}
+
+fn continue_env_key(add: &chm_harness_sdk::adapter::plan::AddAction, provider: &str) -> String {
+    add.payload
+        .get("api_key_env")
+        .and_then(Value::as_str)
+        .or_else(|| add.payload.get("env_key").and_then(Value::as_str))
+        .filter(|key| !key.trim().is_empty())
+        .map(str::to_string)
+        .unwrap_or_else(|| generated_env_key(provider))
+}
+
 fn yaml_model_from_add(add: &chm_harness_sdk::adapter::plan::AddAction) -> serde_yaml::Value {
     let mut obj = Map::new();
     obj.insert("name".into(), Value::String(add.identity.clone()));
     obj.insert(
         "provider".into(),
-        Value::String(
-            add.native_provider_id
-                .clone()
-                .or_else(|| {
-                    add.payload
-                        .get("native_provider_id")
-                        .and_then(Value::as_str)
-                        .map(String::from)
-                })
-                .unwrap_or_else(|| "openai".into()),
-        ),
+        Value::String(continue_provider_type(add).into()),
     );
     let wire = add
         .payload
@@ -1406,13 +2339,31 @@ fn yaml_model_from_add(add: &chm_harness_sdk::adapter::plan::AddAction) -> serde
         .or_else(|| add.payload.get("remote_model_id").and_then(Value::as_str))
         .unwrap_or(&add.identity);
     obj.insert("model".into(), Value::String(wire.into()));
-    if let Some(api_base) = add.payload.get("api_base").and_then(Value::as_str) {
+    if let Some(api_base) = add
+        .payload
+        .get("base_url")
+        .and_then(Value::as_str)
+        .or_else(|| add.payload.get("api_base").and_then(Value::as_str))
+    {
         obj.insert("apiBase".into(), Value::String(api_base.into()));
     }
+    let mut options = Map::new();
     if let Some(context) = add.payload.get("context_window").and_then(Value::as_i64) {
+        options.insert("contextLength".into(), Value::Number(context.into()));
+    }
+    if let Some(max_tokens) = add.payload.get("max_output").and_then(Value::as_i64) {
+        options.insert("maxTokens".into(), Value::Number(max_tokens.into()));
+    }
+    if !options.is_empty() {
+        obj.insert("defaultCompletionOptions".into(), Value::Object(options));
+    }
+    if add_credential_ref_id(add).is_some()
+        && let Some(provider) = continue_native_provider_id(add)
+    {
+        let key = continue_env_key(add, provider);
         obj.insert(
-            "defaultCompletionOptions".into(),
-            serde_json::json!({"contextLength": context}),
+            "apiKey".into(),
+            Value::String(format!("${{{{ secrets.{key} }}}}")),
         );
     }
     serde_json_to_yaml(&Value::Object(obj))

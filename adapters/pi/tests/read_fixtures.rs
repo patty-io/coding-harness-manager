@@ -149,6 +149,13 @@ fn writer_updates_and_removes_models() {
 }
 
 #[test]
+fn writer_emits_explicit_environment_interpolation() {
+    let mut doc = writer::parse_document(r#"{"providers":{"proxy":{"models":[]}}}"#).unwrap();
+    writer::configure_provider_auth(&mut doc, "proxy", Some("env"), Some("PROXY_API_KEY"));
+    assert_eq!(doc["providers"]["proxy"]["apiKey"], "$PROXY_API_KEY");
+}
+
+#[test]
 fn malformed_provider_shapes_return_errors_instead_of_panicking() {
     assert!(
         writer::parse_document(r#"{"providers":null}"#)

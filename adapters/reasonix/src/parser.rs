@@ -45,6 +45,8 @@ pub fn parse_config(raw: &str, home: &std::path::Path) -> Result<ParsedState, Ad
                         serde_json::json!({
                             "native_provider_id": name,
                             "api_key_env": pv.get("api_key_env"),
+                            "base_url": pv.get("base_url"),
+                            "protocol": reasonix_protocol(pv.get("kind").and_then(|v| v.as_str())),
                         }),
                     );
                     route.max_output = pv.get("max_output_tokens").and_then(|v| v.as_integer());
@@ -84,4 +86,11 @@ pub fn parse_config(raw: &str, home: &std::path::Path) -> Result<ParsedState, Ad
     }
 
     Ok(state)
+}
+
+fn reasonix_protocol(kind: Option<&str>) -> &'static str {
+    match kind {
+        Some("anthropic") => "anthropic-messages",
+        _ => "openai-chat",
+    }
 }

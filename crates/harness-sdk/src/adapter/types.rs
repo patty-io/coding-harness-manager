@@ -145,6 +145,8 @@ pub struct NativePlan {
     pub changes: Vec<NativeChange>,
     pub links: Vec<NativeLink>,
     pub warnings: Vec<String>,
+    #[serde(default)]
+    pub protected_changes: Vec<crate::adapter::protected::ProtectedChangePlan>,
 }
 
 #[derive(Debug, Clone, serde::Serialize)]

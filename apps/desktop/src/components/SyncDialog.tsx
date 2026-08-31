@@ -81,7 +81,9 @@ export function SyncDialog({
   const hasBlockers = preview.data?.hasBlockers ?? false;
   const routeBlockers = preview.data?.routeBlockers ?? [];
   const hasRouteBlockers = routeBlockers.length > 0;
-  const noOp = (preview.data?.writableChanges ?? 0) === 0;
+  const noOp =
+    (preview.data?.writableChanges ?? 0) === 0 &&
+    (preview.data?.protectedChanges ?? 0) === 0;
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/30">
@@ -147,6 +149,9 @@ export function SyncDialog({
               <p className="mt-3 text-sm font-medium">{preview.data.summary}</p>
               <p className="mt-1 text-xs text-slate-500">
                 Reviewed plan {preview.data.planHash.slice(0, 12)} · {preview.data.writableChanges} writable file change{preview.data.writableChanges === 1 ? "" : "s"}
+                {preview.data.protectedChanges > 0 && (
+                  <> · {preview.data.protectedChanges} protected credential change{preview.data.protectedChanges === 1 ? "" : "s"}</>
+                )}
               </p>
               {noOp && <p className="mt-2 text-sm text-slate-400">No changes are available to apply.</p>}
               <table className="mt-2 w-full text-sm">
@@ -191,6 +196,25 @@ export function SyncDialog({
                   </p>
                 </div>
               )}
+              {preview.data.warnings.length > 0 && (
+                <div
+                  className="mt-3 rounded border border-amber-500/50 bg-amber-950/30 p-3"
+                  role="alert"
+                >
+                  <h3 className="text-sm font-medium text-amber-300">
+                    Adapter warnings
+                  </h3>
+                  <ul className="mt-1 list-inside list-disc text-xs text-amber-200">
+                    {preview.data.warnings.map((warning, index) => (
+                      <li key={`${warning}:${index}`}>{warning}</li>
+                    ))}
+                  </ul>
+                  <p className="mt-2 text-xs text-slate-400">
+                    Review these warnings before applying. Force apply is
+                    available only when you explicitly accept the risk.
+                  </p>
+                </div>
+              )}
               {preview.data.files.length > 0 && (
                 <div className="mt-3">
                   <h3 className="text-sm font-medium">Files</h3>
@@ -225,7 +249,7 @@ export function SyncDialog({
                     checked={force}
                     onChange={(e) => setForce(e.target.checked)}
                   />
-                  Apply despite conflicts/unsupported (advanced)
+                  Apply despite conflicts, unsupported changes, or adapter warnings (advanced)
                 </label>
               )}
             </>

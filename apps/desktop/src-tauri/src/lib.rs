@@ -1,6 +1,7 @@
 //! Tauri backend: commands + app state.
 
 pub mod commands;
+pub mod credential_helper;
 pub mod drift;
 pub mod services;
 pub mod skill_lib;

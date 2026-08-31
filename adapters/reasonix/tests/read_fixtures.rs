@@ -49,5 +49,40 @@ fn reasonix_full_config_parses_without_warnings() {
             "symlinked": s.symlinked,
         })).collect::<Vec<_>>(),
     });
-    assert_eq!(actual, expected);
+    // Endpoint metadata is intentionally richer than the original fixture:
+    // the adapter now preserves base_url/protocol so cross-adapter sync can
+    // match a registry route even when native provider ids differ. Keep the
+    // historical golden focused on the public model/provider shape while
+    // asserting the new metadata explicitly below.
+    for model in &state.models {
+        assert!(
+            model
+                .route
+                .overrides
+                .get("base_url")
+                .and_then(Value::as_str)
+                .is_some()
+        );
+        assert!(
+            model
+                .route
+                .overrides
+                .get("protocol")
+                .and_then(Value::as_str)
+                .is_some()
+        );
+    }
+    let mut actual_without_endpoint_metadata = actual.clone();
+    if let Some(models) = actual_without_endpoint_metadata
+        .get_mut("models")
+        .and_then(Value::as_array_mut)
+    {
+        for model in models {
+            if let Some(overrides) = model.get_mut("overrides").and_then(Value::as_object_mut) {
+                overrides.remove("base_url");
+                overrides.remove("protocol");
+            }
+        }
+    }
+    assert_eq!(actual_without_endpoint_metadata, expected);
 }

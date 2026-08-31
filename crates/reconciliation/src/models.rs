@@ -32,7 +32,17 @@ pub fn reconcile_models(
     for d in desired {
         let native_id = d.remote_model_id.as_str();
         let provider = route_provider(d);
-        match actual_by_identity.get(&(provider, native_id)) {
+        let matching = actual_by_identity
+            .get(&(provider, native_id))
+            .copied()
+            .or_else(|| {
+                // Some adapters use a stable native provider id (for
+                // example Continue's `openai`) while the library route uses
+                // the registry slug. The endpoint base URL is the portable
+                // identity in that case, so use it as a safe fallback.
+                actual.iter().find(|a| route_identity_matches(a, d))
+            });
+        match matching {
             None => {
                 let alias_hit = actual.iter().find(|a| {
                     a.route.remote_model_id == d.remote_model_id
@@ -60,6 +70,25 @@ pub fn reconcile_models(
                             "max_output": d.max_output,
                             "capabilities": d.capabilities,
                             "overrides": d.overrides,
+                            "base_url": d.overrides.get("base_url").cloned(),
+                            "protocol": d.overrides.get("protocol").cloned(),
+                            "env_key": d.overrides.get("env_key").cloned(),
+                            "api_key_env": d.overrides.get("api_key_env").cloned(),
+                            "credential_ref_id": d
+                                .overrides
+                                .get("native_provider_config")
+                                .and_then(|config| config.get("credential_ref_id"))
+                                .cloned(),
+                            "credential_kind": d
+                                .overrides
+                                .get("native_provider_config")
+                                .and_then(|config| config.get("credential_kind"))
+                                .cloned(),
+                            "credential_reference": d
+                                .overrides
+                                .get("native_provider_config")
+                                .and_then(|config| config.get("credential_reference"))
+                                .cloned(),
                         }),
                         native_provider_id: provider.map(str::to_string),
                     }));
@@ -97,9 +126,7 @@ pub fn reconcile_models(
             if !is_managed {
                 continue;
             }
-            let still_desired = desired.iter().any(|d| {
-                d.remote_model_id == a.native_id && route_provider(d) == native_identity(a).0
-            });
+            let still_desired = desired.iter().any(|d| route_identity_matches(a, d));
             if !still_desired {
                 actions.push(PlanAction::Remove(RemoveAction {
                     kind: "model".into(),
@@ -132,6 +159,59 @@ fn route_provider(route: &ModelRoute) -> Option<&str> {
 
 fn native_identity(model: &HarnessModel) -> (Option<&str>, &str) {
     (route_provider(&model.route), model.native_id.as_str())
+}
+
+/// Return an endpoint base URL carried by a route's adapter metadata. The
+/// metadata is deliberately non-secret and survives round-trips through the
+/// database, unlike credentials or provider display names.
+fn route_base_url(route: &ModelRoute) -> Option<&str> {
+    route
+        .overrides
+        .get("base_url")
+        .and_then(|v| v.as_str())
+        .or_else(|| {
+            route
+                .overrides
+                .get("native_provider_config")
+                .and_then(|config| config.get("base_url"))
+                .and_then(|v| v.as_str())
+        })
+        .or_else(|| {
+            route
+                .overrides
+                .get("native")
+                .and_then(|native| native.get("base_url"))
+                .and_then(|v| v.as_str())
+        })
+        .or_else(|| {
+            route
+                .overrides
+                .get("native")
+                .and_then(|native| native.get("api_base"))
+                .and_then(|v| v.as_str())
+        })
+}
+
+fn normalize_base_url(value: &str) -> String {
+    value.trim().trim_end_matches('/').to_ascii_lowercase()
+}
+
+/// Match a harness row to a desired route by native model id and provider.
+/// Provider ids are preferred; matching by the same normalized endpoint URL
+/// handles adapters that expose a protocol-specific provider alias.
+fn route_identity_matches(actual: &HarnessModel, desired: &ModelRoute) -> bool {
+    if actual.native_id != desired.remote_model_id {
+        return false;
+    }
+    let actual_provider = route_provider(&actual.route);
+    let desired_provider = route_provider(desired);
+    if actual_provider == desired_provider {
+        return true;
+    }
+    match (route_base_url(&actual.route), route_base_url(desired)) {
+        (Some(actual), Some(desired)) => normalize_base_url(actual) == normalize_base_url(desired),
+        _ => false,
+    }
 }
 
 fn field_differs(field: &str, actual: &ModelRoute, desired: &ModelRoute) -> bool {

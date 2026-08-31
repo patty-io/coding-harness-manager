@@ -55,6 +55,8 @@ pub fn parse_config(raw: &str, config_dir: &std::path::Path) -> Result<ParsedSta
                         serde_json::json!({
                             "native_provider_id": provider_id,
                             "native_config": pv.clone(),
+                            "base_url": options.and_then(|o| o.get("baseURL")),
+                            "protocol": opencode_protocol(pv),
                         }),
                     );
                     route.max_output = meta
@@ -121,6 +123,22 @@ pub fn parse_config(raw: &str, config_dir: &std::path::Path) -> Result<ParsedSta
     }
 
     Ok(state)
+}
+
+fn opencode_protocol(provider: &serde_json::Value) -> &'static str {
+    let npm = provider
+        .get("npm")
+        .and_then(|value| value.as_str())
+        .unwrap_or("");
+    if npm.contains("anthropic") {
+        "anthropic-messages"
+    } else if npm.contains("openrouter") {
+        "openrouter-openai"
+    } else if npm.contains("responses") {
+        "openai-responses"
+    } else {
+        "openai-chat"
+    }
 }
 
 fn parse_mcp(name: &str, spec: &serde_json::Value) -> McpServer {

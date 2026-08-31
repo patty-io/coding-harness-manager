@@ -1,6 +1,30 @@
 use chm_filesystem::{LinkOutcome, atomic_write, backup_file, link_directory, restore_backup};
 use tempfile::TempDir;
 
+#[cfg(unix)]
+#[test]
+fn protected_replace_is_atomic_owner_only_and_detects_concurrency() {
+    use std::os::unix::fs::PermissionsExt;
+
+    let dir = TempDir::new().unwrap();
+    let file = dir.path().join("auth.json");
+    std::fs::write(&file, b"before").unwrap();
+    let guard = chm_filesystem::ProtectedWriteGuard::capture(&file).unwrap();
+    guard.replace(b"after", 0o600).unwrap();
+    assert_eq!(std::fs::read(&file).unwrap(), b"after");
+    assert_eq!(
+        std::fs::metadata(&file).unwrap().permissions().mode() & 0o777,
+        0o600
+    );
+
+    let stale = chm_filesystem::ProtectedWriteGuard::capture(&file).unwrap();
+    std::fs::write(&file, b"external").unwrap();
+    assert!(matches!(
+        stale.replace(b"ours", 0o600),
+        Err(chm_filesystem::FsError::ConcurrentChange(_))
+    ));
+}
+
 #[test]
 fn atomic_write_replaces_content() {
     let dir = TempDir::new().unwrap();

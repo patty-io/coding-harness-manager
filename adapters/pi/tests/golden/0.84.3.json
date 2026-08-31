@@ -608,6 +608,7 @@
         "supportsStore": false,
         "thinkingFormat": "qwen-chat-template"
       },
+      "env_key": null,
       "native_provider_id": "Yolo-Auto"
     },
     {
@@ -615,6 +616,7 @@
       "api_key_inline": true,
       "base_url": "https://omni.agents.patty.io/v1",
       "compat": null,
+      "env_key": "AGENTS_PATTY_API_KEY",
       "native_provider_id": "pattycode"
     },
     {

@@ -109,6 +109,54 @@ pub fn install_home_from_config(config_path: &str, dot_dir: &str) -> std::path::
         .unwrap_or_default()
 }
 
+/// Return the command and arguments for CHM's fixed credential helper.
+///
+/// The desktop binary can service helper requests itself (the command is
+/// invoked with `--credential-helper`), while adapter tests and package-level
+/// installs can provide a standalone `chm-credential-helper` on PATH. An
+/// explicit override is useful for packaged launchers and never accepts a
+/// command from a harness configuration file.
+pub fn credential_helper_invocation(credential_ref_id: Uuid) -> (String, Vec<String>) {
+    let suffix = credential_ref_id.to_string();
+    if let Some(command) = std::env::var_os("CHM_CREDENTIAL_HELPER_COMMAND") {
+        return (
+            command.to_string_lossy().into_owned(),
+            vec!["read".into(), "--credential-ref".into(), suffix],
+        );
+    }
+    if let Ok(executable) = std::env::current_exe()
+        && executable
+            .file_name()
+            .is_some_and(|name| name.to_string_lossy().starts_with("coding-harness-manager"))
+    {
+        return (
+            executable.display().to_string(),
+            vec![
+                "--credential-helper".into(),
+                "read".into(),
+                "--credential-ref".into(),
+                suffix,
+            ],
+        );
+    }
+    (
+        "chm-credential-helper".into(),
+        vec!["read".into(), "--credential-ref".into(), suffix],
+    )
+}
+
+/// Shell-safe form used by Claude Code's documented `apiKeyHelper` setting.
+/// Claude invokes this string through the user's shell; every component is
+/// quoted so a path or future helper argument cannot become shell syntax.
+pub fn credential_helper_shell_command(credential_ref_id: Uuid) -> String {
+    let (command, args) = credential_helper_invocation(credential_ref_id);
+    std::iter::once(command)
+        .chain(args)
+        .map(|part| format!("'{}'", part.replace('\'', "'\\''")))
+        .collect::<Vec<_>>()
+        .join(" ")
+}
+
 /// Reads a file if present; missing files yield `None`, other errors propagate.
 pub fn read_optional(path: &Path) -> std::io::Result<Option<String>> {
     match std::fs::read_to_string(path) {

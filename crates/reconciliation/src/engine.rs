@@ -1,6 +1,6 @@
 //! Top-level reconciliation: desired + actual -> plan.
 
-use chm_harness_sdk::adapter::route::RouteCompatibility;
+use chm_harness_sdk::adapter::route::{ProviderTopology, RouteCompatibility};
 use chm_harness_sdk::adapter::types::HarnessCapabilities;
 
 use crate::mcp_skills::{reconcile_mcp, reconcile_skills};
@@ -62,9 +62,20 @@ pub fn reconcile_with_capabilities(
 ) -> Result<ReconciliationPlan, ReconcileError> {
     let mut actions = Vec::new();
     let mut blocked_endpoints = std::collections::HashSet::new();
+    let single_global_conflict = matches!(
+        caps.route_deployment.provider_topology,
+        ProviderTopology::SingleGlobalOverride
+    ) && desired.provider_routes.len() > 1;
 
     for bundle in &desired.provider_routes {
-        if let RouteCompatibility::Blocked { reason } = caps.route_deployment.check(bundle) {
+        let compatibility = if single_global_conflict {
+            RouteCompatibility::Blocked {
+                reason: "this harness has one global model/provider slot and cannot represent multiple provider endpoints in one sync".into(),
+            }
+        } else {
+            caps.route_deployment.check(bundle)
+        };
+        if let RouteCompatibility::Blocked { reason } = compatibility {
             blocked_endpoints.insert(bundle.endpoint_id);
             actions.push(PlanAction::Unsupported(UnsupportedAction {
                 kind: "provider-route".into(),

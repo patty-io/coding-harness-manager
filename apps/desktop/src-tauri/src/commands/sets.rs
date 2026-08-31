@@ -2,6 +2,7 @@
 
 use chm_core::domain::sets::SetItemType;
 use chm_database::repos::models::list_routes;
+use chm_database::repos::providers::{list_endpoints, list_providers};
 use chm_database::repos::profiles::{
     add_set_item, delete_set, list_set_items, list_set_items_for_sets, list_sets, remove_set_item,
 };
@@ -155,13 +156,42 @@ pub async fn set_filtered_desired(
         .map(|i| i.item_id)
         .collect();
 
+    let routes = routes
+        .into_iter()
+        .filter(|r| r.enabled)
+        .filter(|r| model_ids.contains(&r.id))
+        .collect::<Vec<_>>();
+    // Set sync uses the same provider bundles as full-library sync. Keeping
+    // this metadata is essential: adapters need the provider, endpoint,
+    // protocol, and credential reference to write a usable native config.
+    let providers = list_providers(pool).await.map_err(|e| e.to_string())?;
+    let mut endpoints = Vec::new();
+    for provider in &providers {
+        endpoints.extend(
+            list_endpoints(pool, provider.id)
+                .await
+                .map_err(|e| e.to_string())?,
+        );
+    }
+    let provider_routes = crate::commands::sync::group_provider_routes(
+        &routes,
+        &providers,
+        &endpoints,
+    )?;
+    let routes = provider_routes
+        .iter()
+        .flat_map(|bundle| {
+            bundle
+                .models
+                .iter()
+                .cloned()
+                .map(|route| crate::commands::sync::route_for_provider_bundle(route, bundle))
+        })
+        .collect();
+
     Ok(chm_harness_sdk::adapter::plan::DesiredState {
-        provider_routes: vec![],
-        routes: routes
-            .into_iter()
-            .filter(|r| r.enabled)
-            .filter(|r| model_ids.contains(&r.id))
-            .collect(),
+        provider_routes,
+        routes,
         mcp_servers: mcp
             .into_iter()
             .filter(|s| s.enabled)
@@ -206,7 +236,7 @@ pub async fn apply_set_cmd(
     let pool = &state.pool;
     let m = crate::commands::sync::parse_mode(&mode);
     let desired = set_filtered_desired(pool, &set_id).await?;
-    crate::commands::sync::execute_desired_with_plan(
+    crate::commands::sync::execute_desired_with_plan_using_secrets(
         pool,
         &installation_id,
         &m,
@@ -214,6 +244,7 @@ pub async fn apply_set_cmd(
         Some(&plan_hash),
         None,
         desired,
+        &*state.secrets,
     )
     .await
 }

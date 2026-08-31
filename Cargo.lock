@@ -181,6 +181,7 @@ version = "0.1.0"
 dependencies = [
  "chrono",
  "libc",
+ "sha2",
  "tempfile",
  "thiserror",
 ]
@@ -197,6 +198,7 @@ dependencies = [
  "tempfile",
  "thiserror",
  "uuid",
+ "zeroize",
 ]
 
 [[package]]

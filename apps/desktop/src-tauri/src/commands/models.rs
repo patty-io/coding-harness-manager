@@ -458,21 +458,21 @@ fn apply_catalog_metadata(
         .overrides
         .as_object_mut()
         .expect("model route overrides must be a JSON object");
-    if context_missing {
-        if let Some(context) = model.context_window {
-            route.context_window = Some(context);
-            overrides
-                .entry("context_window".to_string())
-                .or_insert_with(|| serde_json::json!({"value": context, "source": "models.dev"}));
-        }
+    if context_missing
+        && let Some(context) = model.context_window
+    {
+        route.context_window = Some(context);
+        overrides
+            .entry("context_window".to_string())
+            .or_insert_with(|| serde_json::json!({"value": context, "source": "models.dev"}));
     }
-    if output_missing {
-        if let Some(max_output) = model.max_output {
-            route.max_output = Some(max_output);
-            overrides
-                .entry("max_output".to_string())
-                .or_insert_with(|| serde_json::json!({"value": max_output, "source": "models.dev"}));
-        }
+    if output_missing
+        && let Some(max_output) = model.max_output
+    {
+        route.max_output = Some(max_output);
+        overrides
+            .entry("max_output".to_string())
+            .or_insert_with(|| serde_json::json!({"value": max_output, "source": "models.dev"}));
     }
     overrides.insert(
         "model_identity_id".to_string(),

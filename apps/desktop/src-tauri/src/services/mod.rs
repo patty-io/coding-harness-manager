@@ -1,3 +1,4 @@
+pub mod credential_deployment;
 pub mod import;
 pub mod transactions;
 

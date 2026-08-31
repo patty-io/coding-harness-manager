@@ -129,7 +129,9 @@ export interface SyncPreviewReport {
   files: FilePreview[];
   planHash: string;
   writableChanges: number;
+  protectedChanges: number;
   hasBlockers: boolean;
+  warnings: string[];
   routeBlockers: {
     providerId: string;
     modelIds: string[];

@@ -229,7 +229,33 @@ pub async fn run_import(
                 None
             }
         });
-        let endpoint = if let Some(endpoint) = matching_endpoint {
+        let endpoint = if let Some(mut endpoint) = matching_endpoint {
+            // A provider may already exist from a previous one-click
+            // materialization, before the parser learned its explicit Pi
+            // `$ENV_VAR` reference. Fill only a missing credential; never
+            // replace a credential the user configured in CHM.
+            if endpoint.credential_ref.is_none()
+                && let Some(key) = env_key.filter(|value| !value.trim().is_empty())
+            {
+                let credential = create_credential_ref(&mut *tx, CredentialKind::Env, key)
+                    .await
+                    .map_err(|e| e.to_string())?;
+                sqlx::query(
+                    "UPDATE provider_endpoints
+                     SET auth_type = ?, credential_ref_id = ?, updated_at = ?
+                     WHERE id = ?",
+                )
+                .bind(AuthType::BearerToken.as_str())
+                .bind(credential.id.to_string())
+                .bind(Utc::now().to_rfc3339())
+                .bind(endpoint.id.to_string())
+                .execute(&mut *tx)
+                .await
+                .map_err(|e| e.to_string())?;
+                endpoint.auth_type = AuthType::BearerToken;
+                endpoint.credential_ref = Some(credential);
+                endpoint.updated_at = Utc::now();
+            }
             endpoint
         } else if let Some(base_url) = base_url {
             let credential_ref: Option<CredentialRef> = match env_key {

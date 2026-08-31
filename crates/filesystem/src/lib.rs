@@ -1,8 +1,12 @@
 //! Filesystem safety layer: atomic writes, backups, directory links.
 //! THE ONLY module allowed to mutate native files.
 
+use sha2::{Digest, Sha256};
 use std::io::Write;
+#[cfg(unix)]
+use std::os::unix::fs::PermissionsExt;
 use std::path::{Path, PathBuf};
+use std::sync::{Arc, Mutex};
 use thiserror::Error;
 
 #[derive(Debug, Error)]
@@ -13,6 +17,152 @@ pub enum FsError {
     InvalidPath(String),
     #[error("unsupported: {0}")]
     Unsupported(String),
+    #[error("concurrent change detected for {0}")]
+    ConcurrentChange(String),
+}
+
+fn content_hash(bytes: &[u8]) -> [u8; 32] {
+    let mut hasher = Sha256::new();
+    hasher.update(bytes);
+    hasher.finalize().into()
+}
+
+/// Apply-time guard for files that may contain credentials. The original
+/// bytes stay in memory only; the guard never serializes or logs them.
+#[derive(Debug, Clone)]
+pub struct ProtectedWriteGuard {
+    path: PathBuf,
+    before: Option<Vec<u8>>,
+    /// The hash that must still be present before the next guarded mutation.
+    /// It starts at the preflight snapshot and advances after each successful
+    /// replace, allowing a rollback to restore the original bytes without
+    /// treating CHM's own write as an external concurrent change.
+    expected_hash: Arc<Mutex<Option<[u8; 32]>>>,
+    #[cfg(unix)]
+    before_mode: Option<u32>,
+}
+
+impl ProtectedWriteGuard {
+    pub fn capture(path: &Path) -> Result<Self, FsError> {
+        let before = match std::fs::read(path) {
+            Ok(bytes) => Some(bytes),
+            Err(error) if error.kind() == std::io::ErrorKind::NotFound => None,
+            Err(error) => return Err(FsError::Io(error)),
+        };
+        #[cfg(unix)]
+        let before_mode = std::fs::metadata(path).ok().map(|metadata| {
+            std::os::unix::fs::PermissionsExt::mode(&metadata.permissions()) & 0o777
+        });
+        Ok(Self {
+            expected_hash: Arc::new(Mutex::new(before.as_deref().map(content_hash))),
+            path: path.to_path_buf(),
+            before,
+            #[cfg(unix)]
+            before_mode,
+        })
+    }
+
+    fn assert_unchanged(&self) -> Result<(), FsError> {
+        let current = match std::fs::read(&self.path) {
+            Ok(bytes) => Some(bytes),
+            Err(error) if error.kind() == std::io::ErrorKind::NotFound => None,
+            Err(error) => return Err(FsError::Io(error)),
+        };
+        let current_hash = current.as_deref().map(content_hash);
+        let expected_hash = self
+            .expected_hash
+            .lock()
+            .map_err(|_| FsError::ConcurrentChange(self.path.display().to_string()))?;
+        if current_hash != *expected_hash {
+            return Err(FsError::ConcurrentChange(self.path.display().to_string()));
+        }
+        Ok(())
+    }
+
+    /// Verify that the guarded target still matches the bytes captured during
+    /// preflight. This is intentionally read-only and lets a coordinator
+    /// check protected files before unrelated native files are written.
+    pub fn verify_unchanged(&self) -> Result<(), FsError> {
+        self.assert_unchanged()
+    }
+
+    /// Return the guarded path without exposing the protected file contents.
+    /// Coordinators use this for safe, human-readable apply reports.
+    pub fn path(&self) -> &Path {
+        &self.path
+    }
+
+    pub fn replace(&self, bytes: &[u8], mode: u32) -> Result<(), FsError> {
+        self.assert_unchanged()?;
+        let parent = self
+            .path
+            .parent()
+            .ok_or_else(|| FsError::InvalidPath(self.path.display().to_string()))?;
+        std::fs::create_dir_all(parent)?;
+        let tmp = self
+            .path
+            .with_extension(format!("chm-protected-tmp-{}", std::process::id()));
+        {
+            let mut file = std::fs::File::create(&tmp)?;
+            #[cfg(unix)]
+            std::fs::set_permissions(&tmp, std::fs::Permissions::from_mode(mode))?;
+            file.write_all(bytes)?;
+            file.sync_all()?;
+        }
+        self.assert_unchanged()?;
+        match std::fs::rename(&tmp, &self.path) {
+            Ok(()) => {
+                let mut expected_hash = self
+                    .expected_hash
+                    .lock()
+                    .map_err(|_| FsError::ConcurrentChange(self.path.display().to_string()))?;
+                *expected_hash = Some(content_hash(bytes));
+                Ok(())
+            }
+            Err(_error) if cfg!(windows) && std::fs::metadata(&self.path).is_ok() => {
+                std::fs::remove_file(&self.path)?;
+                std::fs::rename(&tmp, &self.path)?;
+                let mut expected_hash = self
+                    .expected_hash
+                    .lock()
+                    .map_err(|_| FsError::ConcurrentChange(self.path.display().to_string()))?;
+                *expected_hash = Some(content_hash(bytes));
+                Ok(())
+            }
+            Err(error) => {
+                let _ = std::fs::remove_file(&tmp);
+                Err(FsError::Io(error))
+            }
+        }
+    }
+
+    pub fn restore(&self) -> Result<(), FsError> {
+        self.assert_unchanged()?;
+        match &self.before {
+            Some(bytes) => self.replace(bytes, {
+                #[cfg(unix)]
+                {
+                    self.before_mode.unwrap_or(0o600)
+                }
+                #[cfg(not(unix))]
+                {
+                    0
+                }
+            }),
+            None => match std::fs::remove_file(&self.path) {
+                Ok(()) => {
+                    let mut expected_hash = self
+                        .expected_hash
+                        .lock()
+                        .map_err(|_| FsError::ConcurrentChange(self.path.display().to_string()))?;
+                    *expected_hash = None;
+                    Ok(())
+                }
+                Err(error) if error.kind() == std::io::ErrorKind::NotFound => Ok(()),
+                Err(error) => Err(FsError::Io(error)),
+            },
+        }
+    }
 }
 
 pub fn atomic_write(path: &Path, content: &str) -> Result<(), FsError> {

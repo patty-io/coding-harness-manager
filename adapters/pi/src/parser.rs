@@ -28,6 +28,14 @@ pub fn parse_config(
                     "base_url": pv.get("baseUrl"),
                     "api": pv.get("api"),
                     "api_key_inline": pv.get("apiKey").is_some(), // boolean only — never the value
+                    // Pi supports explicit `$VAR`/`${VAR}` references in
+                    // apiKey. Preserve only the variable name so an import
+                    // can create a credential reference without copying a
+                    // secret or executing a command.
+                    "env_key": pv
+                        .get("apiKey")
+                        .and_then(|value| value.as_str())
+                        .and_then(api_key_env_reference),
                     "compat": pv.get("compat"),
                 }));
                 if let Some(models) = pv.get("models").and_then(|m| m.as_array()) {
@@ -41,6 +49,10 @@ pub fn parse_config(
                             continue;
                         }
                         let capabilities = meta.clone();
+                        let api = meta
+                            .get("api")
+                            .and_then(|value| value.as_str())
+                            .or_else(|| pv.get("api").and_then(|value| value.as_str()));
                         let route = ModelRoute::new(
                             model_id.clone(),
                             meta.get("name")
@@ -51,6 +63,9 @@ pub fn parse_config(
                             capabilities,
                             serde_json::json!({
                                 "native_provider_id": provider_id,
+                                "base_url": pv.get("baseUrl"),
+                                "protocol": pi_protocol(api),
+                                "wire_model": model_id,
                             }),
                         );
                         state.models.push(HarnessModel {
@@ -141,6 +156,39 @@ pub fn parse_config(
     Ok(state)
 }
 
+/// Return the environment variable name from Pi's explicit interpolation
+/// syntax. Plain strings (including uppercase-looking placeholders) remain
+/// opaque because Pi treats them as literal keys; command-backed values are
+/// intentionally not executed or imported.
+fn api_key_env_reference(value: &str) -> Option<String> {
+    let value = value.trim();
+    let name = value
+        .strip_prefix("${")
+        .and_then(|rest| rest.strip_suffix('}'))
+        .or_else(|| value.strip_prefix('$'))?;
+    if name.is_empty()
+        || !name
+            .chars()
+            .next()
+            .is_some_and(|character| character.is_ascii_alphabetic() || character == '_')
+        || !name
+            .chars()
+            .all(|character| character.is_ascii_alphanumeric() || character == '_')
+    {
+        return None;
+    }
+    Some(name.to_string())
+}
+
+fn pi_protocol(api: Option<&str>) -> &'static str {
+    match api.unwrap_or("") {
+        "anthropic-messages" => "anthropic-messages",
+        "openai-responses" => "openai-responses",
+        "openrouter" | "openrouter-openai" => "openrouter-openai",
+        _ => "openai-chat",
+    }
+}
+
 fn parse_mcp(name: &str, spec: &serde_json::Value) -> McpServer {
     let transport = match spec.get("type").and_then(|t| t.as_str()) {
         Some("http") | Some("sse") => McpTransport::Http,
@@ -176,5 +224,25 @@ fn parse_mcp(name: &str, spec: &serde_json::Value) -> McpServer {
         scope_path: None,
         provenance: serde_json::json!({"source": "pi-native"}),
         enabled: true,
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::api_key_env_reference;
+
+    #[test]
+    fn only_explicit_env_references_are_imported() {
+        assert_eq!(
+            api_key_env_reference("$MY_API_KEY"),
+            Some("MY_API_KEY".into())
+        );
+        assert_eq!(
+            api_key_env_reference("${MY_API_KEY}"),
+            Some("MY_API_KEY".into())
+        );
+        assert_eq!(api_key_env_reference("MY_API_KEY"), None);
+        assert_eq!(api_key_env_reference("!security vault read key"), None);
+        assert_eq!(api_key_env_reference("${KEY_PREFIX}_${KEY_SUFFIX}"), None);
     }
 }

@@ -56,3 +56,33 @@ fn claude_full_config_parses_without_warnings() {
     });
     assert_eq!(actual, expected);
 }
+
+#[test]
+fn claude_gateway_model_and_base_url_are_read_back() {
+    let state = claude_code_adapter::parser::parse_config(
+        Some(
+            r#"{
+              "env": {
+                "ANTHROPIC_MODEL": "custom/model-v2",
+                "ANTHROPIC_BASE_URL": "https://gateway.example/v1",
+                "DISABLE_AUTOUPDATER": "1"
+              }
+            }"#,
+        ),
+        None,
+        std::path::Path::new("/tmp"),
+    )
+    .expect("parse gateway settings");
+    assert_eq!(state.models.len(), 1);
+    assert_eq!(state.models[0].native_id, "custom/model-v2");
+    assert_eq!(state.models[0].route.remote_model_id, "custom/model-v2");
+    assert_eq!(
+        state.models[0].route.overrides["base_url"],
+        "https://gateway.example/v1"
+    );
+    assert_eq!(
+        state.models[0].route.overrides["protocol"],
+        "anthropic-messages"
+    );
+    assert_eq!(state.providers.len(), 2);
+}

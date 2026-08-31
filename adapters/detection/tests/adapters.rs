@@ -336,7 +336,8 @@ fn selection_only_harnesses_do_not_fabricate_model_rows() {
     let state = AiderAdapter
         .read_state(&install("aider", &aider.display().to_string()))
         .unwrap();
-    assert!(state.models.is_empty());
+    assert_eq!(state.models.len(), 1);
+    assert_eq!(state.models[0].native_id, "gpt-4.1");
     assert_eq!(state.profiles.len(), 2);
 }
 
@@ -395,6 +396,76 @@ fn goose_custom_provider_models_are_read_and_written_without_credentials() {
         after.contains("CORP_KEY"),
         "credential references must be preserved"
     );
+}
+
+#[test]
+fn goose_new_custom_provider_writes_native_config_and_protected_secret_plan() {
+    let dir = tempfile::tempdir().unwrap();
+    let config = dir.path().join("config.yaml");
+    std::fs::write(&config, "provider: yolo-auto\n").unwrap();
+    let credential_ref_id = uuid::Uuid::new_v4();
+    let native = GooseAdapter
+        .plan(
+            &ReconciliationPlan {
+                actions: vec![PlanAction::Add(AddAction {
+                    kind: "model".into(),
+                    identity: "qwen3.8-27b".into(),
+                    payload: serde_json::json!({
+                        "native_provider_id": "yolo-auto",
+                        "remote_model_id": "qwen3.8-27b",
+                        "display_name": "Qwen 3.8 27B",
+                        "context_window": 131072,
+                        "base_url": "https://yolo-auto.example/v1",
+                        "protocol": "openai-chat",
+                        "api_key_env": "YOLO_AUTO_API_KEY",
+                        "credential_ref_id": credential_ref_id,
+                        "overrides": {
+                            "native_provider_config": {
+                                "base_url": "https://yolo-auto.example/v1",
+                                "protocol": "openai-chat"
+                            }
+                        }
+                    }),
+                    native_provider_id: Some("yolo-auto".into()),
+                })],
+            },
+            &install("goose", &config.display().to_string()),
+        )
+        .unwrap();
+    assert_eq!(
+        native.changes.len(),
+        2,
+        "provider JSON + keyring mode config"
+    );
+    let provider_change = native
+        .changes
+        .iter()
+        .find(|change| {
+            change
+                .file_path
+                .ends_with("custom_providers/yolo-auto.json")
+        })
+        .expect("custom provider change");
+    let provider_after = provider_change.after.as_deref().unwrap();
+    assert!(provider_after.contains("qwen3.8-27b"));
+    assert!(provider_after.contains("yolo-auto.example"));
+    let config_change = native
+        .changes
+        .iter()
+        .find(|change| change.file_path.ends_with("config.yaml"))
+        .expect("keyring mode config change");
+    assert!(
+        config_change
+            .after
+            .as_deref()
+            .unwrap()
+            .contains("GOOSE_DISABLE_KEYRING: true")
+    );
+    assert_eq!(native.protected_changes.len(), 1);
+    assert!(matches!(
+        native.protected_changes[0].target,
+        chm_harness_sdk::adapter::protected::ProtectedTarget::GooseSecretsFile { .. }
+    ));
 }
 
 #[test]

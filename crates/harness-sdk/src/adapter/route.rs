@@ -106,6 +106,15 @@ impl RouteDeploymentCapabilities {
             | ProviderTopology::SingleGlobalOverride
             | ProviderTopology::FixedProvider { .. } => {}
         }
+        if matches!(
+            self.provider_topology,
+            ProviderTopology::SingleGlobalOverride
+        ) && bundle.models.len() > 1
+        {
+            return RouteCompatibility::Blocked {
+                reason: "this harness has one active model slot and cannot represent multiple models from one provider endpoint in a single sync".into(),
+            };
+        }
         if !self.protocols.contains(&bundle.protocol) {
             return RouteCompatibility::Blocked {
                 reason: format!(
@@ -114,12 +123,33 @@ impl RouteDeploymentCapabilities {
                 ),
             };
         }
-        if matches!(bundle.credential, CredentialRequirement::Secret { .. })
-            && self.credential_targets.is_empty()
-        {
-            return RouteCompatibility::Blocked {
-                reason: "this harness has no writable credential target".into(),
-            };
+        if let CredentialRequirement::Secret { credential_ref, .. } = &bundle.credential {
+            // The reference's storage kind describes where CHM obtains the
+            // value, while `credential_targets` describes where the target
+            // harness can receive it. A keychain-backed reference can
+            // therefore be materialized into a harness-owned env file or
+            // protected config just as an env-backed reference can.
+            let target_supported = !matches!(
+                credential_ref.kind,
+                chm_core::domain::credentials::CredentialKind::Unknown
+            ) && self.credential_targets.iter().any(|target| {
+                matches!(
+                    target,
+                    CredentialTarget::NativeSecretStore
+                        | CredentialTarget::CommandHelper
+                        | CredentialTarget::HarnessEnvFile
+                        | CredentialTarget::ProtectedConfig
+                        | CredentialTarget::ManagedRemoteApi
+                )
+            });
+            if !target_supported {
+                return RouteCompatibility::Blocked {
+                    reason: format!(
+                        "this harness cannot deploy {} credentials",
+                        credential_ref.kind.as_str()
+                    ),
+                };
+            }
         }
         if !self.model_identity.allow_namespaced_ids
             && bundle
