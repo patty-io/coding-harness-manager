@@ -2,6 +2,7 @@
 name = "coding-harness-manager"
 version = "0.1.0"
 edition = "2024"
+default-run = "coding-harness-manager"
 
 [lib]
 name = "coding_harness_manager_lib"
