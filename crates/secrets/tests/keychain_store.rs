@@ -1,3 +1,4 @@
+#[cfg(target_os = "macos")]
 use chm_secrets::{KeychainStore, SecretStore};
 
 #[cfg(target_os = "macos")]
