@@ -130,6 +130,11 @@ export interface SyncPreviewReport {
   planHash: string;
   writableChanges: number;
   hasBlockers: boolean;
+  routeBlockers: {
+    providerId: string;
+    modelIds: string[];
+    reason: string;
+  }[];
 }
 
 export interface SyncSelection {

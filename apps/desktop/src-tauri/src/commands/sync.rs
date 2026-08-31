@@ -19,7 +19,7 @@ use chm_harness_sdk::adapter::plan::{
 };
 use chm_harness_sdk::adapter::route::{CredentialRequirement, ProviderRouteBundle};
 use chm_harness_sdk::adapter::types::{ApplyResult, HarnessAdapter, NativePlan, ValidationReport};
-use chm_reconciliation::engine::{filter_unsupported, reconcile};
+use chm_reconciliation::engine::filter_unsupported;
 use serde::{Deserialize, Serialize};
 use sqlx::{Pool, Sqlite};
 use tauri::State;
@@ -52,6 +52,15 @@ pub struct PreviewReport {
     pub plan_hash: String,
     pub writable_changes: usize,
     pub has_blockers: bool,
+    pub route_blockers: Vec<RouteBlockerView>,
+}
+
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct RouteBlockerView {
+    pub provider_id: String,
+    pub model_ids: Vec<String>,
+    pub reason: String,
 }
 
 #[derive(Debug, Clone, Deserialize, Default)]
@@ -440,6 +449,7 @@ pub(crate) fn validate_apply_request(
     current_plan_hash: &str,
     writable_changes: usize,
     has_blockers: bool,
+    has_route_blockers: bool,
     force: bool,
 ) -> Result<(), String> {
     if let Some(expected) = expected_plan_hash
@@ -447,6 +457,12 @@ pub(crate) fn validate_apply_request(
     {
         return Err(
             "preview is stale: the library or harness changed; refresh before applying".into(),
+        );
+    }
+    if has_route_blockers {
+        return Err(
+            "preview contains an incompatible provider route; fix its provider, endpoint, protocol, or credential before applying"
+                .into(),
         );
     }
     if has_blockers && !force {
@@ -696,6 +712,20 @@ pub(crate) fn preview_report(
     let has_blockers = actions
         .iter()
         .any(|action| action.action == "conflict" || action.action == "unsupported");
+    let route_blockers = plan
+        .actions
+        .iter()
+        .filter_map(|action| match action {
+            PlanAction::Unsupported(action) if action.kind == "provider-route" => {
+                Some(RouteBlockerView {
+                    provider_id: action.identity.clone(),
+                    model_ids: action.model_ids.clone(),
+                    reason: action.reason.clone(),
+                })
+            }
+            _ => None,
+        })
+        .collect();
     Ok(PreviewReport {
         summary: plan.summary(),
         actions,
@@ -703,6 +733,7 @@ pub(crate) fn preview_report(
         plan_hash: plan_hash(plan, native_plan)?,
         writable_changes: native_plan.changes.len(),
         has_blockers,
+        route_blockers,
     })
 }
 
@@ -766,8 +797,11 @@ pub async fn build_native_plan_for_desired(
         skills: parsed.skills.clone(),
         managed_flags: managed_flags_for(pool, &inst, &parsed).await?,
     };
-    let plan = reconcile(&desired, &actual, *mode).map_err(|e| e.to_string())?;
     let caps = adapter.capabilities();
+    let plan = chm_reconciliation::engine::reconcile_with_capabilities(
+        &desired, &actual, *mode, &caps,
+    )
+    .map_err(|e| e.to_string())?;
     let plan = filter_unsupported(plan, &caps);
     let native_plan = adapter.plan(&plan, &inst).map_err(|e| e.to_string())?;
     Ok((inst, adapter, plan, native_plan))
@@ -849,12 +883,16 @@ pub async fn execute_desired_with_plan(
         .actions
         .iter()
         .any(|action| matches!(action, PlanAction::Conflict(_) | PlanAction::Unsupported(_)));
+    let route_blockers = plan.actions.iter().any(
+        |action| matches!(action, PlanAction::Unsupported(action) if action.kind == "provider-route"),
+    );
     let writable_changes = native_plan.changes.len();
     validate_apply_request(
         expected_plan_hash,
         &current_hash,
         writable_changes,
         blockers,
+        route_blockers,
         force,
     )?;
     let tx = begin_transaction(pool, TransactionType::Sync, serde_json::json!(native_plan))
@@ -1237,21 +1275,31 @@ mod tests {
 
     #[test]
     fn stale_preview_is_rejected_before_writes() {
-        let error = validate_apply_request(Some("old"), "new", 1, false, false).unwrap_err();
+        let error =
+            validate_apply_request(Some("old"), "new", 1, false, false, false).unwrap_err();
         assert!(error.contains("stale"));
     }
 
     #[test]
     fn no_op_preview_cannot_apply() {
-        let error = validate_apply_request(Some("same"), "same", 0, false, false).unwrap_err();
+        let error =
+            validate_apply_request(Some("same"), "same", 0, false, false, false).unwrap_err();
         assert!(error.contains("no writable"));
     }
 
     #[test]
     fn blockers_need_force_and_force_is_explicit() {
-        let error = validate_apply_request(Some("same"), "same", 1, true, false).unwrap_err();
+        let error =
+            validate_apply_request(Some("same"), "same", 1, true, false, false).unwrap_err();
         assert!(error.contains("conflicts"));
-        assert!(validate_apply_request(Some("same"), "same", 1, true, true).is_ok());
+        assert!(validate_apply_request(Some("same"), "same", 1, true, false, true).is_ok());
+    }
+
+    #[test]
+    fn provider_route_blockers_cannot_be_forced() {
+        let error =
+            validate_apply_request(Some("same"), "same", 1, true, true, true).unwrap_err();
+        assert!(error.contains("provider route"));
     }
 
     #[test]

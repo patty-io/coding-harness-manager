@@ -69,6 +69,7 @@ function SetCard({
       planHash: "applied",
       writableChanges: result.filesWritten.length,
       hasBlockers: !result.validation.ok,
+      routeBlockers: [],
     }),
   });
   const selectedChoices = choices[itemType];

@@ -208,6 +208,7 @@ pub fn reject_unsupported_skill_bindings(
                 kind: "skill".into(),
                 identity: x.identity.clone(),
                 reason: "harness does not support skill linking".into(),
+                model_ids: vec![],
             }),
             _ => a,
         })

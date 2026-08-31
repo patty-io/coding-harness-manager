@@ -93,6 +93,8 @@ pub struct UnsupportedAction {
     pub kind: String,
     pub identity: String,
     pub reason: String,
+    #[serde(default)]
+    pub model_ids: Vec<String>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]

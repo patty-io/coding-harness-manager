@@ -1,5 +1,6 @@
 //! Top-level reconciliation: desired + actual -> plan.
 
+use chm_harness_sdk::adapter::route::RouteCompatibility;
 use chm_harness_sdk::adapter::types::HarnessCapabilities;
 
 use crate::mcp_skills::{reconcile_mcp, reconcile_skills};
@@ -50,6 +51,55 @@ pub fn reconcile(
     Ok(ReconciliationPlan { actions })
 }
 
+/// Reconcile provider routes only after the target adapter proves that it can
+/// deploy each route as a complete provider/endpoint/credential/model unit.
+/// Models belonging to blocked bundles never reach model reconciliation.
+pub fn reconcile_with_capabilities(
+    desired: &DesiredState,
+    actual: &ActualState,
+    mode: Mode,
+    caps: &HarnessCapabilities,
+) -> Result<ReconciliationPlan, ReconcileError> {
+    let mut actions = Vec::new();
+    let mut blocked_endpoints = std::collections::HashSet::new();
+
+    for bundle in &desired.provider_routes {
+        if let RouteCompatibility::Blocked { reason } = caps.route_deployment.check(bundle) {
+            blocked_endpoints.insert(bundle.endpoint_id);
+            actions.push(PlanAction::Unsupported(UnsupportedAction {
+                kind: "provider-route".into(),
+                identity: bundle.provider_id.clone(),
+                reason,
+                model_ids: bundle
+                    .models
+                    .iter()
+                    .map(|model| model.remote_model_id.clone())
+                    .collect(),
+            }));
+        }
+    }
+
+    let allowed = DesiredState {
+        provider_routes: desired
+            .provider_routes
+            .iter()
+            .filter(|bundle| !blocked_endpoints.contains(&bundle.endpoint_id))
+            .cloned()
+            .collect(),
+        routes: desired
+            .routes
+            .iter()
+            .filter(|route| !blocked_endpoints.contains(&route.endpoint_id))
+            .cloned()
+            .collect(),
+        mcp_servers: desired.mcp_servers.clone(),
+        skills: desired.skills.clone(),
+    };
+    actions.extend(reconcile(&allowed, actual, mode)?.actions);
+
+    Ok(ReconciliationPlan { actions })
+}
+
 pub fn filter_unsupported(
     plan: ReconciliationPlan,
     caps: &HarnessCapabilities,
@@ -92,6 +142,7 @@ pub fn filter_unsupported(
                     kind: "resource".into(),
                     identity,
                     reason,
+                    model_ids: vec![],
                 })
             }
         })

@@ -1,8 +1,13 @@
 use chm_core::domain::mcp::{McpServer, McpTransport, ScopeType};
 use chm_core::domain::models::ModelRoute;
+use chm_core::domain::provider::Protocol;
 use chm_core::domain::skills::Skill;
+use chm_harness_sdk::adapter::route::{
+    CredentialRequirement, ModelIdentityRules, ModelMetadataCapabilities, ProviderRouteBundle,
+    ProviderTopology, RouteDeploymentCapabilities,
+};
 use chm_harness_sdk::adapter::types::HarnessCapabilities;
-use chm_reconciliation::engine::{filter_unsupported, reconcile};
+use chm_reconciliation::engine::{filter_unsupported, reconcile, reconcile_with_capabilities};
 use chm_reconciliation::plan::{ActualState, DesiredState, Mode, PlanAction};
 use uuid::Uuid;
 
@@ -46,6 +51,54 @@ fn skill(name: &str) -> Skill {
         created_at: chrono::Utc::now(),
         updated_at: chrono::Utc::now(),
     }
+}
+
+#[test]
+fn incompatible_bundle_is_a_route_blocker_not_a_model_action() {
+    let endpoint = Uuid::new_v4();
+    let model = route(endpoint, "qwen", None);
+    let desired = DesiredState {
+        provider_routes: vec![ProviderRouteBundle {
+            provider_id: "yolo-auto".into(),
+            display_name: "Yolo-Auto".into(),
+            endpoint_id: endpoint,
+            base_url: "https://yolo-auto.example/v1".into(),
+            protocol: Protocol::OpenAiChatCompletions,
+            credential: CredentialRequirement::None,
+            models: vec![model.clone()],
+        }],
+        routes: vec![model],
+        ..Default::default()
+    };
+    let capabilities = HarnessCapabilities::none()
+        .with_models(true)
+        .with_providers(true)
+        .with_route_deployment(RouteDeploymentCapabilities {
+            provider_topology: ProviderTopology::Multiple,
+            protocols: vec![Protocol::OpenAiResponses],
+            credential_targets: vec![],
+            model_identity: ModelIdentityRules {
+                case_sensitive: true,
+                allow_namespaced_ids: true,
+            },
+            metadata: ModelMetadataCapabilities {
+                context_window: true,
+                max_input: true,
+                max_output: true,
+            },
+        });
+
+    let plan = reconcile_with_capabilities(
+        &desired,
+        &ActualState::default(),
+        Mode::Append,
+        &capabilities,
+    )
+    .unwrap();
+
+    assert!(matches!(&plan.actions[0], PlanAction::Unsupported(action)
+        if action.kind == "provider-route" && action.identity == "yolo-auto"));
+    assert_eq!(plan.count("model"), 0);
 }
 
 #[test]

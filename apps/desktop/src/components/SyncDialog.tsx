@@ -79,6 +79,8 @@ export function SyncDialog({
   };
 
   const hasBlockers = preview.data?.hasBlockers ?? false;
+  const routeBlockers = preview.data?.routeBlockers ?? [];
+  const hasRouteBlockers = routeBlockers.length > 0;
   const noOp = (preview.data?.writableChanges ?? 0) === 0;
 
   return (
@@ -164,6 +166,31 @@ export function SyncDialog({
                   ))}
                 </tbody>
               </table>
+              {hasRouteBlockers && (
+                <div
+                  className="mt-3 rounded border border-red-500/50 bg-red-950/40 p-3"
+                  role="alert"
+                >
+                  <h3 className="text-sm font-medium text-red-300">
+                    Provider route cannot be deployed
+                  </h3>
+                  {routeBlockers.map((blocker) => (
+                    <div key={blocker.providerId} className="mt-2 text-xs">
+                      <p className="font-medium text-slate-200">
+                        {blocker.providerId}
+                      </p>
+                      <p className="text-red-300">{blocker.reason}</p>
+                      <p className="mt-1 text-slate-400">
+                        Models: {blocker.modelIds.join(", ")}
+                      </p>
+                    </div>
+                  ))}
+                  <p className="mt-2 text-xs text-slate-400">
+                    Fix the provider, endpoint, protocol, or credential before
+                    syncing. This safety check cannot be bypassed.
+                  </p>
+                </div>
+              )}
               {preview.data.files.length > 0 && (
                 <div className="mt-3">
                   <h3 className="text-sm font-medium">Files</h3>
@@ -191,7 +218,7 @@ export function SyncDialog({
                   ))}
                 </div>
               )}
-              {hasBlockers && (
+              {hasBlockers && !hasRouteBlockers && (
                 <label className="mt-3 flex items-center gap-2 text-xs">
                   <input
                     type="checkbox"
@@ -245,6 +272,7 @@ export function SyncDialog({
               preview.isError ||
               noOp ||
               !!apply.data ||
+              hasRouteBlockers ||
               (hasBlockers && !force)
             }
             className="rounded bg-blue-600 px-3 py-1 text-sm text-white disabled:opacity-50"
