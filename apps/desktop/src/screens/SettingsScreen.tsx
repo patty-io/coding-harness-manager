@@ -2,6 +2,7 @@ import { useEffect, useState } from "react";
 import { getVersion } from "@tauri-apps/api/app";
 import { Link } from "react-router-dom";
 import { useConfirm } from "../components/ConfirmDialog";
+import { HelpTip } from "../components/HelpTip";
 import { announceToast } from "../components/Toast";
 import {
   backupNow,
@@ -164,10 +165,17 @@ export default function SettingsScreen() {
               </ul>
             )}
             <div className="mt-2 flex flex-wrap items-center gap-2">
-              <select aria-label="Import mode" value={importMode} onChange={(event) => setImportMode(event.target.value as "merge" | "replaceManaged")} className="rounded border border-slate-600 bg-slate-900 px-2 py-1 text-sm">
-                <option value="merge">Merge additions</option>
-                <option value="replaceManaged">Replace managed</option>
-              </select>
+              <div className="flex items-center gap-1">
+                <select aria-label="Import mode" value={importMode} onChange={(event) => setImportMode(event.target.value as "merge" | "replaceManaged")} className="rounded border border-slate-600 bg-slate-900 px-2 py-1 text-sm">
+                  <option value="merge">Merge additions</option>
+                  <option value="replaceManaged">Replace managed</option>
+                </select>
+                <HelpTip label="Import mode" side="right">
+                  Merge additions keeps existing records unchanged when an
+                  import conflicts. Replace managed also updates records that
+                  CHM previously created; unrelated records are preserved.
+                </HelpTip>
+              </div>
               <button
                 type="button"
                 disabled={importPreview.additions.length + importPreview.conflicts.length === 0}

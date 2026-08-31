@@ -12,6 +12,7 @@ import {
   readHarnessRawConfig,
   readHarnessState,
   type HarnessModelRow,
+  type SyncSelection,
 } from "../lib/api";
 import {
   useHarnessDrift,
@@ -22,6 +23,7 @@ import {
 import { SyncDialog } from "../components/SyncDialog";
 import { ConfigDiffViewer } from "../components/ConfigDiffViewer";
 import { useConfirm } from "../components/ConfirmDialog";
+import { HelpTip } from "../components/HelpTip";
 import {
   ensureProviderFromHarness,
   smartAdoptHarnessModel,
@@ -87,6 +89,7 @@ export default function HarnessDetailScreen() {
   const [tab, setTab] = useState<TabId>("overview");
   const [showDiff, setShowDiff] = useState(false);
   const [syncing, setSyncing] = useState(false);
+  const [syncSelection, setSyncSelection] = useState<SyncSelection | undefined>();
   const [presetMenuOpen, setPresetMenuOpen] = useState(false);
   const [launchNote, setLaunchNote] = useState<string | null>(null);
   const qc = useQueryClient();
@@ -135,11 +138,12 @@ export default function HarnessDetailScreen() {
       (modelRows ?? []).map((r) => r.remoteModelId.toLowerCase()),
     );
     return (routes ?? []).filter(
-      (r) => !onHarness.has(r.remote_model_id.toLowerCase()),
+      (r) => r.enabled && !onHarness.has(r.remote_model_id.toLowerCase()),
     );
   })();
 
   const [addMenuOpen, setAddMenuOpen] = useState(false);
+  const [selectedLibraryModels, setSelectedLibraryModels] = useState<string[]>([]);
   const [adopting, setAdopting] = useState<HarnessModelRow | null>(null);
   const [editing, setEditing] = useState<HarnessModelRow | null>(null);
   const [duplicating, setDuplicating] = useState<HarnessModelRow | null>(null);
@@ -358,13 +362,24 @@ export default function HarnessDetailScreen() {
               </div>
             )}
           </div>
-          <button
-            onClick={() => setSyncing(true)}
-            title="Compare your My Models library with this harness and preview what a sync would change. Nothing is written until you press Apply."
-            className="rounded bg-blue-600 px-3 py-1 text-sm text-white hover:bg-blue-500"
-          >
-            Sync from library…
-          </button>
+          <div className="flex items-center gap-1">
+            <button
+              type="button"
+              onClick={() => {
+                setSyncSelection(undefined);
+                setSyncing(true);
+              }}
+              title="Compare your enabled My Models library with this harness and preview what a sync would change. Nothing is written until you press Apply."
+              className="rounded bg-blue-600 px-3 py-1 text-sm text-white hover:bg-blue-500"
+            >
+              Sync from library…
+            </button>
+            <HelpTip label="Sync from library" side="left">
+              This is the full-library workflow and may update matching
+              managed models. To add only one or a few missing models, use Add
+              models from library in the Models tab.
+            </HelpTip>
+          </div>
         </div>
       </div>
 
@@ -526,8 +541,13 @@ export default function HarnessDetailScreen() {
                   className="mt-2 rounded border border-amber-500/40 px-2 py-1 text-xs text-amber-300 hover:bg-amber-500/10"
                   aria-expanded={directEditMode}
                 >
-                  {directEditMode ? "Hide direct editing" : "Edit harness directly…"}
+                  {directEditMode ? "Hide direct editing" : "Edit harness"}
                 </button>
+                <HelpTip label="Edit harness" side="right">
+                  Advanced mode edits this harness's config file directly. It
+                  does not change My Models, and every write creates a backup
+                  and History entry.
+                </HelpTip>
                 {directEditMode && (
                   <p className="mt-1 max-w-xl text-xs text-amber-200/70">
                     Advanced mode writes the harness config itself. These edits
@@ -541,8 +561,14 @@ export default function HarnessDetailScreen() {
                 return (
                   <div className="relative">
                     <button
-                      onClick={() => setAddMenuOpen(!addMenuOpen)}
+                      type="button"
+                      onClick={() => {
+                        if (!addMenuOpen) setSelectedLibraryModels([]);
+                        setAddMenuOpen((open) => !open);
+                      }}
                       disabled={!canAdd}
+                      aria-haspopup="dialog"
+                      aria-expanded={addMenuOpen}
                       title={
                         canAdd
                           ? undefined
@@ -550,28 +576,119 @@ export default function HarnessDetailScreen() {
                       }
                       className="rounded border border-blue-500 px-3 py-1 text-sm text-blue-300 hover:bg-blue-500/10 disabled:opacity-40"
                     >
-                      Import from library…
+                      Add models from library…
                     </button>
+                    <span className="ml-1 align-middle">
+                      <HelpTip label="Add models from library" side="left">
+                        Choose one, several, or all enabled My Models that are
+                        not already configured on this harness. Existing
+                        harness models are intentionally hidden.
+                      </HelpTip>
+                    </span>
                     {addMenuOpen && canAdd && (
-                      <div className="absolute right-0 z-10 mt-1 max-h-72 w-72 overflow-auto rounded border border-slate-700 bg-slate-800 py-1 shadow-lg">
-                        {missingFromLibrary.map((r) => (
-                          <button
-                            key={r.id}
-                            onClick={() => {
-                              setAddMenuOpen(false);
-                              setSyncing(true);
-                            }}
-                            className="block w-full px-3 py-1.5 text-left text-sm hover:bg-slate-700"
-                          >
-                            <span className="text-slate-100">{r.display_name}</span>
-                            <span className="ml-2 font-mono text-xs text-slate-500">
-                              {r.remote_model_id}
-                            </span>
-                          </button>
-                        ))}
-                        <p className="px-3 py-2 text-xs text-slate-500">
-                          Opens the change preview — nothing is written until
-                          you press Apply.
+                      <div
+                        role="dialog"
+                        aria-label="Choose library models to add"
+                        className="absolute right-0 z-10 mt-1 w-96 rounded border border-slate-700 bg-slate-800 p-3 shadow-lg"
+                      >
+                        <div className="flex items-start justify-between gap-3">
+                          <div>
+                            <p className="text-sm font-medium text-slate-100">
+                              Choose models to add
+                            </p>
+                            <p className="mt-1 text-xs text-slate-500">
+                              {missingFromLibrary.length} enabled model
+                              {missingFromLibrary.length === 1 ? "" : "s"} not
+                              already on this harness.
+                            </p>
+                          </div>
+                          <div className="flex gap-1">
+                            <button
+                              type="button"
+                              onClick={() =>
+                                setSelectedLibraryModels(
+                                  missingFromLibrary.map((r) => r.id),
+                                )
+                              }
+                              className="rounded border border-slate-600 px-2 py-1 text-[11px] text-slate-300 hover:bg-slate-700"
+                            >
+                              All
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => setSelectedLibraryModels([])}
+                              className="rounded border border-slate-600 px-2 py-1 text-[11px] text-slate-300 hover:bg-slate-700"
+                            >
+                              Clear
+                            </button>
+                          </div>
+                        </div>
+                        <div className="mt-2 max-h-56 space-y-1 overflow-auto">
+                          {missingFromLibrary.map((r) => {
+                            const checked = selectedLibraryModels.includes(r.id);
+                            return (
+                              <label
+                                key={r.id}
+                                className="flex cursor-pointer items-start gap-2 rounded px-2 py-1.5 hover:bg-slate-700"
+                              >
+                                <input
+                                  type="checkbox"
+                                  checked={checked}
+                                  onChange={() =>
+                                    setSelectedLibraryModels((selected) =>
+                                      checked
+                                        ? selected.filter((id) => id !== r.id)
+                                        : [...selected, r.id],
+                                    )
+                                  }
+                                  className="mt-0.5"
+                                  aria-label={`Add ${r.display_name}`}
+                                />
+                                <span className="min-w-0">
+                                  <span className="block truncate text-sm text-slate-100">
+                                    {r.display_name}
+                                  </span>
+                                  <span className="block truncate font-mono text-[11px] text-slate-500">
+                                    {r.remote_model_id}
+                                    {r.provider_name ? ` · ${r.provider_name}` : ""}
+                                    {r.endpoint_name ? ` / ${r.endpoint_name}` : ""}
+                                  </span>
+                                </span>
+                              </label>
+                            );
+                          })}
+                        </div>
+                        <div className="mt-3 flex items-center justify-between border-t border-slate-700 pt-2">
+                          <span className="text-xs text-slate-500">
+                            {selectedLibraryModels.length} selected
+                          </span>
+                          <div className="flex gap-2">
+                            <button
+                              type="button"
+                              onClick={() => setAddMenuOpen(false)}
+                              className="rounded px-2 py-1 text-xs text-slate-400 hover:text-slate-200"
+                            >
+                              Cancel
+                            </button>
+                            <button
+                              type="button"
+                              disabled={selectedLibraryModels.length === 0}
+                              onClick={() => {
+                                setAddMenuOpen(false);
+                                setSyncSelection({
+                                  modelIds: selectedLibraryModels,
+                                });
+                                setSyncing(true);
+                              }}
+                              className="rounded bg-blue-600 px-2.5 py-1 text-xs text-white hover:bg-blue-500 disabled:opacity-40"
+                            >
+                              Review selected…
+                            </button>
+                          </div>
+                        </div>
+                        <p className="mt-2 text-[11px] leading-relaxed text-slate-500">
+                          Review shows the exact changes first. Nothing is
+                          written until you press Apply.
                         </p>
                       </div>
                     )}
@@ -1093,7 +1210,11 @@ export default function HarnessDetailScreen() {
         <SyncDialog
           installationId={installation.id}
           harnessType={installation.harness_type}
-          onClose={() => setSyncing(false)}
+          selection={syncSelection}
+          onClose={() => {
+            setSyncing(false);
+            setSyncSelection(undefined);
+          }}
         />
       )}
       {confirmDialog}

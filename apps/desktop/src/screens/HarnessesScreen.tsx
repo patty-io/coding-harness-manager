@@ -3,6 +3,7 @@ import { Link, useNavigate } from "react-router-dom";
 import { useInstallations, useScanHarnesses } from "../hooks/useHarnesses";
 import { HarnessLogo } from "../components/HarnessLogo";
 import { SyncDialog } from "../components/SyncDialog";
+import { HelpTip } from "../components/HelpTip";
 
 const STATUS_STYLES: Record<string, string> = {
   installed: "bg-green-500/15 text-green-400 border border-green-500/30",
@@ -54,12 +55,17 @@ export default function HarnessesScreen() {
             className="w-56 rounded border border-slate-600 bg-slate-800 px-3 py-2 text-sm text-slate-200 placeholder:text-slate-500"
           />
           <button
+            type="button"
             onClick={() => scan.mutate()}
             disabled={scan.isPending}
             className="rounded bg-blue-600 px-4 py-2 text-sm font-medium text-white hover:bg-blue-500 disabled:opacity-50"
           >
             {scan.isPending ? "Scanning…" : "Scan machine"}
           </button>
+          <HelpTip label="Scan machine" side="left">
+            Detect installed harnesses and reread their configuration files.
+            Scanning does not change any harness files.
+          </HelpTip>
         </div>
       </div>
       {scan.isError && (

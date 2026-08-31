@@ -1,5 +1,6 @@
 import { useState } from "react";
 import { useCheckHealth, useDiscover } from "../hooks/useProviders";
+import { HelpTip } from "./HelpTip";
 
 const HEALTH_COLORS: Record<string, string> = {
   Healthy: "bg-green-500/15 text-green-400",
@@ -27,6 +28,10 @@ export function EndpointActions({ endpointId }: { endpointId: string }) {
       >
         {healthCheck.isPending ? "Checking…" : "Check Health"}
       </button>
+      <HelpTip label="Check health" side="right">
+        Send a small authenticated request to verify the endpoint is reachable
+        and its credentials work. It does not discover or import models.
+      </HelpTip>
       <button
         onClick={() => discover.mutate()}
         disabled={discover.isPending}
@@ -34,6 +39,10 @@ export function EndpointActions({ endpointId }: { endpointId: string }) {
       >
         {discover.isPending ? "Discovering…" : "Discover models"}
       </button>
+      <HelpTip label="Discover models" side="right">
+        Ask this endpoint for its model catalog. Discovered models are stored
+        as catalog records; use Import to add one to My Models.
+      </HelpTip>
       {health && (
         <span className={`rounded px-2 py-0.5 text-xs ${HEALTH_COLORS[health] ?? "bg-slate-700 text-slate-300"}`}>
           {health}

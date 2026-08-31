@@ -13,6 +13,7 @@ import {
   useUpdateProvider,
 } from "../hooks/useProviders";
 import { EndpointActions } from "../components/EndpointActions";
+import { HelpTip } from "../components/HelpTip";
 import type { ProviderDiscoverReport } from "../lib/api";
 
 const PROTOCOLS = [
@@ -283,6 +284,11 @@ export default function ProviderDetailScreen() {
           >
             {discoverAll.isPending ? "Discovering…" : "Discover models"}
           </button>
+          <HelpTip label="Discover models" side="left">
+            Probe every enabled endpoint for its model catalog. This requires
+            valid endpoint credentials; discovery only catalogs results until
+            you explicitly import a model.
+          </HelpTip>
         </div>
       </div>
 

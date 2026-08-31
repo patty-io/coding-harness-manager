@@ -1,6 +1,7 @@
 import { useMemo, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useConfirm } from "../components/ConfirmDialog";
+import { HelpTip } from "../components/HelpTip";
 import {
   addSetItem,
   applySet,
@@ -135,10 +136,17 @@ function SetCard({
             <option value="">Choose harness…</option>
             {installations.map((installation) => <option key={installation.id} value={installation.id}>{installation.harness_type}</option>)}
           </select>
-          <select value={mode} onChange={(e) => { setMode(e.target.value); setPreview(null); }} className="rounded border border-slate-600 bg-slate-900 px-2 py-1 text-sm">
-            <option value="append">Append (preserve unmanaged)</option>
-            <option value="replaceManaged">Replace managed</option>
-          </select>
+          <div className="flex items-center gap-1">
+            <select value={mode} onChange={(e) => { setMode(e.target.value); setPreview(null); }} className="rounded border border-slate-600 bg-slate-900 px-2 py-1 text-sm">
+              <option value="append">Append (preserve unmanaged)</option>
+              <option value="replaceManaged">Replace managed</option>
+            </select>
+            <HelpTip label="Set apply mode" side="right">
+              Append adds the set's items while preserving unmanaged harness
+              entries. Replace managed updates or removes only entries CHM
+              previously managed for this harness.
+            </HelpTip>
+          </div>
           <button type="button" onClick={() => previewMutation.mutate()} disabled={!installationId || previewMutation.isPending} className="rounded border border-blue-500 px-3 py-1 text-sm text-blue-300 disabled:opacity-50">{previewMutation.isPending ? "Previewing…" : "Preview"}</button>
         </div>
         {previewMutation.isError && <p className="mt-2 text-xs text-red-400">Preview failed: {previewMutation.error.message}</p>}

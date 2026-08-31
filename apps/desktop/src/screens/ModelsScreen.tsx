@@ -2,6 +2,7 @@
 
 import { useMemo, useState } from "react";
 import { useConfirm } from "../components/ConfirmDialog";
+import { HelpTip } from "../components/HelpTip";
 import { SyncToHarnessButton } from "../components/SyncToHarnessButton";
 import {
   useCatalogAll,
@@ -187,7 +188,15 @@ export default function ModelsScreen() {
               disabled={selectedModels.length === 0}
               label={selectedModels.length ? `Push selected (${selectedModels.length})…` : "Push selected…"}
             />
+            <HelpTip label="Push selected" side="right">
+              Send only the checked My Models to a harness. The next screen
+              lets you choose the harness and review the changes.
+            </HelpTip>
             <SyncToHarnessButton label="Sync entire library…" />
+            <HelpTip label="Sync entire library" side="right">
+              Compare all enabled My Models with a harness. Use Push selected
+              when you only want one or a few models.
+            </HelpTip>
             <label>
               Search:{" "}
               <input
@@ -335,6 +344,12 @@ export default function ModelsScreen() {
                     >
                       Match metadata
                     </button>
+                    <HelpTip label="Match metadata" side="left">
+                      Look up this model in the public models.dev catalog and
+                      propose canonical context limits and capabilities. It
+                      does not change the route until you resolve and apply a
+                      match.
+                    </HelpTip>
                     <button
                       onClick={() =>
                         confirm(

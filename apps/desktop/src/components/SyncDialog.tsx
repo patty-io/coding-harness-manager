@@ -6,6 +6,7 @@ import {
   syncPreview,
   type SyncSelection,
 } from "../lib/api";
+import { HelpTip } from "./HelpTip";
 
 export type { SyncSelection } from "../lib/api";
 
@@ -95,11 +96,18 @@ export function SyncDialog({
       >
         <div className="flex items-center justify-between border-b p-4">
           <div>
-            <h2 id="sync-dialog-title" className="font-medium">
+            <h2 id="sync-dialog-title" className="flex items-center gap-1 font-medium">
               Sync {harnessType}
+              <HelpTip label="Sync mode" side="right">
+                Review the planned changes before applying them. A selected
+                sync only includes the models you chose; a full sync compares
+                the complete enabled library.
+              </HelpTip>
             </h2>
             <p className="text-xs text-slate-400">
-              Preview of what would change in this harness's config files.
+              {selectionScoped
+                ? `Preview of ${selection?.modelIds?.length ?? 0} selected library model${selection?.modelIds?.length === 1 ? "" : "s"}. `
+                : "Preview of the complete enabled library. "}
               Nothing is written until you press Apply.
             </p>
           </div>
@@ -114,23 +122,35 @@ export function SyncDialog({
         </div>
         <div className="flex-1 overflow-auto p-4">
           <div className="flex gap-4 text-sm">
-            <label className="flex items-center gap-1">
-              <input
-                type="radio"
-                checked={mode === "append"}
-                onChange={() => setMode("append")}
-              />
-              Append/update
-            </label>
-            {!selectionScoped && (
+            <div className="flex items-center gap-1">
               <label className="flex items-center gap-1">
                 <input
                   type="radio"
-                  checked={mode === "replaceManaged"}
-                  onChange={() => setMode("replaceManaged")}
+                  checked={mode === "append"}
+                  onChange={() => setMode("append")}
                 />
-                Replace managed
+                Append/update
               </label>
+              <HelpTip label="Append/update" side="right">
+                Add missing selected models and update matching models. Other
+                harness entries are left alone.
+              </HelpTip>
+            </div>
+            {!selectionScoped && (
+              <div className="flex items-center gap-1">
+                <label className="flex items-center gap-1">
+                  <input
+                    type="radio"
+                    checked={mode === "replaceManaged"}
+                    onChange={() => setMode("replaceManaged")}
+                  />
+                  Replace managed
+                </label>
+                <HelpTip label="Replace managed" side="right">
+                  Make entries previously managed by CHM match the library.
+                  Unmanaged harness entries are never removed.
+                </HelpTip>
+              </div>
             )}
           </div>
           {selectionScoped && (
