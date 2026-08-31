@@ -1,6 +1,8 @@
 // Phase 6 My Models screen: tabs (My Models / Discovered), filters, enrichment.
 
 import { useMemo, useState } from "react";
+import { useQueries, useQueryClient } from "@tanstack/react-query";
+import { Link } from "react-router-dom";
 import { useConfirm } from "../components/ConfirmDialog";
 import { HelpTip } from "../components/HelpTip";
 import { SyncToHarnessButton } from "../components/SyncToHarnessButton";
@@ -15,7 +17,14 @@ import {
   useUpdateRoute,
 } from "../hooks/useModels";
 import { ConflictResolver, type EnrichOutcome } from "../components/ConflictResolver";
-import type { ModelRouteView } from "../lib/api";
+import {
+  harnessModelsView,
+  syncApply,
+  syncPreview,
+  type HarnessInstallation,
+  type ModelRouteView,
+} from "../lib/api";
+import { useInstallations } from "../hooks/useHarnesses";
 
 type Tab = "mine" | "discovered";
 
@@ -25,7 +34,9 @@ export default function ModelsScreen() {
   const [endpointFilter, setEndpointFilter] = useState("");
   const [stateFilter, setStateFilter] = useState("");
   const [search, setSearch] = useState("");
+  const qc = useQueryClient();
   const { data: routes } = useRoutes();
+  const { data: installations, isLoading: installationsLoading } = useInstallations();
   const { data: catalog } = useCatalogAll(tab === "discovered");
   const importBatch = useImportBatch();
   const del = useDeleteRoute();
@@ -33,6 +44,19 @@ export default function ModelsScreen() {
   const create = useCreateRoute();
   const enrich = useEnrich();
   const resolve = useResolveEnrichment();
+
+  const syncableInstallations = useMemo(
+    () => (installations ?? []).filter((installation) => installation.status !== "detected"),
+    [installations],
+  );
+  const harnessModelQueries = useQueries({
+    queries: syncableInstallations.map((installation) => ({
+      queryKey: ["harness-models", installation.id],
+      queryFn: () => harnessModelsView(installation.id),
+      enabled: tab === "mine",
+      staleTime: 15_000,
+    })),
+  });
 
   const { confirm, confirmDialog } = useConfirm();
   const [selectedCatalog, setSelectedCatalog] = useState<string[]>([]);
@@ -48,6 +72,25 @@ export default function ModelsScreen() {
   const [editMaxOutput, setEditMaxOutput] = useState("");
   const [routeEditError, setRouteEditError] = useState<string | null>(null);
   const [enrichError, setEnrichError] = useState<string | null>(null);
+  const [routeSyncNote, setRouteSyncNote] = useState<string | null>(null);
+
+  const harnessesByRoute = useMemo(() => {
+    const memberships = new Map<string, HarnessInstallation[]>();
+    syncableInstallations.forEach((installation, index) => {
+      for (const model of harnessModelQueries[index]?.data ?? []) {
+        if (!model.libraryRouteId) continue;
+        const current = memberships.get(model.libraryRouteId) ?? [];
+        if (!current.some((item) => item.id === installation.id)) {
+          current.push(installation);
+        }
+        memberships.set(model.libraryRouteId, current);
+      }
+    });
+    return memberships;
+  }, [harnessModelQueries, syncableInstallations]);
+
+  const membershipLoading = harnessModelQueries.some((query) => query.isLoading);
+  const membershipUnavailable = harnessModelQueries.some((query) => query.isError);
 
   const beginRouteEdit = (route: ModelRouteView) => {
     setEditingRoute(route);
@@ -58,9 +101,70 @@ export default function ModelsScreen() {
     setRouteEditError(null);
   };
 
+  const applyRouteToHarnesses = async (
+    routeId: string,
+    targets: HarnessInstallation[],
+  ) => {
+    const selection = { modelIds: [routeId] };
+    const failures: string[] = [];
+    let updated = 0;
+    let unchanged = 0;
+
+    for (const installation of targets) {
+      const label = installation.harness_type;
+      try {
+        const preview = await syncPreview(installation.id, "append", selection);
+        if (preview.hasBlockers || preview.warnings.length > 0) {
+          const details = [
+            ...preview.routeBlockers.map((blocker) => blocker.reason),
+            ...preview.warnings,
+          ].join("; ");
+          failures.push(`${label}: ${details || "preview has blockers"}`);
+          continue;
+        }
+        if (preview.writableChanges === 0 && preview.protectedChanges === 0) {
+          unchanged += 1;
+          continue;
+        }
+        await syncApply(
+          installation.id,
+          "append",
+          false,
+          preview.planHash,
+          selection,
+        );
+        updated += 1;
+      } catch (error) {
+        failures.push(
+          `${label}: ${error instanceof Error ? error.message : String(error)}`,
+        );
+      }
+    }
+
+    void qc.invalidateQueries({ queryKey: ["installations"] });
+    void qc.invalidateQueries({ queryKey: ["routes"] });
+    void qc.invalidateQueries({ queryKey: ["harness-models"] });
+    void qc.invalidateQueries({ queryKey: ["harness-state"] });
+    void qc.invalidateQueries({ queryKey: ["history"] });
+    void qc.invalidateQueries({ queryKey: ["dashboard"] });
+
+    const summary = `${updated} harness${updated === 1 ? "" : "es"} updated${
+      unchanged > 0 ? `, ${unchanged} already current` : ""
+    }`;
+    if (failures.length > 0) {
+      setRouteSyncNote(`${summary}. ${failures.join(" · ")}`);
+      throw new Error(`${summary}; ${failures.length} failed: ${failures.join(" · ")}`);
+    }
+    setRouteSyncNote(`${summary}.`);
+  };
+
   const saveRouteEdit = () => {
     if (!editingRoute || !editDisplayName.trim()) {
       setRouteEditError("Display name is required.");
+      return;
+    }
+    if (installationsLoading || membershipLoading) {
+      setRouteEditError("Still checking harness membership; try saving again in a moment.");
       return;
     }
     const parseLimit = (value: string, label: string) => {
@@ -72,6 +176,10 @@ export default function ModelsScreen() {
       return parsed;
     };
     try {
+      const routeBeingEdited = editingRoute;
+      const affectedHarnesses = harnessesByRoute.get(routeBeingEdited.id) ?? [];
+      const membershipWasIncomplete = membershipUnavailable;
+      const nextDisplayName = editDisplayName.trim();
       const contextWindow = parseLimit(editContextWindow, "Context window");
       const maxInput = parseLimit(editMaxInput, "Max input");
       const maxOutput = parseLimit(editMaxOutput, "Max output");
@@ -89,6 +197,27 @@ export default function ModelsScreen() {
           onSuccess: () => {
             setEditingRoute(null);
             setRouteEditError(null);
+            if (membershipWasIncomplete) {
+              setRouteSyncNote(
+                "Saved to My Models. CHM could not verify every harness membership, so no harnesses were updated automatically.",
+              );
+              return;
+            }
+            if (affectedHarnesses.length === 0) {
+              setRouteSyncNote("Saved to My Models. This model is not currently configured on a harness.");
+              return;
+            }
+            const names = affectedHarnesses.map((harness) => harness.harness_type).join(", ");
+            setRouteSyncNote(
+              `Saved to My Models. No harness changes have been applied yet; choose whether to update ${names}.`,
+            );
+            confirm(
+              `Update ${affectedHarnesses.length} harness${affectedHarnesses.length === 1 ? "" : "es"}?`,
+              `Saved “${nextDisplayName}” to My Models. It is currently configured on ${names}. Apply the updated metadata to those harnesses now?`,
+              () => applyRouteToHarnesses(routeBeingEdited.id, affectedHarnesses),
+              "Update harnesses",
+              "Save library only",
+            );
           },
           onError: (error) =>
             setRouteEditError(error instanceof Error ? error.message : String(error)),
@@ -258,6 +387,11 @@ export default function ModelsScreen() {
             output limits; it does not contact the provider or change the
             remote model id.
           </p>
+          {routeSyncNote && (
+            <p className="mt-2 text-xs text-slate-300" role="status" aria-live="polite">
+              {routeSyncNote}
+            </p>
+          )}
           {enrichError && <p className="mt-2 text-xs text-red-400">{enrichError}</p>}
           <table className="mt-3 w-full bg-slate-800 text-sm">
             <thead>
@@ -266,6 +400,7 @@ export default function ModelsScreen() {
                 <th className="p-2">Provider</th>
                 <th className="p-2">Endpoint</th>
                 <th className="p-2">Model</th>
+                <th className="p-2">Harnesses</th>
                 <th className="p-2">Context</th>
                 <th className="p-2">Source</th>
                 <th className="p-2">State</th>
@@ -296,6 +431,29 @@ export default function ModelsScreen() {
                     <div className="font-mono text-xs text-slate-400">
                       {r.remote_model_id}
                     </div>
+                  </td>
+                  <td className="p-2 text-xs">
+                    {membershipLoading ? (
+                      <span className="text-slate-500">checking…</span>
+                    ) : membershipUnavailable ? (
+                      <span className="text-amber-300" title="One or more harness configurations could not be read">
+                        unavailable
+                      </span>
+                    ) : (harnessesByRoute.get(r.id) ?? []).length > 0 ? (
+                      <div className="flex flex-wrap gap-1">
+                        {(harnessesByRoute.get(r.id) ?? []).map((harness) => (
+                          <Link
+                            key={harness.id}
+                            to={`/harnesses/${harness.id}`}
+                            className="rounded bg-blue-500/10 px-1.5 py-0.5 text-blue-300 hover:bg-blue-500/20 hover:underline"
+                          >
+                            {harness.harness_type}
+                          </Link>
+                        ))}
+                      </div>
+                    ) : (
+                      <span className="text-slate-500">—</span>
+                    )}
                   </td>
                   <td className="p-2">
                     {r.context_window

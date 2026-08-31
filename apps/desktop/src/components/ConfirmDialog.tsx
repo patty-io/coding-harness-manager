@@ -5,12 +5,14 @@ export function ConfirmDialog({
   title,
   message,
   confirmLabel = "Confirm",
+  cancelLabel = "Cancel",
   onConfirm,
   onClose,
 }: {
   title: string;
   message: string;
   confirmLabel?: string;
+  cancelLabel?: string;
   onConfirm: () => void | Promise<unknown>;
   onClose: () => void;
 }) {
@@ -99,7 +101,7 @@ export function ConfirmDialog({
             disabled={pending}
             className="rounded px-3 py-1 text-sm text-slate-400 hover:text-slate-200"
           >
-            Cancel
+            {cancelLabel}
           </button>
           <button
             ref={confirmRef}
@@ -120,6 +122,7 @@ type ConfirmState = {
   title: string;
   message: string;
   confirmLabel?: string;
+  cancelLabel?: string;
   onConfirm: () => void | Promise<unknown>;
 };
 
@@ -134,6 +137,7 @@ export function useConfirm() {
     message: string,
     onConfirm: () => void | Promise<unknown>,
     confirmLabel?: string,
+    cancelLabel?: string,
   ) => {
     // The preference is evaluated at invocation time so a settings change
     // applies immediately across already-mounted screens.
@@ -153,13 +157,14 @@ export function useConfirm() {
         );
       return;
     }
-    setState({ title, message, onConfirm, confirmLabel });
+    setState({ title, message, onConfirm, confirmLabel, cancelLabel });
   };
   const confirmDialog = state ? (
     <ConfirmDialog
       title={state.title}
       message={state.message}
       confirmLabel={state.confirmLabel}
+      cancelLabel={state.cancelLabel}
       onConfirm={state.onConfirm}
       onClose={() => setState(null)}
     />
