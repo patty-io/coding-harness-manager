@@ -1,4 +1,5 @@
 import { NavLink } from "react-router-dom";
+import productSymbol from "../../../../resources/logos/symbol-ui.svg";
 
 type Item = { to: string; label: string };
 type Section = { heading: string; items: Item[] };
@@ -38,12 +39,15 @@ const SECTIONS: Section[] = [
 export default function Sidebar() {
   return (
     <nav className="flex min-h-0 w-56 shrink-0 flex-col border-r border-slate-700 bg-slate-900 p-3">
-      <div className="mb-1 px-2">
-        <div className="whitespace-nowrap text-[13px] font-bold tracking-tight text-slate-100">
-          Coding Harness Manager
-        </div>
-        <div className="text-[10px] uppercase tracking-wide text-slate-500">
-          configure · preview · sync
+      <div className="mb-1 flex items-center gap-2 px-2">
+        <img src={productSymbol} alt="" className="h-7 w-7 shrink-0" />
+        <div className="min-w-0">
+          <div className="whitespace-nowrap text-xs font-bold tracking-tight text-slate-100">
+            Coding Harness Manager
+          </div>
+          <div className="whitespace-nowrap text-[9px] tracking-[0.06em] text-slate-500">
+            configure · preview · sync
+          </div>
         </div>
       </div>
       <div className="flex-1 overflow-auto">
@@ -59,10 +63,10 @@ export default function Sidebar() {
                 end={item.to === "/"}
                 aria-label={item.label}
                 className={({ isActive }) =>
-                  `mb-0.5 block rounded px-2 py-1.5 text-sm ${
+                  `mb-0.5 block border-l-2 px-2 py-1.5 text-sm ${
                     isActive
-                      ? "bg-blue-600/20 font-medium text-blue-300"
-                      : "text-slate-300 hover:bg-slate-800 hover:text-slate-100"
+                      ? "border-blue-600 bg-slate-800 font-semibold text-slate-100"
+                      : "border-transparent text-slate-300 hover:border-slate-600 hover:bg-slate-800 hover:text-slate-100"
                   }`
                 }
               >
@@ -77,10 +81,10 @@ export default function Sidebar() {
           to="/settings"
           aria-label="Settings"
           className={({ isActive }) =>
-            `block rounded px-2 py-1.5 text-sm ${
+            `block border-l-2 px-2 py-1.5 text-sm ${
               isActive
-                ? "bg-blue-600/20 font-medium text-blue-300"
-                : "text-slate-300 hover:bg-slate-800"
+                ? "border-blue-600 bg-slate-800 font-semibold text-slate-100"
+                : "border-transparent text-slate-300 hover:border-slate-600 hover:bg-slate-800 hover:text-slate-100"
             }`
           }
         >
@@ -90,10 +94,10 @@ export default function Sidebar() {
           to="/import"
           aria-label="Import existing setup"
           className={({ isActive }) =>
-            `block rounded px-2 py-1.5 text-sm ${
+            `block border-l-2 px-2 py-1.5 text-sm ${
               isActive
-                ? "bg-blue-600/20 font-medium text-blue-300"
-                : "text-slate-300 hover:bg-slate-800"
+                ? "border-blue-600 bg-slate-800 font-semibold text-slate-100"
+                : "border-transparent text-slate-300 hover:border-slate-600 hover:bg-slate-800 hover:text-slate-100"
             }`
           }
         >

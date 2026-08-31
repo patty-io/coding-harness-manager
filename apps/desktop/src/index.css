@@ -1,23 +1,182 @@
 @import "tailwindcss";
 
+@font-face {
+  font-family: "SUIT Variable";
+  src: url("/fonts/SUIT-Variable.woff2") format("woff2-variations");
+  font-style: normal;
+  font-weight: 100 900;
+  font-display: swap;
+}
+
+/* Patty Enterprise inverse theme for the public desktop application. */
+@theme {
+  --font-sans: "SUIT Variable", SUIT, "Noto Sans KR", -apple-system,
+    BlinkMacSystemFont, "Segoe UI", "Apple SD Gothic Neo", sans-serif;
+  --font-mono: "SFMono-Regular", "Cascadia Mono", Menlo, Consolas, monospace;
+
+  --color-slate-50: #ffffff;
+  --color-slate-100: #f2f4f7;
+  --color-slate-200: #e9edf2;
+  --color-slate-300: #c6c6c6;
+  --color-slate-400: #a8a8a8;
+  --color-slate-500: #8d8d8d;
+  --color-slate-600: #6f6f6f;
+  --color-slate-700: #525252;
+  --color-slate-800: #262626;
+  --color-slate-900: #1d1d1d;
+  --color-slate-950: #161616;
+
+  --color-blue-300: #aeb8ff;
+  --color-blue-400: #8ea0ff;
+  --color-blue-500: #0e55c3;
+  --color-blue-600: #1769e0;
+  --color-blue-700: #093b8f;
+
+  --radius-xs: 2px;
+  --radius-sm: 2px;
+  --radius-md: 4px;
+  --radius-lg: 4px;
+  --radius-xl: 4px;
+  --radius-2xl: 4px;
+  --radius-3xl: 4px;
+}
+
+:root {
+  --patty-gray-0: #ffffff;
+  --patty-gray-05: #f2f4f7;
+  --patty-gray-10: #e9edf2;
+  --patty-gray-20: #d5dbe3;
+  --patty-gray-30: #c6c6c6;
+  --patty-gray-40: #a8a8a8;
+  --patty-gray-50: #8d8d8d;
+  --patty-gray-60: #6f6f6f;
+  --patty-gray-70: #525252;
+  --patty-gray-80: #393939;
+  --patty-gray-90: #262626;
+  --patty-black: #161616;
+  --patty-blue-60: #1769e0;
+  --patty-blue-70: #0e55c3;
+  --patty-blue-80: #093b8f;
+
+  --color-bg-primary: var(--patty-black);
+  --color-bg-layer: #1d1d1d;
+  --color-bg-inset: var(--patty-gray-90);
+  --color-surface-raised: var(--patty-gray-90);
+  --color-text-primary: var(--patty-gray-05);
+  --color-text-secondary: var(--patty-gray-30);
+  --color-text-helper: var(--patty-gray-40);
+  --color-border-subtle: var(--patty-gray-80);
+  --color-border-strong: var(--patty-gray-70);
+  --color-action: var(--patty-blue-60);
+  --color-action-hover: var(--patty-blue-70);
+  --color-action-active: var(--patty-blue-80);
+  --color-focus-ring: var(--patty-blue-60);
+  --focus-ring-width: 3px;
+  --focus-ring-offset: 2px;
+  --ease-carbon: cubic-bezier(0.2, 0, 0.38, 0.9);
+  --duration-micro: 110ms;
+  --duration-component: 150ms;
+  --duration-entrance: 240ms;
+}
+
+*,
+*::before,
+*::after {
+  box-sizing: border-box;
+}
+
 html {
-  color-scheme: dark;
   height: 100%;
   overflow: hidden;
+  color-scheme: dark;
+  scrollbar-color: var(--color-border-strong) var(--color-bg-inset);
+  scrollbar-width: thin;
+  -webkit-text-size-adjust: 100%;
 }
 
 body {
-  margin: 0;
   height: 100%;
+  margin: 0;
   overflow: hidden;
-  background-color: #0f172a;
-  color: #e2e8f0;
-  font-family: ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+  color: var(--color-text-primary);
+  background: var(--color-bg-primary);
+  font-family: var(--font-sans);
+  font-weight: 400;
+  line-height: 1.55;
+  text-rendering: optimizeLegibility;
+  -webkit-font-smoothing: antialiased;
 }
 
 #root {
   height: 100%;
   overflow: hidden;
+}
+
+::selection {
+  color: #ffffff;
+  background: var(--color-action);
+}
+
+:focus-visible {
+  outline: var(--focus-ring-width) solid var(--color-focus-ring);
+  outline-offset: var(--focus-ring-offset);
+}
+
+/* A bare rounded utility is used by the app's structural cards and controls. */
+.rounded {
+  border-radius: 0;
+}
+
+h1,
+h2,
+h3,
+h4 {
+  letter-spacing: -0.035em;
+  line-height: 1.2;
+  text-wrap: balance;
+}
+
+button,
+input,
+select,
+textarea {
+  font: inherit;
+  transition:
+    color var(--duration-component) var(--ease-carbon),
+    background-color var(--duration-component) var(--ease-carbon),
+    border-color var(--duration-component) var(--ease-carbon),
+    opacity var(--duration-component) var(--ease-carbon),
+    transform var(--duration-micro) var(--ease-carbon);
+}
+
+button:not(:disabled):active {
+  transform: translateY(1px);
+}
+
+button:disabled,
+input:disabled,
+select:disabled,
+textarea:disabled {
+  cursor: not-allowed;
+}
+
+table {
+  border-collapse: collapse;
+  font-variant-numeric: tabular-nums;
+}
+
+th {
+  font-weight: 680;
+  letter-spacing: 0.02em;
+}
+
+code,
+pre,
+kbd,
+samp,
+.font-mono {
+  font-family: var(--font-mono);
+  font-variant-numeric: tabular-nums;
 }
 
 .harness-logo {
@@ -30,4 +189,21 @@ body {
   -webkit-mask-position: center;
   -webkit-mask-repeat: no-repeat;
   -webkit-mask-size: contain;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  :root {
+    --duration-micro: 0ms;
+    --duration-component: 0ms;
+    --duration-entrance: 0ms;
+  }
+
+  *,
+  *::before,
+  *::after {
+    scroll-behavior: auto !important;
+    transition-duration: 0.01ms !important;
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+  }
 }

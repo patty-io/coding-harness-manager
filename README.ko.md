@@ -2,6 +2,13 @@
   <img src="./docs/assets/branding/coding-harness-manager-hero.svg" width="760" alt="하나의 구성 라이브러리를 여러 코딩 하네스에 동기화하는 Coding Harness Manager"/>
 </p>
 
+<h1 align="center">
+  <picture>
+    <source media="(prefers-color-scheme: dark)" srcset="./resources/logos/logo-dark.svg"/>
+    <img src="./resources/logos/logo-light.svg" width="660" alt="Coding Harness Manager"/>
+  </picture>
+</h1>
+
 <p align="center">
   <a href="./README.md">English</a> · <strong>한국어</strong>
 </p>
@@ -13,7 +20,6 @@
   <a href="https://patty.io"><img src="https://img.shields.io/badge/PATTY.IO-patty.io-1769e0.svg?style=flat-square&labelColor=161616" alt="patty.io"/></a>
 </p>
 
-<h1 align="center">Coding Harness Manager</h1>
 <h3 align="center">한 번 구성하고, 변경점을 확인한 뒤, 어디든 동기화하세요.</h3>
 
 <p align="center">

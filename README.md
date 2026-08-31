@@ -2,6 +2,13 @@
   <img src="./docs/assets/branding/coding-harness-manager-hero.svg" width="760" alt="Coding Harness Manager synchronizing one configuration library across coding harnesses"/>
 </p>
 
+<h1 align="center">
+  <picture>
+    <source media="(prefers-color-scheme: dark)" srcset="./resources/logos/logo-dark.svg"/>
+    <img src="./resources/logos/logo-light.svg" width="660" alt="Coding Harness Manager"/>
+  </picture>
+</h1>
+
 <p align="center">
   <strong>English</strong> · <a href="./README.ko.md">한국어</a>
 </p>
@@ -13,7 +20,6 @@
   <a href="https://patty.io"><img src="https://img.shields.io/badge/PATTY.IO-patty.io-1769e0.svg?style=flat-square&labelColor=161616" alt="patty.io"/></a>
 </p>
 
-<h1 align="center">Coding Harness Manager</h1>
 <h3 align="center">Configure once. Preview the diff. Sync everywhere.</h3>
 
 <p align="center">
