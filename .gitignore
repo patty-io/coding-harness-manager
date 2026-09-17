@@ -8,6 +8,12 @@
 # Local agent/runtime state must never be committed.
 .opencode/goals/state.json.lock/
 
+# Internal planning notes — not part of the public surface for users of the
+# app. Kept in the working tree during development (e.g. for superpowers
+# flows) but excluded from version control.
+docs/plans/
+docs/superpowers/
+
 *.log
 .DS_Store
 .env
