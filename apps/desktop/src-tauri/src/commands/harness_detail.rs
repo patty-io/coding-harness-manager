@@ -1787,7 +1787,7 @@ mod activity_tests {
         );
 
         let actual = HarnessModel {
-            native_id: "glm-5.3".into(),
+            native_id: "zai/glm-5.3".into(),
             route: ModelRoute::new(
                 "zai/glm-5.3".into(),
                 "GLM 5.3".into(),
