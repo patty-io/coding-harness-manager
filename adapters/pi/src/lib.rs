@@ -48,6 +48,7 @@ impl HarnessAdapter for PiAdapter {
                     context_window: true,
                     max_input: true,
                     max_output: true,
+                    thinking: true,
                 },
             })
             .with_models(true)
@@ -157,6 +158,25 @@ impl HarnessAdapter for PiAdapter {
                         a.payload.get("context_window").and_then(|v| v.as_i64()),
                         a.payload.get("max_output").and_then(|v| v.as_i64()),
                     );
+                    if let Some(capabilities) = a.payload.get("capabilities") {
+                        let reasoning = capabilities.get("reasoning").and_then(|v| v.as_bool());
+                        let levels = capabilities
+                            .get("thinking_levels")
+                            .and_then(|v| v.as_array())
+                            .map(|levels| {
+                                levels
+                                    .iter()
+                                    .filter_map(|level| level.as_str().map(String::from))
+                                    .collect::<Vec<String>>()
+                            });
+                        writer::set_model_thinking(
+                            &mut doc,
+                            Some(provider_id),
+                            model_id,
+                            reasoning,
+                            levels.as_deref(),
+                        );
+                    }
                     if let Some(config) = a
                         .payload
                         .get("overrides")
@@ -168,6 +188,14 @@ impl HarnessAdapter for PiAdapter {
                             config.get("credential_kind").and_then(|v| v.as_str()),
                             config.get("credential_reference").and_then(|v| v.as_str()),
                         );
+                        if let Some(protocol) = config.get("protocol").and_then(|v| v.as_str())
+                            && let Some(api) = writer::api_for_protocol(protocol)
+                        {
+                            writer::configure_provider_api(&mut doc, provider_id, api);
+                        }
+                        if let Some(base_url) = config.get("base_url").and_then(|v| v.as_str()) {
+                            writer::configure_provider_base_url(&mut doc, provider_id, base_url);
+                        }
                         if config.get("credential_kind").and_then(|v| v.as_str()) != Some("env")
                             && let Some(credential_ref_id) = a
                                 .payload
@@ -203,14 +231,32 @@ impl HarnessAdapter for PiAdapter {
                         .and_then(|v| v.as_str())
                         .unwrap_or(model_id);
                     let ctx = u.desired.get("context_window").and_then(|v| v.as_i64());
+                    let provider_for_update = u.native_provider_id.as_deref().or_else(|| {
+                        u.desired
+                            .get("overrides")
+                            .and_then(|v| v.get("native_provider_id"))
+                            .and_then(|v| v.as_str())
+                    });
+                    // Repair provider entries written before CHM emitted the
+                    // `api` and `baseUrl` fields Pi requires for custom models.
+                    if let Some(provider_id) = provider_for_update
+                        && let Some(config) = u
+                            .desired
+                            .get("overrides")
+                            .and_then(|v| v.get("native_provider_config"))
+                    {
+                        if let Some(protocol) = config.get("protocol").and_then(|v| v.as_str())
+                            && let Some(api) = writer::api_for_protocol(protocol)
+                        {
+                            writer::configure_provider_api(&mut doc, provider_id, api);
+                        }
+                        if let Some(base_url) = config.get("base_url").and_then(|v| v.as_str()) {
+                            writer::configure_provider_base_url(&mut doc, provider_id, base_url);
+                        }
+                    }
                     if writer::update_model_in_provider_with_limits(
                         &mut doc,
-                        u.native_provider_id.as_deref().or_else(|| {
-                            u.desired
-                                .get("overrides")
-                                .and_then(|v| v.get("native_provider_id"))
-                                .and_then(|v| v.as_str())
-                        }),
+                        provider_for_update,
                         model_id,
                         display,
                         ctx,
@@ -221,6 +267,25 @@ impl HarnessAdapter for PiAdapter {
                         warnings.push(format!(
                             "update skipped: model {model_id} not found in config"
                         ));
+                    }
+                    if let Some(capabilities) = u.desired.get("capabilities") {
+                        let reasoning = capabilities.get("reasoning").and_then(|v| v.as_bool());
+                        let levels = capabilities
+                            .get("thinking_levels")
+                            .and_then(|v| v.as_array())
+                            .map(|levels| {
+                                levels
+                                    .iter()
+                                    .filter_map(|level| level.as_str().map(String::from))
+                                    .collect::<Vec<String>>()
+                            });
+                        writer::set_model_thinking(
+                            &mut doc,
+                            provider_for_update,
+                            model_id,
+                            reasoning,
+                            levels.as_deref(),
+                        );
                     }
                 }
                 PlanAction::Remove(r) if r.kind == "model" => {

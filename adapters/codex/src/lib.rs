@@ -42,6 +42,7 @@ impl HarnessAdapter for CodexAdapter {
                     context_window: true,
                     max_input: false,
                     max_output: false,
+                    thinking: true,
                 },
             })
             .with_models(true)
@@ -167,6 +168,25 @@ impl HarnessAdapter for CodexAdapter {
                                 .flatten(),
                         },
                     );
+                    if let Some(capabilities) = a.payload.get("capabilities") {
+                        let reasoning = capabilities.get("reasoning").and_then(|v| v.as_bool());
+                        let levels = capabilities
+                            .get("thinking_levels")
+                            .and_then(|v| v.as_array())
+                            .map(|levels| {
+                                levels
+                                    .iter()
+                                    .filter_map(|level| level.as_str().map(String::from))
+                                    .collect::<Vec<String>>()
+                            });
+                        let effort = match reasoning {
+                            Some(false) => None,
+                            _ => levels
+                                .as_deref()
+                                .and_then(writer::reasoning_effort_for_levels),
+                        };
+                        writer::set_reasoning_effort(doc, effort);
+                    }
                 }
                 PlanAction::Update(u) if u.kind == "model" => {
                     let provider_id = u
@@ -186,16 +206,39 @@ impl HarnessAdapter for CodexAdapter {
                         })?;
                     let files = matching_provider_files(&home, provider_id, &u.identity, &by_file);
                     let mut updated = false;
+                    let reasoning_effort = u.desired.get("capabilities").map(|capabilities| {
+                        let reasoning = capabilities.get("reasoning").and_then(|v| v.as_bool());
+                        let levels = capabilities
+                            .get("thinking_levels")
+                            .and_then(|v| v.as_array())
+                            .map(|levels| {
+                                levels
+                                    .iter()
+                                    .filter_map(|level| level.as_str().map(String::from))
+                                    .collect::<Vec<String>>()
+                            });
+                        match reasoning {
+                            Some(false) => None,
+                            _ => levels
+                                .as_deref()
+                                .and_then(writer::reasoning_effort_for_levels),
+                        }
+                    });
                     for path in files {
                         let file = path.display().to_string();
                         let (_raw, doc) =
                             by_file.entry(file).or_insert_with(|| load_document(&path));
-                        updated |= writer::update_provider(
+                        if writer::update_provider(
                             doc,
                             provider_id,
                             &u.identity,
                             u.desired.get("context_window").and_then(|v| v.as_i64()),
-                        );
+                        ) {
+                            updated = true;
+                            if let Some(effort) = reasoning_effort {
+                                writer::set_reasoning_effort(doc, effort);
+                            }
+                        }
                     }
                     if !updated {
                         warnings.push(format!(

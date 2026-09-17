@@ -5,6 +5,7 @@ import { HelpTip } from "./HelpTip";
 const HEALTH_COLORS: Record<string, string> = {
   Healthy: "bg-green-500/15 text-green-400",
   AuthFailed: "bg-red-500/15 text-red-400",
+  CredentialMissing: "bg-amber-500/15 text-amber-400",
   Unreachable: "bg-slate-700 text-slate-300",
   RateLimited: "bg-amber-500/15 text-amber-400",
   DiscoveryUnsupported: "bg-slate-700 text-slate-300",

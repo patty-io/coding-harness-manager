@@ -37,6 +37,7 @@ impl HarnessAdapter for ClaudeCodeAdapter {
                     context_window: false,
                     max_input: false,
                     max_output: false,
+                    thinking: false,
                 },
             })
             .with_models(true)

@@ -556,8 +556,36 @@ pub(crate) fn plan_hash(
     // representation that leaves this process must not carry an API key from
     // an existing config file.
     let safe_native_plan = secret_free_native_plan(native_plan);
+    let mut plan = plan.clone();
+    normalize_volatile_actual_identity(&mut plan);
     let bytes = serde_json::to_vec(&(plan, safe_native_plan)).map_err(|e| e.to_string())?;
     Ok(crate::drift::sha256_hex_bytes(&bytes))
+}
+
+/// Adapters fabricate identity for models discovered in native configs: every
+/// read mints fresh UUIDs and wall-clock timestamps (see the pi/codex/
+/// opencode/claude-code parsers). Those values differ between the preview
+/// build and the apply rebuild, so hashing them made every freshly generated
+/// preview fail validation with "preview is stale". Only meaningful harness
+/// state may take part in the consistency hash — the fabricated identity on
+/// the `current` side is normalized away. `desired` carries real library
+/// state (including its real endpoint binding) and is preserved.
+fn normalize_volatile_actual_identity(plan: &mut ReconciliationPlan) {
+    fn normalize(current: &mut serde_json::Value) {
+        let Some(obj) = current.as_object_mut() else {
+            return;
+        };
+        for key in ["id", "endpoint_id", "created_at", "updated_at", "model_identity_id"] {
+            obj.insert(key.to_string(), serde_json::Value::Null);
+        }
+    }
+    for action in &mut plan.actions {
+        match action {
+            PlanAction::Update(update) => normalize(&mut update.current),
+            PlanAction::Conflict(conflict) => normalize(&mut conflict.current),
+            _ => {}
+        }
+    }
 }
 
 pub(crate) fn secret_free_native_plan(native_plan: &NativePlan) -> NativePlan {
@@ -1528,8 +1556,9 @@ pub async fn bind_mcp_sync(
 #[cfg(test)]
 mod tests {
     use super::{
-        SyncSelection, activity_summary, effective_mode, group_provider_routes,
-        redact_native_content, secret_free_native_plan, validate_apply_request,
+        SyncSelection, activity_summary, build_native_plan_for_desired, desired_state,
+        effective_mode, group_provider_routes, redact_native_content, secret_free_native_plan,
+        validate_apply_request,
     };
     use chm_core::domain::credentials::{CredentialKind, CredentialRef};
     use chm_harness_sdk::adapter::plan::{
@@ -1753,5 +1782,322 @@ mod tests {
         assert!(serialized.contains("<redacted>"));
         assert!(redact_native_content("/tmp/settings.yaml", "api_key: sk-secret\n")
             .contains("<redacted>"));
+    }
+
+    #[tokio::test]
+    async fn selection_scoped_preview_hash_is_accepted_by_apply() {
+        use super::{build_native_plan_for_desired, build_native_plan_scoped, desired_state,
+                    execute_sync_with_plan_using_secrets, plan_hash};
+
+        let pool = chm_database::connect_test().await.unwrap();
+        let dir = tempfile::TempDir::new().unwrap();
+        let agent = dir.path().join("home/.pi/agent");
+        std::fs::create_dir_all(&agent).unwrap();
+        // Pre-existing model on the harness, in the exact shape CHM used to
+        // write before it emitted `api`/`baseUrl`: forces an Update action
+        // whose `current` side carries adapter-fabricated identity (fresh
+        // UUIDs and read-time timestamps from the parser) AND exercises the
+        // provider-field repair path.
+        std::fs::write(
+            agent.join("models.json"),
+            r#"{"providers": {"cline-pass": {"apiKey": "!security find-generic-password -w -s 'coding-harness-manager' -a 'providers/cline-pass'", "models": [{"id": "deepseek/deepseek-v4.1-flash", "name": "deepseek/deepseek-v4.1-flash", "contextWindow": 1000000}]}}}"#,
+        )
+        .unwrap();
+
+        let provider = chm_database::repos::providers::create_provider(
+            &pool,
+            "cline-pass",
+            "Cline Pass",
+        )
+        .await
+        .unwrap();
+        let endpoint = ProviderEndpoint {
+            id: Uuid::new_v4(),
+            provider_id: provider.id,
+            name: "OpenAI Compatible".into(),
+            base_url: "https://api.cline.bot/api/v1".into(),
+            protocol: Protocol::OpenAiChatCompletions,
+            discovery_path: Some("/v1/models".into()),
+            auth_type: AuthType::None,
+            credential_ref: None,
+            headers: Default::default(),
+            enabled: true,
+            created_at: Utc::now(),
+            updated_at: Utc::now(),
+        };
+        chm_database::repos::providers::create_endpoint(&pool, &endpoint)
+            .await
+            .unwrap();
+        let mut route = ModelRoute::new(
+            "deepseek/deepseek-v4.1-flash".into(),
+            "DeepSeek V4.1 Flash".into(),
+            Some(131_072),
+            serde_json::json!({"reasoning": true, "thinking_levels": ["medium", "high", "xhigh", "max"]}),
+            serde_json::json!({}),
+        );
+        route.endpoint_id = endpoint.id;
+        chm_database::repos::models::create_route(&pool, &route)
+            .await
+            .unwrap();
+
+        let inst = chm_core::domain::harness::HarnessInstallation {
+            id: Uuid::new_v4(),
+            harness_type: chm_core::domain::harness::HarnessType::Pi,
+            executable_path: None,
+            version: Some("0.84.3".into()),
+            config_path: Some(agent.join("settings.json").display().to_string()),
+            detected_at: Utc::now(),
+            last_scanned_at: None,
+            status: chm_core::domain::harness::InstallationStatus::Installed,
+        };
+        chm_database::repos::harness::upsert_installation(&pool, &inst)
+            .await
+            .unwrap();
+
+        let selection = SyncSelection {
+            model_ids: vec![route.id.to_string()],
+            mcp_ids: vec![],
+            skill_ids: vec![],
+        };
+
+        // What sync_preview computes.
+        let (_, _, plan_a, native_a) = build_native_plan_scoped(
+            &pool,
+            &inst.id.to_string(),
+            &Mode::Append,
+            Some(&selection),
+        )
+        .await
+        .unwrap();
+        let hash_a = plan_hash(&plan_a, &native_a).unwrap();
+
+        // What sync_apply recomputes before validating.
+        let desired = desired_state(&pool, Some(&selection)).await.unwrap();
+        let (_, _, plan_b, native_b) =
+            build_native_plan_for_desired(&pool, &inst.id.to_string(), &Mode::Append, desired)
+                .await
+                .unwrap();
+        let hash_b = plan_hash(&plan_b, &native_b).unwrap();
+
+        assert_eq!(
+            hash_a,
+            hash_b,
+            "preview and apply rebuilt different plans:\nplan_a={}\nplan_b={}\nnative_a={}\nnative_b={}",
+            serde_json::to_string(&plan_a).unwrap(),
+            serde_json::to_string(&plan_b).unwrap(),
+            serde_json::to_string(&native_a).unwrap(),
+            serde_json::to_string(&native_b).unwrap(),
+        );
+
+        let secrets = chm_secrets::EnvStore;
+        execute_sync_with_plan_using_secrets(
+            &pool,
+            &inst.id.to_string(),
+            &Mode::Append,
+            false,
+            Some(&hash_a),
+            Some(&selection),
+            &secrets,
+        )
+        .await
+        .unwrap_or_else(|e| panic!("apply must accept the fresh preview hash: {e}"));
+
+        // Pi requires an `api` implementation name and a `baseUrl` on the
+        // provider entry when defining custom models.
+        let written = std::fs::read_to_string(agent.join("models.json")).unwrap();
+        let doc: serde_json::Value = serde_json::from_str(&written).unwrap();
+        assert_eq!(
+            doc["providers"]["cline-pass"]["api"],
+            serde_json::json!("openai-completions"),
+            "CHM must emit the api field Pi validates"
+        );
+        assert_eq!(
+            doc["providers"]["cline-pass"]["baseUrl"],
+            serde_json::json!("https://api.cline.bot/api/v1"),
+            "CHM must emit the baseUrl field Pi validates"
+        );
+        // Thinking: reasoning flag plus a complete level map where listed
+        // levels map to their provider value and the rest are nulled out.
+        let model = &doc["providers"]["cline-pass"]["models"][0];
+        assert_eq!(model["reasoning"], serde_json::json!(true));
+        assert_eq!(model["thinkingLevelMap"]["medium"], serde_json::json!("medium"));
+        assert_eq!(model["thinkingLevelMap"]["high"], serde_json::json!("high"));
+        assert_eq!(model["thinkingLevelMap"]["xhigh"], serde_json::json!("xhigh"));
+        assert_eq!(model["thinkingLevelMap"]["max"], serde_json::json!("max"));
+        assert_eq!(model["thinkingLevelMap"]["off"], serde_json::Value::Null);
+        assert_eq!(model["thinkingLevelMap"]["minimal"], serde_json::Value::Null);
+        assert_eq!(model["thinkingLevelMap"]["low"], serde_json::Value::Null);
+    }
+
+    /// End-to-end reasoning-sync for Codex: CHM stores `thinking_levels` in
+    /// the route, and the Codex writer collapses them into a single
+    /// `model_reasoning_effort` value at the profile-file root, mapped to the
+    /// highest openai-compatible level the user picked.
+    #[tokio::test]
+    async fn codex_thinking_sync_writes_model_reasoning_effort() {
+        let pool = chm_database::connect_test().await.unwrap();
+        let dir = tempfile::TempDir::new().unwrap();
+        // Codex resolves the home by walking up from config_path to find the
+        // `.codex` ancestor, so config_path must live under <home>/.codex/.
+        let home = dir.path().join("home");
+        let codex_dir = home.join(".codex");
+        std::fs::create_dir_all(&codex_dir).unwrap();
+        let config_path = codex_dir.join("config.toml");
+        std::fs::write(&config_path, "").unwrap();
+        let provider = chm_database::repos::providers::create_provider(
+            &pool, "cline-pass", "Cline Pass",
+        )
+        .await.unwrap();
+        let endpoint = ProviderEndpoint {
+            id: Uuid::new_v4(),
+            provider_id: provider.id,
+            name: "OpenAI Compatible".into(),
+            base_url: "https://api.cline.bot/api/v1".into(),
+            protocol: Protocol::OpenAiResponses,
+            discovery_path: None,
+            auth_type: AuthType::None,
+            credential_ref: None,
+            headers: Default::default(),
+            enabled: true,
+            created_at: Utc::now(),
+            updated_at: Utc::now(),
+        };
+        chm_database::repos::providers::create_endpoint(&pool, &endpoint).await.unwrap();
+        // User ticked medium/high/xhigh/max — codex picks the highest openai
+        // value ("medium") and ignores xhigh/max.
+        let mut route = ModelRoute::new(
+            "deepseek/deepseek-v4.1-flash".into(),
+            "DeepSeek V4.1 Flash".into(),
+            Some(131_072),
+            serde_json::json!({
+                "reasoning": true,
+                "thinking_levels": ["medium", "high", "xhigh", "max"],
+            }),
+            serde_json::json!({}),
+        );
+        route.endpoint_id = endpoint.id;
+        chm_database::repos::models::create_route(&pool, &route).await.unwrap();
+
+        let inst = chm_core::domain::harness::HarnessInstallation {
+            id: Uuid::new_v4(),
+            harness_type: chm_core::domain::harness::HarnessType::Codex,
+            executable_path: None,
+            version: Some("0.150.0".into()),
+            config_path: Some(config_path.display().to_string()),
+            detected_at: Utc::now(),
+            last_scanned_at: None,
+            status: chm_core::domain::harness::InstallationStatus::Installed,
+        };
+        chm_database::repos::harness::upsert_installation(&pool, &inst).await.unwrap();
+
+        let desired = desired_state(&pool, None).await.unwrap();
+        let (_inst, _adapter, _plan, native_plan) = build_native_plan_for_desired(
+            &pool, &inst.id.to_string(), &Mode::Append, desired,
+        )
+        .await
+        .unwrap();
+        assert!(!native_plan.changes.is_empty(), "codex must emit a change");
+        let after = native_plan.changes[0].after.clone().unwrap();
+        let parsed: toml_edit::DocumentMut = after.parse().unwrap();
+        assert_eq!(
+            parsed["model_reasoning_effort"].as_str(),
+            Some("high"),
+            "highest openai-compatible level wins; xhigh/max are ignored when a standard level is also selected"
+        );
+
+        // And with reasoning disabled the key is omitted entirely.
+        let mut route_off = route.clone();
+        route_off.id = Uuid::new_v4();
+        route_off.capabilities = serde_json::json!({"reasoning": false, "thinking_levels": []});
+        route_off.remote_model_id = "off/model".into();
+        route_off.endpoint_id = endpoint.id;
+        chm_database::repos::models::create_route(&pool, &route_off).await.unwrap();
+        let desired_off = desired_state(&pool, None).await.unwrap();
+        let (_, _, _, native_off) = build_native_plan_for_desired(
+            &pool, &inst.id.to_string(), &Mode::Append, desired_off,
+        )
+        .await
+        .unwrap();
+        let after_off = native_off.changes[0].after.clone().unwrap();
+        let parsed_off: toml_edit::DocumentMut = after_off.parse().unwrap();
+        assert!(
+            parsed_off.get("model_reasoning_effort").is_none(),
+            "reasoning=false clears the Codex reasoning effort"
+        );
+    }
+
+    /// End-to-end reasoning-sync for OpenCode: per-level `variants` block with
+    /// `reasoningEffort` keyed by level, matching the 1.18.23 fixture shape.
+    #[tokio::test]
+    async fn opencode_thinking_sync_writes_variants() {
+        let pool = chm_database::connect_test().await.unwrap();
+        let dir = tempfile::TempDir::new().unwrap();
+        let config_path = dir.path().join("opencode.jsonc");
+        // OpenCode reads config_path directly as the file, so it must exist.
+        std::fs::write(&config_path, r#"{"provider": {}}"#).unwrap();
+        let provider = chm_database::repos::providers::create_provider(
+            &pool, "cline-pass", "Cline Pass",
+        )
+        .await.unwrap();
+        let endpoint = ProviderEndpoint {
+            id: Uuid::new_v4(),
+            provider_id: provider.id,
+            name: "OpenAI Compatible".into(),
+            base_url: "https://api.cline.bot/api/v1".into(),
+            protocol: Protocol::OpenAiChatCompletions,
+            discovery_path: Some("/v1/models".into()),
+            auth_type: AuthType::None,
+            credential_ref: None,
+            headers: Default::default(),
+            enabled: true,
+            created_at: Utc::now(),
+            updated_at: Utc::now(),
+        };
+        chm_database::repos::providers::create_endpoint(&pool, &endpoint).await.unwrap();
+        let mut route = ModelRoute::new(
+            "deepseek/deepseek-v4.1-flash".into(),
+            "DeepSeek V4.1 Flash".into(),
+            Some(131_072),
+            serde_json::json!({
+                "reasoning": true,
+                "thinking_levels": ["medium", "high", "xhigh", "max"],
+            }),
+            serde_json::json!({}),
+        );
+        route.endpoint_id = endpoint.id;
+        chm_database::repos::models::create_route(&pool, &route).await.unwrap();
+
+        let inst = chm_core::domain::harness::HarnessInstallation {
+            id: Uuid::new_v4(),
+            harness_type: chm_core::domain::harness::HarnessType::OpenCode,
+            executable_path: None,
+            version: Some("1.18.23".into()),
+            config_path: Some(config_path.display().to_string()),
+            detected_at: Utc::now(),
+            last_scanned_at: None,
+            status: chm_core::domain::harness::InstallationStatus::Installed,
+        };
+        chm_database::repos::harness::upsert_installation(&pool, &inst).await.unwrap();
+
+        let desired = desired_state(&pool, None).await.unwrap();
+        let (_, _, _, native_plan) = build_native_plan_for_desired(
+            &pool, &inst.id.to_string(), &Mode::Append, desired,
+        )
+        .await
+        .unwrap();
+        assert!(!native_plan.changes.is_empty(), "opencode must emit a change");
+        let after = native_plan.changes[0].after.clone().unwrap();
+        let parsed: serde_json::Value = serde_json::from_str(&after).unwrap();
+        let variants = &parsed["provider"]["cline-pass"]["models"]["deepseek/deepseek-v4.1-flash"]["variants"];
+        for level in ["medium", "high", "xhigh", "max"] {
+            assert_eq!(
+                variants[level]["reasoningEffort"], serde_json::json!(level),
+                "opencode must emit one variant per listed level"
+            );
+        }
+        // raw `reasoning`/`thinking_levels` must not leak as flat model fields.
+        let model = &parsed["provider"]["cline-pass"]["models"]["deepseek/deepseek-v4.1-flash"];
+        assert!(model.get("reasoning").is_none());
+        assert!(model.get("thinking_levels").is_none());
     }
 }

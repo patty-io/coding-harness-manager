@@ -75,13 +75,73 @@ pub fn fold_model_with_provider(
     }
     if let Some(caps) = capabilities.as_object() {
         for (k, v) in caps {
-            if k == "name" || k == "limit" {
+            // `name`/`limit` are written into their own well-known fields;
+            // `reasoning` and `thinking_levels` are translated into a
+            // per-level `variants` block by `set_model_thinking` and must
+            // not leak back into the model entry as flat keys.
+            if k == "name" || k == "limit" || k == "reasoning" || k == "thinking_levels" {
                 continue;
             }
             entry.insert(k.clone(), v.clone());
         }
     }
     models.insert(model_id.to_string(), Value::Object(entry));
+}
+
+/// Write OpenCode's model-level thinking controls.
+///
+/// OpenCode exposes per-model variants keyed by a reasoning-effort level; each
+/// variant sets `reasoningEffort` to the same string. CHM stores the canonical
+/// pi levels (`off|minimal|low|medium|high|xhigh|max`); OpenCode accepts the
+/// subset its UI knows (`low|medium|high|xhigh` in observed fixtures) and
+/// silently ignores unknown values. Setting `reasoning = false` clears the
+/// entire `variants` block so the model reverts to non-reasoning.
+pub fn set_model_thinking(
+    doc: &mut Value,
+    provider_id: Option<&str>,
+    model_id: &str,
+    reasoning: Option<bool>,
+    thinking_levels: Option<&[String]>,
+) -> bool {
+    let Some(providers) = doc
+        .as_object_mut()
+        .and_then(|o| o.get_mut("provider"))
+        .and_then(Value::as_object_mut)
+    else {
+        return false;
+    };
+    let declared_levels = thinking_levels.filter(|levels| !levels.is_empty());
+    let enabled = reasoning.unwrap_or(false) || declared_levels.is_some();
+    let mut found = false;
+    for (pname, pv) in providers.iter_mut() {
+        if provider_id.is_some_and(|wanted| !pname.eq_ignore_ascii_case(wanted)) {
+            continue;
+        }
+        let Some(models) = pv.get_mut("models").and_then(Value::as_object_mut) else {
+            continue;
+        };
+        let Some(model) = models.get_mut(model_id).and_then(Value::as_object_mut) else {
+            continue;
+        };
+        found = true;
+        if enabled {
+            let mut variants = Map::new();
+            for level in declared_levels.into_iter().flatten() {
+                let mut entry = Map::new();
+                entry.insert("reasoningEffort".to_string(), Value::String(level.clone()));
+                variants.insert(level.clone(), Value::Object(entry));
+            }
+            if !variants.is_empty() {
+                model.insert("variants".to_string(), Value::Object(variants));
+            } else {
+                // Reasoning enabled but no explicit levels: let OpenCode use
+                // its own defaults by leaving any pre-existing variants.
+            }
+        } else if reasoning == Some(false) {
+            model.remove("variants");
+        }
+    }
+    found
 }
 
 /// Update the metadata of a model already present in an OpenCode provider.

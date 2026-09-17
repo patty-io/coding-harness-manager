@@ -85,6 +85,7 @@ fn incompatible_bundle_is_a_route_blocker_not_a_model_action() {
                 context_window: true,
                 max_input: true,
                 max_output: true,
+                thinking: false,
             },
         });
 

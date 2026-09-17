@@ -75,6 +75,7 @@ fn route_capabilities(spec: &DetectionSpec) -> RouteDeploymentCapabilities {
                 context_window: false,
                 max_input: false,
                 max_output: false,
+                thinking: false,
             },
         },
         "cursor" => RouteDeploymentCapabilities {
@@ -89,6 +90,7 @@ fn route_capabilities(spec: &DetectionSpec) -> RouteDeploymentCapabilities {
                 context_window: false,
                 max_input: false,
                 max_output: false,
+                thinking: false,
             },
         },
         "amp" => RouteDeploymentCapabilities::unsupported(),
@@ -106,6 +108,7 @@ fn route_capabilities(spec: &DetectionSpec) -> RouteDeploymentCapabilities {
                 context_window: true,
                 max_input: true,
                 max_output: true,
+                thinking: false,
             },
         },
         // Qwen, Continue, Reasonix, and Goose have isolated harness-owned
@@ -122,6 +125,7 @@ fn route_capabilities(spec: &DetectionSpec) -> RouteDeploymentCapabilities {
                 context_window: true,
                 max_input: true,
                 max_output: true,
+                thinking: false,
             },
         },
         "aider" => RouteDeploymentCapabilities {
@@ -143,6 +147,7 @@ fn route_capabilities(spec: &DetectionSpec) -> RouteDeploymentCapabilities {
                 context_window: true,
                 max_input: true,
                 max_output: true,
+                thinking: false,
             },
         },
         "goose" => RouteDeploymentCapabilities {
@@ -157,6 +162,7 @@ fn route_capabilities(spec: &DetectionSpec) -> RouteDeploymentCapabilities {
                 context_window: true,
                 max_input: true,
                 max_output: true,
+                thinking: false,
             },
         },
         _ => RouteDeploymentCapabilities::unsupported(),

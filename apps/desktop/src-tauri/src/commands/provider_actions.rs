@@ -205,6 +205,56 @@ async fn discover_into_catalog(
     })
 }
 
+/// What a provider-level discovery would do right now, without running it.
+/// Surfaced in the UI so multi-endpoint providers aren't a guessing game.
+#[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct PlannedEndpoint {
+    pub endpoint_id: String,
+    pub endpoint_name: String,
+    pub protocol: String,
+}
+
+#[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct DiscoveryPlan {
+    pub will_probe: Vec<PlannedEndpoint>,
+    pub will_skip: Vec<SkippedEndpoint>,
+}
+
+#[tauri::command]
+pub async fn discovery_plan_cmd(
+    state: State<'_, AppState>,
+    provider_id: String,
+) -> Result<DiscoveryPlan, String> {
+    let id = Uuid::parse_str(&provider_id).map_err(|e| e.to_string())?;
+    let endpoints = list_endpoints(&state.pool, id)
+        .await
+        .map_err(|e| e.to_string())?;
+    let (chosen, skipped) = pick_discovery_endpoints(&endpoints);
+    Ok(DiscoveryPlan {
+        will_probe: chosen
+            .into_iter()
+            .map(|ep| {
+                let protocol = ep.protocol.as_str().to_string();
+                PlannedEndpoint {
+                    endpoint_id: ep.id.to_string(),
+                    endpoint_name: ep.name,
+                    protocol,
+                }
+            })
+            .collect(),
+        will_skip: skipped
+            .into_iter()
+            .map(|(ep, reason)| SkippedEndpoint {
+                endpoint_id: ep.id.to_string(),
+                endpoint_name: ep.name,
+                reason,
+            })
+            .collect(),
+    })
+}
+
 #[tauri::command]
 pub async fn discover_endpoint_models(
     state: State<'_, AppState>,

@@ -7,21 +7,13 @@ const FEATURE_FLAGS_FILE: &str = "feature-flags.json";
 
 /// Release flags are persisted in the app data directory so a dark-launched
 /// feature can be enabled without rebuilding the desktop application.
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[derive(Debug, Clone, Default, Serialize, Deserialize, PartialEq, Eq)]
 #[serde(rename_all = "camelCase")]
 pub struct FeatureFlags {
     /// Profiles and configuration sets are still experimental and disabled by
     /// default until their workflow is ready for general release.
     #[serde(default)]
     pub profiles_and_sets: bool,
-}
-
-impl Default for FeatureFlags {
-    fn default() -> Self {
-        Self {
-            profiles_and_sets: false,
-        }
-    }
 }
 
 pub fn feature_flags_path() -> PathBuf {

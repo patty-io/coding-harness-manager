@@ -8,9 +8,11 @@ import {
   checkEndpointHealth,
   createEndpoint,
   createProvider,
+  deleteEndpoint,
   deleteProvider,
   discoverEndpointModels,
   discoverProviderModels,
+  discoveryPlan,
   envVarSet,
   listCatalogModels,
   listEndpoints,
@@ -19,6 +21,7 @@ import {
   providerSummary,
   providerSummaries,
   saveApiKey,
+  updateEndpoint,
   updateProvider,
   type EndpointInput,
 } from "../lib/api";
@@ -88,7 +91,57 @@ export function useCreateEndpoint() {
   return useMutation({
     mutationFn: ({ input, envVarName }: { input: EndpointInput; envVarName?: string }) =>
       createEndpoint(input, envVarName),
-    onSuccess: () => qc.invalidateQueries({ queryKey: ["endpoints"] }),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["endpoints"] });
+      qc.invalidateQueries({ queryKey: ["discovery-plan"] });
+    },
+  });
+}
+
+export function useUpdateEndpoint() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: ({
+      endpointId,
+      input,
+      envVarName,
+    }: {
+      endpointId: string;
+      input: EndpointInput;
+      envVarName?: string;
+    }) => updateEndpoint(endpointId, input, envVarName),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["endpoints"] });
+      qc.invalidateQueries({ queryKey: ["discovery-plan"] });
+      qc.invalidateQueries({ queryKey: ["provider-catalog"] });
+    },
+  });
+}
+
+export function useDeleteEndpoint() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: deleteEndpoint,
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["endpoints"] });
+      qc.invalidateQueries({ queryKey: ["discovery-plan"] });
+      qc.invalidateQueries({ queryKey: ["catalog"] });
+      qc.invalidateQueries({ queryKey: ["provider-catalog"] });
+      qc.invalidateQueries({ queryKey: ["routes"] });
+      qc.invalidateQueries({ queryKey: ["provider-summary"] });
+    },
+  });
+}
+
+export function useDiscoveryPlan(providerId: string | undefined) {
+  return useQuery({
+    queryKey: ["discovery-plan", providerId],
+    queryFn: () => discoveryPlan(providerId!),
+    enabled: !!providerId,
+    // The plan is recomputed on the server each time endpoints change; cache it
+    // briefly to avoid refetching on every component mount while invalidation
+    // still keeps it current after edits.
+    staleTime: 15_000,
   });
 }
 

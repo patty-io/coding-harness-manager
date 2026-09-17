@@ -58,6 +58,7 @@ fn capabilities(
             context_window: true,
             max_input: true,
             max_output: true,
+            thinking: false,
         },
     }
 }

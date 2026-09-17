@@ -26,6 +26,9 @@ pub enum ProviderError {
 pub enum HealthStatus {
     Healthy,
     AuthFailed,
+    /// The endpoint's auth type requires a credential but none could be
+    /// resolved (env var unset, keychain item missing, or no reference).
+    CredentialMissing,
     Unreachable,
     DiscoveryUnsupported,
     RateLimited,
@@ -44,6 +47,14 @@ pub fn resolve_credential(ref_: &CredentialRef, store: &dyn SecretStore) -> Opti
         chm_core::domain::credentials::CredentialKind::Env => std::env::var(&ref_.reference).ok(),
         _ => store.get(&ref_.reference).ok().flatten(),
     }
+}
+
+/// True when the endpoint's auth type requires a credential but none could
+/// be resolved. Both health checks and discovery refuse to probe
+/// unauthenticated in that case: a 200 from an unauthenticated request proves
+/// nothing about the configured credential and hides the real problem.
+pub fn credential_missing(endpoint: &ProviderEndpoint, credential: Option<&str>) -> bool {
+    !matches!(endpoint.auth_type, AuthType::None | AuthType::Unknown) && credential.is_none()
 }
 
 fn discovery_url(endpoint: &ProviderEndpoint) -> String {
@@ -99,6 +110,9 @@ pub async fn health_check(
     if endpoint.discovery_path.is_none() && matches!(endpoint.protocol, Protocol::Custom) {
         return HealthStatus::DiscoveryUnsupported;
     }
+    if credential_missing(endpoint, credential) {
+        return HealthStatus::CredentialMissing;
+    }
     let url = discovery_url(endpoint);
     let resp = match request_builder(http, endpoint, credential, &url)
         .send()
@@ -120,7 +134,7 @@ pub async fn discover_models(
     credential: Option<&str>,
     http: &reqwest::Client,
 ) -> Result<Vec<ProviderModel>, ProviderError> {
-    if !matches!(endpoint.auth_type, AuthType::None | AuthType::Unknown) && credential.is_none() {
+    if credential_missing(endpoint, credential) {
         return Err(ProviderError::CredentialMissing);
     }
     let url = discovery_url(endpoint);
@@ -189,6 +203,7 @@ impl HealthStatus {
         match self {
             Self::Healthy => "Healthy",
             Self::AuthFailed => "AuthFailed",
+            Self::CredentialMissing => "CredentialMissing",
             Self::Unreachable => "Unreachable",
             Self::DiscoveryUnsupported => "DiscoveryUnsupported",
             Self::RateLimited => "RateLimited",

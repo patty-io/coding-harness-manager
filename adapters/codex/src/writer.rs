@@ -85,6 +85,43 @@ pub fn fold_provider_with_metadata(
     }
 }
 
+/// Map CHM's canonical thinking levels to the OpenAI `reasoning_effort`
+/// vocabulary Codex uses (`minimal|low|medium|high`). Levels outside that set
+/// (`off|xhigh|max`) collapse to the closest equivalent — Codex stores one
+/// effort per profile file rather than a per-model map, so the caller picks
+/// the highest selected level.
+pub fn reasoning_effort_for_levels(levels: &[String]) -> Option<&'static str> {
+    const ORDER: &[&str] = &["minimal", "low", "medium", "high"];
+    for level in ORDER.iter().rev() {
+        if levels.iter().any(|declared| declared == *level) {
+            return Some(*level);
+        }
+    }
+    // `xhigh` and `max` are CHM-only: fall back to `high` so the file still
+    // gets a usable effort value.
+    if levels
+        .iter()
+        .any(|declared| declared == "xhigh" || declared == "max")
+    {
+        return Some("high");
+    }
+    None
+}
+
+/// Write Codex's profile-level reasoning effort. `Some("high")` sets
+/// `model_reasoning_effort = "high"`; `None` removes the key so Codex reverts
+/// to its default (no reasoning).
+pub fn set_reasoning_effort(doc: &mut DocumentMut, effort: Option<&str>) {
+    match effort {
+        Some(level) => {
+            doc["model_reasoning_effort"] = Item::Value(Value::from(level));
+        }
+        None => {
+            doc.remove("model_reasoning_effort");
+        }
+    }
+}
+
 /// Update the selected model and metadata in one existing provider file.
 /// Returns false when the file does not select the requested provider/model.
 pub fn update_provider(

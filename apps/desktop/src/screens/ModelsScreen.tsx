@@ -28,6 +28,18 @@ import { useInstallations } from "../hooks/useHarnesses";
 
 type Tab = "mine" | "discovered";
 
+/// Canonical thinking levels, matching the harness writers. Pi exposes exactly
+/// these names (`off` … `max`).
+const THINKING_LEVELS = [
+  "off",
+  "minimal",
+  "low",
+  "medium",
+  "high",
+  "xhigh",
+  "max",
+];
+
 export default function ModelsScreen() {
   const [tab, setTab] = useState<Tab>("mine");
   const [providerFilter, setProviderFilter] = useState("");
@@ -70,6 +82,8 @@ export default function ModelsScreen() {
   const [editContextWindow, setEditContextWindow] = useState("");
   const [editMaxInput, setEditMaxInput] = useState("");
   const [editMaxOutput, setEditMaxOutput] = useState("");
+  const [editReasoning, setEditReasoning] = useState(false);
+  const [editThinkingLevels, setEditThinkingLevels] = useState<string[]>([]);
   const [routeEditError, setRouteEditError] = useState<string | null>(null);
   const [enrichError, setEnrichError] = useState<string | null>(null);
   const [routeSyncNote, setRouteSyncNote] = useState<string | null>(null);
@@ -98,6 +112,16 @@ export default function ModelsScreen() {
     setEditContextWindow(route.context_window?.toString() ?? "");
     setEditMaxInput(route.max_input?.toString() ?? "");
     setEditMaxOutput(route.max_output?.toString() ?? "");
+    const capabilities = (route.capabilities ?? {}) as {
+      reasoning?: boolean;
+      thinking_levels?: string[];
+    };
+    setEditReasoning(capabilities.reasoning ?? false);
+    setEditThinkingLevels(
+      (capabilities.thinking_levels ?? []).filter(
+        (level): level is string => THINKING_LEVELS.includes(level as never),
+      ),
+    );
     setRouteEditError(null);
   };
 
@@ -191,6 +215,8 @@ export default function ModelsScreen() {
             contextWindow,
             maxInput,
             maxOutput,
+            reasoning: editReasoning,
+            thinkingLevels: editReasoning ? editThinkingLevels : [],
           },
         },
         {
@@ -608,12 +634,22 @@ export default function ModelsScreen() {
           contextWindow={editContextWindow}
           maxInput={editMaxInput}
           maxOutput={editMaxOutput}
+          reasoning={editReasoning}
+          thinkingLevels={editThinkingLevels}
           error={routeEditError}
           saving={update.isPending}
           onDisplayNameChange={setEditDisplayName}
           onContextWindowChange={setEditContextWindow}
           onMaxInputChange={setEditMaxInput}
           onMaxOutputChange={setEditMaxOutput}
+          onReasoningChange={setEditReasoning}
+          onThinkingLevelToggle={(level) =>
+            setEditThinkingLevels((current) =>
+              current.includes(level)
+                ? current.filter((item) => item !== level)
+                : [...current, level],
+            )
+          }
           onSave={saveRouteEdit}
           onClose={() => setEditingRoute(null)}
         />
@@ -654,12 +690,16 @@ function RouteEditDialog({
   contextWindow,
   maxInput,
   maxOutput,
+  reasoning,
+  thinkingLevels,
   error,
   saving,
   onDisplayNameChange,
   onContextWindowChange,
   onMaxInputChange,
   onMaxOutputChange,
+  onReasoningChange,
+  onThinkingLevelToggle,
   onSave,
   onClose,
 }: {
@@ -668,12 +708,16 @@ function RouteEditDialog({
   contextWindow: string;
   maxInput: string;
   maxOutput: string;
+  reasoning: boolean;
+  thinkingLevels: string[];
   error: string | null;
   saving: boolean;
   onDisplayNameChange: (value: string) => void;
   onContextWindowChange: (value: string) => void;
   onMaxInputChange: (value: string) => void;
   onMaxOutputChange: (value: string) => void;
+  onReasoningChange: (value: boolean) => void;
+  onThinkingLevelToggle: (level: string) => void;
   onSave: () => void;
   onClose: () => void;
 }) {
@@ -741,6 +785,40 @@ function RouteEditDialog({
             />
           </label>
         </div>
+        <fieldset className="mt-3 rounded border border-slate-700 p-3">
+          <legend className="px-1 text-xs text-slate-400">Thinking</legend>
+          <label className="flex items-center gap-2 text-sm text-slate-200">
+            <input
+              type="checkbox"
+              checked={reasoning}
+              onChange={(event) => onReasoningChange(event.target.checked)}
+            />
+            Supports extended thinking
+          </label>
+          {reasoning && (
+            <>
+              <div className="mt-2 flex flex-wrap gap-2">
+                {THINKING_LEVELS.map((level) => (
+                  <label
+                    key={level}
+                    className="flex items-center gap-1.5 rounded border border-slate-600 px-2 py-0.5 text-xs text-slate-300"
+                  >
+                    <input
+                      type="checkbox"
+                      checked={thinkingLevels.includes(level)}
+                      onChange={() => onThinkingLevelToggle(level)}
+                    />
+                    {level}
+                  </label>
+                ))}
+              </div>
+              <p className="mt-2 text-xs text-slate-500">
+                Levels this model exposes. Unselected levels are hidden in the
+                harness; leaving all unchecked uses the provider default.
+              </p>
+            </>
+          )}
+        </fieldset>
         {error && <p className="mt-3 text-xs text-red-400">{error}</p>}
         <div className="mt-4 flex justify-end gap-2">
           <button

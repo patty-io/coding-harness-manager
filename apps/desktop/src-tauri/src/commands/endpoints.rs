@@ -87,6 +87,83 @@ pub async fn create_endpoint_cmd(
 }
 
 #[tauri::command]
+pub async fn update_endpoint_cmd(
+    state: State<'_, AppState>,
+    endpoint_id: String,
+    input: EndpointInput,
+    env_var_name: Option<String>,
+) -> Result<ProviderEndpoint, String> {
+    let id = Uuid::parse_str(&endpoint_id).map_err(|e| e.to_string())?;
+    let existing = crate::commands::providers::find_endpoint(&state.pool, id).await?;
+    let credential_ref = match &input.credential_ref_id {
+        Some(cid) => Some(
+            chm_database::repos::providers::get_credential_ref(
+                &state.pool,
+                Uuid::parse_str(cid).map_err(|e| e.to_string())?,
+            )
+            .await
+            .map_err(|e| e.to_string())?,
+        ),
+        None => match &env_var_name {
+            Some(name) if !name.trim().is_empty() => {
+                // Reuse the existing env reference when unchanged so repeated
+                // edits don't pile up duplicate credential rows.
+                if let Some(current) = existing.credential_ref.as_ref()
+                    && current.kind == CredentialKind::Env
+                    && current.reference == name.trim()
+                {
+                    Some(current.clone())
+                } else {
+                    Some(
+                        create_credential_ref(&state.pool, CredentialKind::Env, name.trim())
+                            .await
+                            .map_err(|e| e.to_string())?,
+                    )
+                }
+            }
+            _ => None,
+        },
+    };
+    let endpoint = ProviderEndpoint {
+        id,
+        provider_id: existing.provider_id,
+        name: input.name,
+        base_url: input.base_url,
+        protocol: Protocol::parse_str(&input.protocol),
+        discovery_path: input.discovery_path,
+        auth_type: AuthType::parse_str(&input.auth_type),
+        credential_ref,
+        headers: input.headers,
+        enabled: input.enabled,
+        created_at: existing.created_at,
+        updated_at: chrono::Utc::now(),
+    };
+    chm_database::repos::providers::update_endpoint(&state.pool, &endpoint)
+        .await
+        .map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+pub async fn delete_endpoint_cmd(
+    state: State<'_, AppState>,
+    endpoint_id: String,
+) -> Result<(), String> {
+    let id = Uuid::parse_str(&endpoint_id).map_err(|e| e.to_string())?;
+    // Catalog models and model routes cascade via schema foreign keys;
+    // launch profiles referencing this endpoint reject the delete with an
+    // FK error instead of silently orphaning.
+    let result = sqlx::query("DELETE FROM provider_endpoints WHERE id = ?")
+        .bind(id.to_string())
+        .execute(&state.pool)
+        .await
+        .map_err(|e| e.to_string())?;
+    if result.rows_affected() == 0 {
+        return Err(format!("endpoint {endpoint_id} not found"));
+    }
+    Ok(())
+}
+
+#[tauri::command]
 pub async fn save_api_key(
     state: State<'_, AppState>,
     key_name: String,

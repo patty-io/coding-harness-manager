@@ -54,6 +54,10 @@ pub struct ModelMetadataCapabilities {
     pub context_window: bool,
     pub max_input: bool,
     pub max_output: bool,
+    /// Whether this adapter can carry per-model thinking/extended-reasoning
+    /// configuration (e.g. reasoning effort, thinking level map) into the
+    /// native config.
+    pub thinking: bool,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -79,6 +83,7 @@ impl RouteDeploymentCapabilities {
                 context_window: false,
                 max_input: false,
                 max_output: false,
+                thinking: false,
             },
         }
     }

@@ -114,6 +114,48 @@ pub struct RouteUpdateInput {
     pub enabled: Option<bool>,
     pub capabilities: Option<serde_json::Value>,
     pub overrides: Option<serde_json::Value>,
+    /// Extended-thinking support, stored in `capabilities.reasoning`.
+    pub reasoning: Option<bool>,
+    /// Thinking levels the model exposes, stored in
+    /// `capabilities.thinking_levels`. Canonical level names only.
+    pub thinking_levels: Option<Vec<String>>,
+}
+
+/// Canonical thinking levels shared with the harness writers. Pi uses exactly
+/// this vocabulary (`off` … `max`); other adapters map onto it.
+pub const THINKING_LEVELS: [&str; 7] = ["off", "minimal", "low", "medium", "high", "xhigh", "max"];
+
+/// Merge the granular thinking inputs into a route's capabilities blob without
+/// disturbing unrelated capability keys. Declaring levels implies the model
+/// supports extended thinking even when `reasoning` was not sent.
+pub(crate) fn apply_thinking_capabilities(
+    capabilities: &mut serde_json::Value,
+    reasoning: Option<bool>,
+    thinking_levels: Option<Vec<String>>,
+) {
+    let levels = thinking_levels.map(|levels| {
+        let mut cleaned: Vec<String> = Vec::new();
+        for level in levels {
+            if THINKING_LEVELS.contains(&level.as_str()) && !cleaned.contains(&level) {
+                cleaned.push(level);
+            }
+        }
+        cleaned
+    });
+    let mut object = capabilities.as_object().cloned().unwrap_or_default();
+    match reasoning {
+        Some(reasoning) => {
+            object.insert("reasoning".into(), serde_json::Value::Bool(reasoning));
+        }
+        None if levels.as_ref().is_some_and(|levels| !levels.is_empty()) => {
+            object.insert("reasoning".into(), serde_json::Value::Bool(true));
+        }
+        None => {}
+    }
+    if let Some(levels) = levels {
+        object.insert("thinking_levels".into(), serde_json::json!(levels));
+    }
+    *capabilities = serde_json::Value::Object(object);
 }
 
 #[tauri::command]
@@ -138,6 +180,11 @@ pub async fn update_route_cmd(
     }
     if let Some(v) = input.enabled {
         route.enabled = v;
+    }
+    if input.reasoning.is_some() || input.thinking_levels.is_some() {
+        let mut capabilities = route.capabilities.clone();
+        apply_thinking_capabilities(&mut capabilities, input.reasoning, input.thinking_levels);
+        route.capabilities = capabilities;
     }
     if let Some(v) = input.capabilities {
         route.capabilities = v;

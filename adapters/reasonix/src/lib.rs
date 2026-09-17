@@ -45,6 +45,7 @@ impl HarnessAdapter for ReasonixAdapter {
                     context_window: true,
                     max_input: true,
                     max_output: true,
+                    thinking: false,
                 },
             })
             .with_models(true)

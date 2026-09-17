@@ -3,6 +3,8 @@ import { Link, useParams } from "react-router-dom";
 import {
   useAddDiscoveredToMyModels,
   useCreateEndpoint,
+  useDeleteEndpoint,
+  useDiscoveryPlan,
   useEndpoints,
   useProviderCatalog,
   useProviderSummary,
@@ -10,11 +12,13 @@ import {
   useDiscoverProvider,
   useSaveApiKey,
   useEnvVarSet,
+  useUpdateEndpoint,
   useUpdateProvider,
 } from "../hooks/useProviders";
+import { ConfirmDialog } from "../components/ConfirmDialog";
 import { EndpointActions } from "../components/EndpointActions";
 import { HelpTip } from "../components/HelpTip";
-import type { ProviderDiscoverReport } from "../lib/api";
+import type { ProviderDiscoverReport, ProviderEndpoint } from "../lib/api";
 
 const PROTOCOLS = [
   { value: "anthropic-messages", label: "Anthropic Messages compatible" },
@@ -44,12 +48,16 @@ const DISCOVERY_PRESETS = [
 export default function ProviderDetailScreen() {
   const { id } = useParams<{ id: string }>();
   const { data: providers } = useProviders();
-  const { data: endpoints, isLoading: endpointsLoading } = useEndpoints(id);
+  const { data: endpoints, isLoading: endpointsLoading, isError: endpointsError, error: endpointsErrorValue } = useEndpoints(id);
   const { data: summary } = useProviderSummary(id);
   const create = useCreateEndpoint();
+  const updateEndpoint = useUpdateEndpoint();
+  const deleteEndpoint = useDeleteEndpoint();
   const saveKey = useSaveApiKey();
   const envSet = useEnvVarSet();
   const updateProvider = useUpdateProvider();
+  const { data: discoveryPlan } = useDiscoveryPlan(id);
+  const [deleteTarget, setDeleteTarget] = useState<ProviderEndpoint | null>(null);
 
   const provider = (providers ?? []).find((p) => p.id === id);
 
@@ -67,7 +75,10 @@ export default function ProviderDetailScreen() {
         ),
     ) ?? [];
 
-  const [showForm, setShowForm] = useState(false);
+  type EndpointFormState =
+    | { mode: "create" }
+    | { mode: "edit"; endpoint: ProviderEndpoint };
+  const [formState, setFormState] = useState<EndpointFormState | null>(null);
   const [name, setName] = useState("");
   const [baseUrl, setBaseUrl] = useState("");
   const [protocol, setProtocol] = useState("anthropic-messages");
@@ -78,8 +89,42 @@ export default function ProviderDetailScreen() {
   >("env");
   const [envVarName, setEnvVarName] = useState("");
   const [apiKey, setApiKey] = useState("");
+  const [formEnabled, setFormEnabled] = useState(true);
   const [envWarning, setEnvWarning] = useState<string | null>(null);
   const [savedNote, setSavedNote] = useState<string | null>(null);
+
+  const resetFormFields = () => {
+    setName("");
+    setBaseUrl("");
+    setApiKey("");
+    setEnvVarName("");
+    setFormEnabled(true);
+    setSavedNote(null);
+    setEnvWarning(null);
+  };
+
+  const startEndpointEdit = (e: ProviderEndpoint) => {
+    setFormState({ mode: "edit", endpoint: e });
+    setName(e.name);
+    setBaseUrl(e.base_url);
+    setProtocol(e.protocol);
+    setAuthType(e.auth_type);
+    setDiscoveryPath(e.discovery_path ?? "");
+    setFormEnabled(e.enabled);
+    if (e.credential_ref?.kind === "env") {
+      setCredentialSource("env");
+      setEnvVarName(e.credential_ref.reference);
+    } else if (e.credential_ref) {
+      setCredentialSource("keychain");
+      setEnvVarName("");
+    } else {
+      setCredentialSource("none");
+      setEnvVarName("");
+    }
+    setApiKey("");
+    setSavedNote(null);
+    setEnvWarning(null);
+  };
   const [editingProvider, setEditingProvider] = useState(false);
   const [providerDisplayName, setProviderDisplayName] = useState("");
   const [providerNotes, setProviderNotes] = useState("");
@@ -97,18 +142,23 @@ export default function ProviderDetailScreen() {
     if (!name.trim() || !baseUrl.trim()) return;
     setSavedNote(null);
     setEnvWarning(null);
+    const editing = formState?.mode === "edit" ? formState.endpoint : null;
     let credentialRefId: string | null = null;
     let pendingEnvVar: string | undefined = undefined;
     if (credentialSource === "keychain") {
-      if (!apiKey) {
+      if (apiKey) {
+        credentialRefId = await saveKey.mutateAsync({
+          keyName: `${name.trim()}-${Date.now()}`,
+          value: apiKey,
+        });
+        setSavedNote("Saved to macOS Keychain");
+      } else if (editing?.credential_ref?.kind === "keychain") {
+        // No new key typed — keep the existing keychain entry.
+        credentialRefId = editing.credential_ref.id;
+      } else {
         setSavedNote("Enter an API key for keychain storage");
         return;
       }
-      credentialRefId = await saveKey.mutateAsync({
-        keyName: `${name.trim()}-${Date.now()}`,
-        value: apiKey,
-      });
-      setSavedNote("Saved to macOS Keychain");
     } else if (credentialSource === "env") {
       if (!envVarName.trim()) {
         setSavedNote("Enter an env var name for env references");
@@ -122,31 +172,33 @@ export default function ProviderDetailScreen() {
       }
       pendingEnvVar = envVarName.trim();
     }
-    create.mutate(
-      {
-        input: {
-          providerId: id!,
-          name: name.trim(),
-          baseUrl: baseUrl.trim(),
-          protocol,
-          discoveryPath: discoveryPath === "" ? null : discoveryPath,
-          authType: credentialSource === "none" ? "none" : authType,
-          credentialRefId,
-          headers: {},
-          enabled: true,
+    const input = {
+      providerId: id!,
+      name: name.trim(),
+      baseUrl: baseUrl.trim(),
+      protocol,
+      discoveryPath: discoveryPath === "" ? null : discoveryPath,
+      authType: credentialSource === "none" ? "none" : authType,
+      credentialRefId,
+      headers: editing?.headers ?? {},
+      enabled: editing ? formEnabled : true,
+    };
+    if (editing) {
+      updateEndpoint.mutate(
+        { endpointId: editing.id, input, envVarName: pendingEnvVar },
+        { onSuccess: () => setFormState(null) },
+      );
+    } else {
+      create.mutate(
+        { input, envVarName: pendingEnvVar },
+        {
+          onSuccess: () => {
+            setFormState(null);
+            resetFormFields();
+          },
         },
-        envVarName: pendingEnvVar,
-      },
-      {
-        onSuccess: () => {
-          setShowForm(false);
-          setName("");
-          setBaseUrl("");
-          setApiKey("");
-          setEnvVarName("");
-        },
-      },
-    );
+      );
+    }
   };
 
   return (
@@ -296,6 +348,23 @@ export default function ProviderDetailScreen() {
         Models this provider offers, de-duplicated across its endpoints. Import
         a model to make it usable in profiles and sets.
       </p>
+
+      {discoveryPlan && (endpoints ?? []).length > 0 && (
+        <p className="mt-1 text-xs text-slate-500">
+          Will probe:{" "}
+          {discoveryPlan.willProbe.length > 0
+            ? discoveryPlan.willProbe.map((e) => e.endpointName).join(", ")
+            : "none"}
+          {discoveryPlan.willSkip.length > 0 && (
+            <>
+              {" "}&middot; skipping:{" "}
+              {discoveryPlan.willSkip
+                .map((s) => `${s.endpointName} (${s.reason})`)
+                .join("; ")}
+            </>
+          )}
+        </p>
+      )}
 
       {discoverAll.isError && (
         <p className="mt-2 text-sm text-red-400">
@@ -488,8 +557,13 @@ export default function ProviderDetailScreen() {
         </div>
       )}
 
-      {showForm && (
+      {formState && (
         <div className="mt-3 rounded border border-slate-700 bg-slate-800 p-4">
+          <h3 className="mb-2 text-sm font-medium text-slate-200">
+            {formState.mode === "edit"
+              ? `Edit endpoint — ${formState.endpoint.name}`
+              : "New endpoint"}
+          </h3>
           <div className="grid grid-cols-1 gap-2 md:grid-cols-2">
             <input
               value={name}
@@ -580,12 +654,26 @@ export default function ProviderDetailScreen() {
               />
             )}
           </div>
+          {formState.mode === "edit" && (
+            <label className="mt-2 flex items-center gap-2 text-sm text-slate-300">
+              <input
+                type="checkbox"
+                checked={formEnabled}
+                onChange={(e) => setFormEnabled(e.target.checked)}
+              />
+              Enabled for discovery and sync
+            </label>
+          )}
           <button
             onClick={submitEndpoint}
-            disabled={create.isPending}
+            disabled={create.isPending || updateEndpoint.isPending}
             className="mt-3 rounded bg-blue-600 px-4 py-1 text-white disabled:opacity-50"
           >
-            {create.isPending ? "Adding…" : "Add Endpoint"}
+            {create.isPending || updateEndpoint.isPending
+              ? "Saving…"
+              : formState.mode === "edit"
+                ? "Save changes"
+                : "Add Endpoint"}
           </button>
           {savedNote && (
             <p className="mt-2 text-sm text-green-400">{savedNote}</p>
@@ -593,9 +681,9 @@ export default function ProviderDetailScreen() {
           {envWarning && (
             <p className="mt-2 text-sm text-amber-400">{envWarning}</p>
           )}
-          {create.isError && (
+          {(create.isError || updateEndpoint.isError) && (
             <p className="mt-2 text-sm text-red-400">
-              Failed: {create.error.message}
+              Failed: {create.error?.message ?? updateEndpoint.error?.message}
             </p>
           )}
         </div>
@@ -663,18 +751,35 @@ export default function ProviderDetailScreen() {
       <div className="mt-8 flex items-center justify-between">
         <h2 className="font-medium text-slate-200">Endpoints</h2>
         <button
-          onClick={() => setShowForm((v) => !v)}
+          onClick={() => {
+            if (formState) {
+              setFormState(null);
+              return;
+            }
+            resetFormFields();
+            setProtocol("anthropic-messages");
+            setAuthType("bearer-token");
+            setDiscoveryPath("/v1/models");
+            setCredentialSource("env");
+            setFormState({ mode: "create" });
+          }}
           className="rounded bg-blue-600 px-3 py-1 text-sm text-white hover:bg-blue-500"
         >
-          {showForm ? "Cancel" : "+ Add Endpoint"}
+          {formState ? "Cancel" : "+ Add Endpoint"}
         </button>
       </div>
 
       {endpointsLoading && <p className="mt-3 text-sm">Loading endpoints…</p>}
 
-      {endpointsLoading === false && (endpoints ?? []).length === 0 && (
+      {endpointsLoading === false && (endpoints ?? []).length === 0 && !endpointsError && (
         <p className="mt-3 text-sm text-slate-500">
           No endpoints yet — add one above.
+        </p>
+      )}
+
+      {endpointsError && (
+        <p className="mt-3 text-sm text-red-400">
+          Failed to load endpoints: {endpointsErrorValue?.message}
         </p>
       )}
 
@@ -701,10 +806,40 @@ export default function ProviderDetailScreen() {
               )}
               <span>{e.enabled ? "enabled" : "disabled"}</span>
             </div>
-            <EndpointActions endpointId={e.id} />
+            <div className="mt-2 flex flex-wrap items-center justify-between gap-2">
+              <EndpointActions endpointId={e.id} />
+              <div className="flex gap-2">
+                <button
+                  type="button"
+                  onClick={() => startEndpointEdit(e)}
+                  className="rounded border border-slate-600 px-2 py-0.5 text-xs text-slate-300 hover:bg-slate-700"
+                >
+                  Edit
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setDeleteTarget(e)}
+                  className="rounded border border-red-500/40 px-2 py-0.5 text-xs text-red-300 hover:bg-red-500/10"
+                >
+                  Delete
+                </button>
+              </div>
+            </div>
           </li>
         ))}
       </ul>
+
+      {deleteTarget && (
+        <ConfirmDialog
+          title="Delete endpoint"
+          message={`Delete endpoint "${deleteTarget.name}"? Its discovered-model catalog and My Models routes for this endpoint are removed. Harness config files are not touched.`}
+          confirmLabel="Delete"
+          onConfirm={async () => {
+            await deleteEndpoint.mutateAsync(deleteTarget.id);
+          }}
+          onClose={() => setDeleteTarget(null)}
+        />
+      )}
     </div>
   );
 }

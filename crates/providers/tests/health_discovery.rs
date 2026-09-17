@@ -1,6 +1,8 @@
 use chm_core::domain::provider::*;
-use chm_providers::{HealthStatus, ProviderError, discover_models, health_check};
-use wiremock::matchers::{method, path};
+use chm_providers::{
+    HealthStatus, ProviderError, credential_missing, discover_models, health_check,
+};
+use wiremock::matchers::{header, method, path};
 use wiremock::{Mock, MockServer, ResponseTemplate};
 
 fn endpoint(base: &str, protocol: Protocol) -> ProviderEndpoint {
@@ -34,11 +36,46 @@ async fn health_check_reports_healthy_on_200() {
     let http = reqwest::Client::new();
     let status = health_check(
         &endpoint(&server.uri(), Protocol::OpenAiChatCompletions),
-        None,
+        Some("test-token"),
         &http,
     )
     .await;
     assert_eq!(status, HealthStatus::Healthy);
+}
+
+#[tokio::test]
+async fn health_check_sends_bearer_credential() {
+    let server = MockServer::start().await;
+    Mock::given(method("GET"))
+        .and(path("/v1/models"))
+        .and(header("authorization", "Bearer test-token"))
+        .respond_with(
+            ResponseTemplate::new(200)
+                .set_body_json(serde_json::json!({"object": "list", "data": []})),
+        )
+        .mount(&server)
+        .await;
+    let http = reqwest::Client::new();
+    let status = health_check(
+        &endpoint(&server.uri(), Protocol::OpenAiChatCompletions),
+        Some("test-token"),
+        &http,
+    )
+    .await;
+    assert_eq!(status, HealthStatus::Healthy);
+}
+
+#[tokio::test]
+async fn health_check_reports_credential_missing_without_request() {
+    // Auth required, no credential resolvable: must be reported as
+    // CredentialMissing (not silently probed unauthenticated) — an
+    // unauthenticated 200 proves nothing about the credential.
+    let http = reqwest::Client::new();
+    let e = endpoint("http://127.0.0.1:1", Protocol::OpenAiChatCompletions);
+    let status = health_check(&e, None, &http).await;
+    assert_eq!(status, HealthStatus::CredentialMissing);
+    assert!(credential_missing(&e, None));
+    assert!(!credential_missing(&e, Some("token")));
 }
 
 #[tokio::test]
@@ -52,7 +89,7 @@ async fn health_check_detects_auth_failure() {
     let http = reqwest::Client::new();
     let status = health_check(
         &endpoint(&server.uri(), Protocol::OpenAiChatCompletions),
-        None,
+        Some("bad-token"),
         &http,
     )
     .await;
@@ -94,6 +131,6 @@ async fn discovery_reports_missing_credential_before_request() {
 async fn unreachable_endpoint_reports_unreachable() {
     let http = reqwest::Client::new();
     let e = endpoint("http://127.0.0.1:1", Protocol::OpenAiChatCompletions);
-    let status = health_check(&e, None, &http).await;
+    let status = health_check(&e, Some("test-token"), &http).await;
     assert_eq!(status, HealthStatus::Unreachable);
 }

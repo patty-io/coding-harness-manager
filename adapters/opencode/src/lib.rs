@@ -50,6 +50,7 @@ impl HarnessAdapter for OpenCodeAdapter {
                     context_window: true,
                     max_input: true,
                     max_output: true,
+                    thinking: true,
                 },
             })
             .with_models(true)
@@ -153,6 +154,25 @@ impl HarnessAdapter for OpenCodeAdapter {
                         a.payload.get("context_window").and_then(|v| v.as_i64()),
                         a.payload.get("max_output").and_then(|v| v.as_i64()),
                     );
+                    if let Some(capabilities) = a.payload.get("capabilities") {
+                        let reasoning = capabilities.get("reasoning").and_then(|v| v.as_bool());
+                        let levels = capabilities
+                            .get("thinking_levels")
+                            .and_then(|v| v.as_array())
+                            .map(|levels| {
+                                levels
+                                    .iter()
+                                    .filter_map(|level| level.as_str().map(String::from))
+                                    .collect::<Vec<String>>()
+                            });
+                        writer::set_model_thinking(
+                            &mut doc,
+                            Some(provider_id),
+                            model_id,
+                            reasoning,
+                            levels.as_deref(),
+                        );
+                    }
                     if let Some(credential_ref_id) = a
                         .payload
                         .get("credential_ref_id")
@@ -229,6 +249,25 @@ impl HarnessAdapter for OpenCodeAdapter {
                             "update skipped: model {} not found in OpenCode config",
                             u.identity
                         ));
+                    }
+                    if let Some(capabilities) = u.desired.get("capabilities") {
+                        let reasoning = capabilities.get("reasoning").and_then(|v| v.as_bool());
+                        let levels = capabilities
+                            .get("thinking_levels")
+                            .and_then(|v| v.as_array())
+                            .map(|levels| {
+                                levels
+                                    .iter()
+                                    .filter_map(|level| level.as_str().map(String::from))
+                                    .collect::<Vec<String>>()
+                            });
+                        writer::set_model_thinking(
+                            &mut doc,
+                            provider_id,
+                            &u.identity,
+                            reasoning,
+                            levels.as_deref(),
+                        );
                     }
                 }
                 PlanAction::Remove(r) if r.kind == "model" => {

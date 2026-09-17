@@ -77,6 +77,126 @@ pub fn fold_model(
     }
 }
 
+/// Maps a CHM endpoint protocol to the `api` implementation name Pi requires
+/// on every provider (or model) entry.
+pub fn api_for_protocol(protocol: &str) -> Option<&'static str> {
+    match protocol {
+        "openai-chat" => Some("openai-completions"),
+        "openai-responses" => Some("openai-responses"),
+        "anthropic-messages" => Some("anthropic-messages"),
+        "openrouter-openai" => Some("openai-completions"),
+        _ => None,
+    }
+}
+
+/// Ensure a provider entry declares the `api` implementation name Pi expects.
+/// CHM only fills it when the entry does not declare one yet, so a
+/// hand-configured `api` always wins.
+pub fn configure_provider_api(doc: &mut Value, provider_id: &str, api: &str) {
+    let Some(provider) = doc
+        .as_object_mut()
+        .and_then(|root| root.get_mut("providers"))
+        .and_then(Value::as_object_mut)
+        .and_then(|providers| providers.get_mut(provider_id))
+        .and_then(|provider| provider.as_object_mut())
+    else {
+        return;
+    };
+    provider
+        .entry("api")
+        .or_insert_with(|| Value::String(api.to_string()));
+}
+
+/// Ensure a provider entry declares the `baseUrl` Pi requires when defining
+/// custom models. CHM only fills it when the entry does not declare one yet,
+/// so a hand-configured `baseUrl` always wins.
+pub fn configure_provider_base_url(doc: &mut Value, provider_id: &str, base_url: &str) {
+    if base_url.trim().is_empty() {
+        return;
+    }
+    let Some(provider) = doc
+        .as_object_mut()
+        .and_then(|root| root.get_mut("providers"))
+        .and_then(Value::as_object_mut)
+        .and_then(|providers| providers.get_mut(provider_id))
+        .and_then(|provider| provider.as_object_mut())
+    else {
+        return;
+    };
+    provider
+        .entry("baseUrl")
+        .or_insert_with(|| Value::String(base_url.to_string()));
+}
+
+/// Canonical pi thinking levels, in pi's presentation order.
+pub const THINKING_LEVELS: [&str; 7] = ["off", "minimal", "low", "medium", "high", "xhigh", "max"];
+
+/// Write pi's model-level thinking controls.
+///
+/// `reasoning` marks the model as thinking-capable. `thinking_levels` lists
+/// the levels pi should offer for it; because pi treats *omitted* levels as
+/// "use the provider default through `high`" and *`null`* as "unsupported,
+/// hide it", a declared list becomes a complete `thinkingLevelMap` where
+/// listed levels map to their own provider value and every other canonical
+/// level is explicitly nulled. An empty/absent list leaves any existing map
+/// alone so pi's defaults keep working.
+pub fn set_model_thinking(
+    doc: &mut Value,
+    provider_id: Option<&str>,
+    model_id: &str,
+    reasoning: Option<bool>,
+    thinking_levels: Option<&[String]>,
+) -> bool {
+    let Some(providers) = doc
+        .as_object_mut()
+        .and_then(|o| o.get_mut("providers"))
+        .and_then(|p| p.as_object_mut())
+    else {
+        return false;
+    };
+    let declared_levels = thinking_levels.filter(|levels| !levels.is_empty());
+    let enabled = reasoning.unwrap_or(false) || declared_levels.is_some();
+    let mut found = false;
+    for (pname, pv) in providers.iter_mut() {
+        if provider_id.is_some_and(|wanted| !wanted.eq_ignore_ascii_case(pname)) {
+            continue;
+        }
+        let Some(models) = pv.get_mut("models").and_then(|m| m.as_array_mut()) else {
+            continue;
+        };
+        for m in models.iter_mut() {
+            if m.get("id").and_then(|v| v.as_str()) != Some(model_id) {
+                continue;
+            }
+            let Some(obj) = m.as_object_mut() else {
+                continue;
+            };
+            found = true;
+            if enabled {
+                obj.insert("reasoning".into(), Value::Bool(true));
+                if let Some(levels) = declared_levels {
+                    let mut map = Map::new();
+                    for level in THINKING_LEVELS {
+                        let value = if levels.iter().any(|declared| declared == level) {
+                            Value::String(level.to_string())
+                        } else {
+                            Value::Null
+                        };
+                        map.insert(level.to_string(), value);
+                    }
+                    obj.insert("thinkingLevelMap".into(), Value::Object(map));
+                }
+            } else if reasoning == Some(false) {
+                obj.insert("reasoning".into(), Value::Bool(false));
+                obj.remove("thinkingLevelMap");
+            }
+            // `None` with no levels: nothing declared, so pi's existing or
+            // built-in thinking configuration is left untouched.
+        }
+    }
+    found
+}
+
 /// Set the native Pi limits on one model entry while preserving all other
 /// provider/model metadata. Pi calls the output limit `maxTokens`.
 pub fn set_model_limits(

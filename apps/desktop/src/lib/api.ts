@@ -368,6 +368,20 @@ export async function createEndpoint(
     envVarName: envVarName ?? null,
   });
 }
+export async function updateEndpoint(
+  endpointId: string,
+  input: EndpointInput,
+  envVarName?: string,
+): Promise<ProviderEndpoint> {
+  return invoke<ProviderEndpoint>("update_endpoint_cmd", {
+    endpointId,
+    input,
+    envVarName: envVarName ?? null,
+  });
+}
+export async function deleteEndpoint(endpointId: string): Promise<void> {
+  return invoke<void>("delete_endpoint_cmd", { endpointId });
+}
 export async function saveApiKey(keyName: string, value: string): Promise<string> {
   return invoke<string>("save_api_key", { keyName, value });
 }
@@ -382,6 +396,18 @@ export async function discoverEndpointModels(endpointId: string): Promise<Discov
 }
 export async function discoverProviderModels(providerId: string): Promise<ProviderDiscoverReport> {
   return invoke<ProviderDiscoverReport>("discover_provider_models", { providerId });
+}
+export interface PlannedEndpoint {
+  endpointId: string;
+  endpointName: string;
+  protocol: string;
+}
+export interface DiscoveryPlan {
+  willProbe: PlannedEndpoint[];
+  willSkip: SkippedEndpoint[];
+}
+export async function discoveryPlan(providerId: string): Promise<DiscoveryPlan> {
+  return invoke<DiscoveryPlan>("discovery_plan_cmd", { providerId });
 }
 export async function addDiscoveredToMyModels(catalogIds: string[]): Promise<AddToMyModelsReport> {
   return invoke<AddToMyModelsReport>("add_discovered_to_my_models_cmd", { catalogIds });
@@ -606,6 +632,10 @@ export interface RouteUpdateInput {
   enabled?: boolean;
   capabilities?: unknown;
   overrides?: unknown;
+  /** Extended-thinking support (stored in capabilities.reasoning). */
+  reasoning?: boolean;
+  /** Thinking levels to expose (stored in capabilities.thinking_levels). */
+  thinkingLevels?: string[];
 }
 
 export interface RouteCreateInput {
