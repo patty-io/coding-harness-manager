@@ -34,6 +34,21 @@ fn normalize_fixture_paths(value: &mut Value) {
     }
 }
 
+/// Skills are discovered with `read_dir`, which has no defined order across
+/// filesystems (the golden was captured on macOS; Linux CI lists differently).
+/// Compare them by name so the golden holds everywhere.
+fn sort_skills(value: &mut Value) {
+    if let Some(skills) = value.get_mut("skills").and_then(Value::as_array_mut) {
+        skills.sort_by_key(|skill| {
+            skill
+                .get("name")
+                .and_then(Value::as_str)
+                .unwrap_or_default()
+                .to_string()
+        });
+    }
+}
+
 fn install(config_file: PathBuf, _home: PathBuf) -> HarnessInstallation {
     HarnessInstallation {
         id: uuid::Uuid::new_v4(),
@@ -104,6 +119,8 @@ fn pi_full_config_parses_without_warnings() {
         });
         normalize_fixture_paths(&mut expected);
         normalize_fixture_paths(&mut actual);
+        sort_skills(&mut expected);
+        sort_skills(&mut actual);
         assert_eq!(
             actual,
             expected,
