@@ -182,11 +182,26 @@ impl HarnessAdapter for PiAdapter {
                         .get("overrides")
                         .and_then(|value| value.get("native_provider_config"))
                     {
+                        // Resolved once: the Pi writer points at CHM's credential
+                        // helper by reference id, and the protected-change plan
+                        // needs the very same id for the auth file upsert.
+                        let credential_ref_id = a
+                            .payload
+                            .get("credential_ref_id")
+                            .or_else(|| {
+                                a.payload
+                                    .get("overrides")
+                                    .and_then(|value| value.get("native_provider_config"))
+                                    .and_then(|value| value.get("credential_ref_id"))
+                            })
+                            .and_then(|value| value.as_str())
+                            .and_then(|value| uuid::Uuid::parse_str(value).ok());
                         writer::configure_provider_auth(
                             &mut doc,
                             provider_id,
                             config.get("credential_kind").and_then(|v| v.as_str()),
                             config.get("credential_reference").and_then(|v| v.as_str()),
+                            credential_ref_id,
                         );
                         if let Some(protocol) = config.get("protocol").and_then(|v| v.as_str())
                             && let Some(api) = writer::api_for_protocol(protocol)
@@ -197,17 +212,7 @@ impl HarnessAdapter for PiAdapter {
                             writer::configure_provider_base_url(&mut doc, provider_id, base_url);
                         }
                         if config.get("credential_kind").and_then(|v| v.as_str()) != Some("env")
-                            && let Some(credential_ref_id) = a
-                                .payload
-                                .get("credential_ref_id")
-                                .or_else(|| {
-                                    a.payload
-                                        .get("overrides")
-                                        .and_then(|value| value.get("native_provider_config"))
-                                        .and_then(|value| value.get("credential_ref_id"))
-                                })
-                                .and_then(|value| value.as_str())
-                                .and_then(|value| uuid::Uuid::parse_str(value).ok())
+                            && let Some(credential_ref_id) = credential_ref_id
                             && protected_providers.insert(provider_id.to_string())
                         {
                             protected_changes.push(ProtectedChangePlan {

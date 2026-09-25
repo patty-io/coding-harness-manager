@@ -248,6 +248,7 @@ pub fn configure_provider_auth(
     provider_id: &str,
     credential_kind: Option<&str>,
     credential_reference: Option<&str>,
+    credential_ref_id: Option<uuid::Uuid>,
 ) {
     let (Some(kind), Some(reference)) = (credential_kind, credential_reference) else {
         return;
@@ -263,12 +264,24 @@ pub fn configure_provider_auth(
                 format!("${reference}")
             }
         }
-        "keychain" => format!(
-            "!security find-generic-password -w -s 'coding-harness-manager' -a '{}'",
-            reference
-                .strip_prefix("coding-harness-manager/")
-                .unwrap_or(reference)
-        ),
+        // Stored secrets resolve through CHM's credential helper rather than
+        // a platform-specific command: the helper reads macOS Keychain or
+        // Windows Credential Manager, so the same models.json works on both.
+        // Pi treats a leading `!` as "run this through the shell".
+        "keychain" => match credential_ref_id {
+            Some(id) => format!(
+                "!{}",
+                chm_harness_sdk::adapter::helpers::credential_helper_shell_command(id)
+            ),
+            // No reference id to point at — keep the historical macOS form so
+            // existing entries stay reproducible for callers without an id.
+            None => format!(
+                "!security find-generic-password -w -s 'coding-harness-manager' -a '{}'",
+                reference
+                    .strip_prefix("coding-harness-manager/")
+                    .unwrap_or(reference)
+            ),
+        },
         _ => return,
     };
     let Some(provider) = doc

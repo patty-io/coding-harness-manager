@@ -84,9 +84,12 @@ export default function ProviderDetailScreen() {
   const [protocol, setProtocol] = useState("anthropic-messages");
   const [authType, setAuthType] = useState("bearer-token");
   const [discoveryPath, setDiscoveryPath] = useState("/v1/models");
+  // Default to keychain: an env reference is a variable *name*, and pasting an
+  // API key here used to silently persist the raw key as that name (Pi then
+  // read only the "$sk" prefix as an env var and reported the model unknown).
   const [credentialSource, setCredentialSource] = useState<
     "keychain" | "env" | "none"
-  >("env");
+  >("keychain");
   const [envVarName, setEnvVarName] = useState("");
   const [apiKey, setApiKey] = useState("");
   const [formEnabled, setFormEnabled] = useState(true);
@@ -162,6 +165,15 @@ export default function ProviderDetailScreen() {
     } else if (credentialSource === "env") {
       if (!envVarName.trim()) {
         setSavedNote("Enter an env var name for env references");
+        return;
+      }
+      // An env reference must be a variable *name*. Without this guard a
+      // pasted API key is stored verbatim as the reference, and consumers
+      // that interpolate it ($NAME) can never resolve a value.
+      if (!/^[A-Za-z_][A-Za-z0-9_]*$/.test(envVarName.trim())) {
+        setSavedNote(
+          'Env reference must be a variable name like ZAI_API_KEY. To store a literal key, choose "Store on this computer".',
+        );
         return;
       }
       const set = await envSet.mutateAsync(envVarName.trim());
@@ -760,7 +772,7 @@ export default function ProviderDetailScreen() {
             setProtocol("anthropic-messages");
             setAuthType("bearer-token");
             setDiscoveryPath("/v1/models");
-            setCredentialSource("env");
+            setCredentialSource("keychain");
             setFormState({ mode: "create" });
           }}
           className="rounded bg-blue-600 px-3 py-1 text-sm text-white hover:bg-blue-500"

@@ -174,8 +174,48 @@ fn writer_updates_and_removes_models() {
 #[test]
 fn writer_emits_explicit_environment_interpolation() {
     let mut doc = writer::parse_document(r#"{"providers":{"proxy":{"models":[]}}}"#).unwrap();
-    writer::configure_provider_auth(&mut doc, "proxy", Some("env"), Some("PROXY_API_KEY"));
+    writer::configure_provider_auth(&mut doc, "proxy", Some("env"), Some("PROXY_API_KEY"), None);
     assert_eq!(doc["providers"]["proxy"]["apiKey"], "$PROXY_API_KEY");
+}
+
+#[test]
+fn stored_secrets_resolve_through_the_cross_platform_credential_helper() {
+    let id = uuid::Uuid::parse_str("56f12f53-d5a8-49dd-8639-9879bb84ab78").unwrap();
+    let mut doc = writer::parse_document(r#"{"providers":{"omni":{"models":[]}}}"#).unwrap();
+    writer::configure_provider_auth(
+        &mut doc,
+        "omni",
+        Some("keychain"),
+        Some("coding-harness-manager/providers/omni"),
+        Some(id),
+    );
+    let api_key = doc["providers"]["omni"]["apiKey"].as_str().unwrap();
+    // Pi runs a leading `!` value through the user's shell (Git Bash on
+    // Windows), so the helper must be quoted as one command and must not be a
+    // macOS-only binary — otherwise the provider reports the model unknown.
+    assert!(api_key.starts_with("!'"), "{api_key}");
+    assert!(api_key.contains("read"), "{api_key}");
+    assert!(api_key.contains(&id.to_string()), "{api_key}");
+    assert!(
+        !api_key.contains("security find-generic-password"),
+        "{api_key}"
+    );
+}
+
+#[test]
+fn stored_secrets_without_a_reference_id_keep_the_legacy_macos_form() {
+    let mut doc = writer::parse_document(r#"{"providers":{"omni":{"models":[]}}}"#).unwrap();
+    writer::configure_provider_auth(
+        &mut doc,
+        "omni",
+        Some("keychain"),
+        Some("coding-harness-manager/providers/omni"),
+        None,
+    );
+    assert_eq!(
+        doc["providers"]["omni"]["apiKey"],
+        "!security find-generic-password -w -s 'coding-harness-manager' -a 'providers/omni'"
+    );
 }
 
 #[test]
