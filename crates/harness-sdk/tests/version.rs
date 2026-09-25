@@ -40,6 +40,18 @@ fn parses_reasonix_v_prefixed_version() {
         use std::os::unix::fs::PermissionsExt;
         std::fs::set_permissions(&script, std::fs::Permissions::from_mode(0o755)).unwrap();
     }
+    let probe = detect_version(&script.display().to_string(), &[]);
+    if probe.is_none() {
+        // TEMP DIAGNOSTIC (branch only): show why detection failed on the runner.
+        let raw = std::process::Command::new(script.display().to_string()).output();
+        panic!(
+            "DIAGNOSTIC detect_version=None raw={raw:?} script_exists={} mode={:?} TMPDIR={:?} CI={:?}",
+            script.exists(),
+            std::fs::metadata(&script).map(|m| format!("{:?}", m.permissions())),
+            std::env::var("TMPDIR"),
+            std::env::var("CI"),
+        );
+    }
     assert_eq!(
         detect_version(&script.display().to_string(), &[]),
         Some("1.31.4".to_string())
