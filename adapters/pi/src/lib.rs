@@ -49,6 +49,7 @@ impl HarnessAdapter for PiAdapter {
                     max_input: true,
                     max_output: true,
                     thinking: true,
+                    images: true,
                 },
             })
             .with_models(true)
@@ -176,6 +177,13 @@ impl HarnessAdapter for PiAdapter {
                             reasoning,
                             levels.as_deref(),
                         );
+                        writer::set_model_input(
+                            &mut doc,
+                            Some(provider_id),
+                            model_id,
+                            chm_harness_sdk::adapter::capabilities::input_modalities(capabilities)
+                                .as_deref(),
+                        );
                     }
                     if let Some(config) = a
                         .payload
@@ -290,6 +298,13 @@ impl HarnessAdapter for PiAdapter {
                             model_id,
                             reasoning,
                             levels.as_deref(),
+                        );
+                        writer::set_model_input(
+                            &mut doc,
+                            provider_for_update,
+                            model_id,
+                            chm_harness_sdk::adapter::capabilities::input_modalities(capabilities)
+                                .as_deref(),
                         );
                     }
                 }

@@ -636,6 +636,9 @@ export interface RouteUpdateInput {
   reasoning?: boolean;
   /** Thinking levels to expose (stored in capabilities.thinking_levels). */
   thinkingLevels?: string[];
+  /** Input modalities the model accepts (stored in
+   *  capabilities.input_modalities, canonical CHM vocabulary). */
+  inputModalities?: string[];
 }
 
 export interface RouteCreateInput {

@@ -51,6 +51,7 @@ impl HarnessAdapter for OpenCodeAdapter {
                     max_input: true,
                     max_output: true,
                     thinking: true,
+                    images: true,
                 },
             })
             .with_models(true)

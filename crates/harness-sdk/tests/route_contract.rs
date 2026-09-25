@@ -59,6 +59,7 @@ fn capabilities(
             max_input: true,
             max_output: true,
             thinking: false,
+            images: false,
         },
     }
 }

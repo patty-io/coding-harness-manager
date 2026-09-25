@@ -79,11 +79,35 @@ pub fn fold_model_with_provider(
             // `reasoning` and `thinking_levels` are translated into a
             // per-level `variants` block by `set_model_thinking` and must
             // not leak back into the model entry as flat keys.
-            if k == "name" || k == "limit" || k == "reasoning" || k == "thinking_levels" {
+            // `input_modalities` is CHM's canonical declaration and is
+            // materialized into the native `modalities` block below.
+            if k == "name"
+                || k == "limit"
+                || k == "reasoning"
+                || k == "thinking_levels"
+                || k == "input_modalities"
+            {
                 continue;
             }
             entry.insert(k.clone(), v.clone());
         }
+    }
+    // OpenCode expresses this as a native `modalities` block. Output
+    // modalities are not tracked by CHM, so whatever the capabilities already
+    // declared is preserved (image-generating models keep `["text","image"]`).
+    if let Some(input) = chm_harness_sdk::adapter::capabilities::input_modalities(capabilities) {
+        let output = entry
+            .get("modalities")
+            .and_then(|value| value.get("output"))
+            .cloned()
+            .unwrap_or_else(|| serde_json::json!(["text"]));
+        let mut block = Map::new();
+        block.insert(
+            "input".into(),
+            Value::Array(input.into_iter().map(Value::String).collect()),
+        );
+        block.insert("output".into(), output);
+        entry.insert("modalities".into(), Value::Object(block));
     }
     models.insert(model_id.to_string(), Value::Object(entry));
 }

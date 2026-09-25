@@ -119,6 +119,9 @@ pub struct RouteUpdateInput {
     /// Thinking levels the model exposes, stored in
     /// `capabilities.thinking_levels`. Canonical level names only.
     pub thinking_levels: Option<Vec<String>>,
+    /// Input modalities the model accepts, stored in
+    /// `capabilities.input_modalities` (canonical CHM vocabulary).
+    pub input_modalities: Option<Vec<String>>,
 }
 
 /// Canonical thinking levels shared with the harness writers. Pi uses exactly
@@ -158,6 +161,32 @@ pub(crate) fn apply_thinking_capabilities(
     *capabilities = serde_json::Value::Object(object);
 }
 
+/// Merge the input-modality declaration into a route's capabilities blob
+/// without disturbing unrelated capability keys. Values are canonicalized so
+/// adapters can rely on the models.dev vocabulary (`text`, `image`, `audio`,
+/// `video`, `pdf`) and `text` is always present.
+pub(crate) fn apply_modality_capabilities(
+    capabilities: &mut serde_json::Value,
+    input_modalities: Option<Vec<String>>,
+) {
+    let Some(modalities) = input_modalities else {
+        return;
+    };
+    let normalized =
+        chm_harness_sdk::adapter::capabilities::canonicalize_input_modalities(modalities);
+    let mut object = capabilities.as_object().cloned().unwrap_or_default();
+    object.insert(
+        "input_modalities".into(),
+        serde_json::Value::Array(
+            normalized
+                .into_iter()
+                .map(serde_json::Value::String)
+                .collect(),
+        ),
+    );
+    *capabilities = serde_json::Value::Object(object);
+}
+
 #[tauri::command]
 pub async fn update_route_cmd(
     state: State<'_, AppState>,
@@ -181,9 +210,13 @@ pub async fn update_route_cmd(
     if let Some(v) = input.enabled {
         route.enabled = v;
     }
-    if input.reasoning.is_some() || input.thinking_levels.is_some() {
+    if input.reasoning.is_some()
+        || input.thinking_levels.is_some()
+        || input.input_modalities.is_some()
+    {
         let mut capabilities = route.capabilities.clone();
         apply_thinking_capabilities(&mut capabilities, input.reasoning, input.thinking_levels);
+        apply_modality_capabilities(&mut capabilities, input.input_modalities);
         route.capabilities = capabilities;
     }
     if let Some(v) = input.capabilities {
@@ -465,6 +498,21 @@ fn has_user_override(route: &ModelRoute, field: &str) -> bool {
         == Some("user_override")
 }
 
+/// Extract the input-modality declaration from a models.dev model entry.
+/// Returns `None` when the catalog carries no usable declaration.
+fn models_dev_input_modalities(model: &ModelsDevModel) -> Option<Vec<String>> {
+    let entries = model
+        .modalities
+        .get("modalities")?
+        .get("input")?
+        .as_array()?;
+    let declared: Vec<&str> = entries.iter().filter_map(|v| v.as_str()).collect();
+    if declared.is_empty() {
+        return None;
+    }
+    Some(chm_harness_sdk::adapter::capabilities::canonicalize_input_modalities(declared))
+}
+
 async fn get_or_create_identity(
     pool: &Pool<Sqlite>,
     model: &ModelsDevModel,
@@ -499,6 +547,15 @@ fn apply_catalog_metadata(
     model: &ModelsDevModel,
 ) -> ModelRoute {
     route.model_identity_id = Some(identity.id);
+    // models.dev keeps the whole metadata blob in `ModelsDevModel::modalities`,
+    // with the modality declaration one level down at `modalities.input`. Only
+    // fill it when the route declares nothing yet, so a hand-entered value (or
+    // one inherited from endpoint discovery) is never clobbered.
+    if chm_harness_sdk::adapter::capabilities::input_modalities(&route.capabilities).is_none()
+        && let Some(modalities) = models_dev_input_modalities(model)
+    {
+        apply_modality_capabilities(&mut route.capabilities, Some(modalities));
+    }
     let context_missing = route.context_window.is_none() && !has_user_override(&route, "context_window");
     let output_missing = route.max_output.is_none() && !has_user_override(&route, "max_output");
     let overrides = route
@@ -701,7 +758,7 @@ pub async fn set_user_override_cmd(
 
 #[cfg(test)]
 mod tests {
-    use super::{EnrichOutcome, apply_catalog_metadata, catalog_route_overrides};
+    use super::{EnrichOutcome, apply_catalog_metadata, apply_modality_capabilities, catalog_route_overrides};
     use chm_core::domain::models::{ModelIdentity, ModelRoute};
     use chm_models_dev::ModelsDevModel;
     use serde_json::json;
@@ -769,5 +826,75 @@ mod tests {
         assert_eq!(updated.max_output, Some(32_000));
         assert_eq!(updated.model_identity_id, Some(identity.id));
         assert_eq!(updated.overrides["context_window"]["source"], "models.dev");
+    }
+
+    fn identity() -> ModelIdentity {
+        ModelIdentity {
+            id: Uuid::new_v4(),
+            canonical_id: "zai-org/glm-5".into(),
+            display_name: "GLM 5".into(),
+            family: Some("zai-org".into()),
+            models_dev_id: Some("zai-org/glm-5".into()),
+            metadata: json!({}),
+            created_at: chrono::Utc::now(),
+            updated_at: chrono::Utc::now(),
+        }
+    }
+
+    fn model_with_modalities(input: serde_json::Value) -> ModelsDevModel {
+        ModelsDevModel {
+            id: "zai-org/glm-5".into(),
+            name: "GLM 5".into(),
+            provider: Some("zai".into()),
+            context_window: None,
+            max_output: None,
+            modalities: json!({"modalities": {"input": input, "output": ["text"]}}),
+        }
+    }
+
+    #[test]
+    fn catalog_enrichment_declares_modalities_when_the_route_is_silent() {
+        let route = ModelRoute::new("glm-5".into(), "GLM 5".into(), None, json!({}), json!({}));
+        let model = model_with_modalities(json!(["video", "image", "not-a-modality"]));
+        let updated = apply_catalog_metadata(route, &identity(), &model);
+        assert_eq!(
+            updated.capabilities["input_modalities"],
+            json!(["text", "image", "video"]),
+            "unknown values drop, canonical order applies, and text is always present"
+        );
+    }
+
+    #[test]
+    fn catalog_enrichment_never_overwrites_a_declared_modality_set() {
+        let route = ModelRoute::new(
+            "glm-5".into(),
+            "GLM 5".into(),
+            None,
+            json!({"input_modalities": ["text"]}),
+            json!({}),
+        );
+        let model = model_with_modalities(json!(["text", "image"]));
+        let updated = apply_catalog_metadata(route, &identity(), &model);
+        assert_eq!(
+            updated.capabilities["input_modalities"],
+            json!(["text"]),
+            "a hand-entered (or discovery-inherited) declaration wins over the catalog"
+        );
+    }
+
+    #[test]
+    fn modality_updates_keep_unrelated_capability_keys() {
+        let mut capabilities = json!({"reasoning": true, "thinking_levels": ["high"]});
+        apply_modality_capabilities(
+            &mut capabilities,
+            Some(vec!["image".to_string(), "bogus".to_string()]),
+        );
+        assert_eq!(capabilities["reasoning"], json!(true));
+        assert_eq!(capabilities["thinking_levels"], json!(["high"]));
+        assert_eq!(capabilities["input_modalities"], json!(["text", "image"]));
+
+        // `None` means "caller sent nothing" and must be a no-op.
+        apply_modality_capabilities(&mut capabilities, None);
+        assert_eq!(capabilities["input_modalities"], json!(["text", "image"]));
     }
 }

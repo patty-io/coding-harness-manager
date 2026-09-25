@@ -1,3 +1,4 @@
+pub mod capabilities;
 pub mod helpers;
 pub mod plan;
 pub mod protected;

@@ -46,6 +46,7 @@ impl HarnessAdapter for ReasonixAdapter {
                     max_input: true,
                     max_output: true,
                     thinking: false,
+                    images: false,
                 },
             })
             .with_models(true)

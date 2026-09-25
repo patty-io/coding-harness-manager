@@ -40,6 +40,21 @@ const THINKING_LEVELS = [
   "max",
 ];
 
+/** Canonical input modalities CHM stores (models.dev vocabulary). */
+const INPUT_MODALITIES = ["text", "image", "audio", "video", "pdf"] as const;
+/** Modalities a user can toggle; `text` is never optional. */
+const OPTIONAL_MODALITIES = INPUT_MODALITIES.filter((m) => m !== "text");
+
+/** Drop unknown values, canonicalize the order, and always keep `text`. */
+function normalizeModalities(values: unknown): string[] {
+  const declared = new Set(
+    Array.isArray(values)
+      ? values.filter((value): value is string => typeof value === "string")
+      : [],
+  );
+  return INPUT_MODALITIES.filter((m) => declared.has(m) || m === "text");
+}
+
 export default function ModelsScreen() {
   const [tab, setTab] = useState<Tab>("mine");
   const [providerFilter, setProviderFilter] = useState("");
@@ -84,6 +99,12 @@ export default function ModelsScreen() {
   const [editMaxOutput, setEditMaxOutput] = useState("");
   const [editReasoning, setEditReasoning] = useState(false);
   const [editThinkingLevels, setEditThinkingLevels] = useState<string[]>([]);
+  const [editInputModalities, setEditInputModalities] = useState<string[]>([
+    "text",
+  ]);
+  // Only send modalities when the user touched them: an untouched route keeps
+  // its "unknown" state instead of being stamped text-only.
+  const [editModalitiesDirty, setEditModalitiesDirty] = useState(false);
   const [routeEditError, setRouteEditError] = useState<string | null>(null);
   const [enrichError, setEnrichError] = useState<string | null>(null);
   const [routeSyncNote, setRouteSyncNote] = useState<string | null>(null);
@@ -115,6 +136,7 @@ export default function ModelsScreen() {
     const capabilities = (route.capabilities ?? {}) as {
       reasoning?: boolean;
       thinking_levels?: string[];
+      input_modalities?: string[];
     };
     setEditReasoning(capabilities.reasoning ?? false);
     setEditThinkingLevels(
@@ -122,6 +144,8 @@ export default function ModelsScreen() {
         (level): level is string => THINKING_LEVELS.includes(level as never),
       ),
     );
+    setEditInputModalities(normalizeModalities(capabilities.input_modalities));
+    setEditModalitiesDirty(false);
     setRouteEditError(null);
   };
 
@@ -217,6 +241,9 @@ export default function ModelsScreen() {
             maxOutput,
             reasoning: editReasoning,
             thinkingLevels: editReasoning ? editThinkingLevels : [],
+            inputModalities: editModalitiesDirty
+              ? editInputModalities
+              : undefined,
           },
         },
         {
@@ -636,6 +663,17 @@ export default function ModelsScreen() {
           maxOutput={editMaxOutput}
           reasoning={editReasoning}
           thinkingLevels={editThinkingLevels}
+          inputModalities={editInputModalities}
+          onInputModalityToggle={(modality) => {
+            setEditModalitiesDirty(true);
+            setEditInputModalities((current) =>
+              normalizeModalities(
+                current.includes(modality)
+                  ? current.filter((item) => item !== modality)
+                  : [...current, modality],
+              ),
+            );
+          }}
           error={routeEditError}
           saving={update.isPending}
           onDisplayNameChange={setEditDisplayName}
@@ -692,6 +730,8 @@ function RouteEditDialog({
   maxOutput,
   reasoning,
   thinkingLevels,
+  inputModalities,
+  onInputModalityToggle,
   error,
   saving,
   onDisplayNameChange,
@@ -710,6 +750,7 @@ function RouteEditDialog({
   maxOutput: string;
   reasoning: boolean;
   thinkingLevels: string[];
+  inputModalities: string[];
   error: string | null;
   saving: boolean;
   onDisplayNameChange: (value: string) => void;
@@ -718,6 +759,7 @@ function RouteEditDialog({
   onMaxOutputChange: (value: string) => void;
   onReasoningChange: (value: boolean) => void;
   onThinkingLevelToggle: (level: string) => void;
+  onInputModalityToggle: (modality: string) => void;
   onSave: () => void;
   onClose: () => void;
 }) {
@@ -785,6 +827,34 @@ function RouteEditDialog({
             />
           </label>
         </div>
+        <fieldset className="mt-3 rounded border border-slate-700 p-3">
+          <legend className="px-1 text-xs text-slate-400">
+            Input modalities
+          </legend>
+          <div className="mt-1 flex flex-wrap gap-2">
+            <label className="flex items-center gap-1.5 rounded border border-slate-700 bg-slate-900 px-2 py-0.5 text-xs text-slate-500">
+              <input type="checkbox" checked disabled />
+              text
+            </label>
+            {OPTIONAL_MODALITIES.map((modality) => (
+              <label
+                key={modality}
+                className="flex items-center gap-1.5 rounded border border-slate-600 px-2 py-0.5 text-xs text-slate-300"
+              >
+                <input
+                  type="checkbox"
+                  checked={inputModalities.includes(modality)}
+                  onChange={() => onInputModalityToggle(modality)}
+                />
+                {modality}
+              </label>
+            ))}
+          </div>
+          <p className="mt-2 text-xs text-slate-500">
+            Sent to harnesses that can express it — Pi only understands text
+            and image, so wider declarations are narrowed there.
+          </p>
+        </fieldset>
         <fieldset className="mt-3 rounded border border-slate-700 p-3">
           <legend className="px-1 text-xs text-slate-400">Thinking</legend>
           <label className="flex items-center gap-2 text-sm text-slate-200">

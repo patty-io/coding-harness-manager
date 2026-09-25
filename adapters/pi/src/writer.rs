@@ -240,6 +240,63 @@ pub fn set_model_limits(
     true
 }
 
+/// Write Pi's `input` array on one model entry.
+///
+/// Pi's schema only admits `text` and `image` there — and it validates the
+/// whole file, so a wider declaration (audio/video/pdf) would make Pi discard
+/// every custom provider. Narrowing happens here, at the harness boundary.
+///
+/// `None` means CHM has no declaration: the entry is left untouched instead of
+/// being declared text-only, so a hand-written `input` keeps working.
+pub fn set_model_input(
+    doc: &mut Value,
+    provider_id: Option<&str>,
+    model_id: &str,
+    input_modalities: Option<&[String]>,
+) -> bool {
+    let Some(modalities) = input_modalities else {
+        return false;
+    };
+    let pi_input: Vec<String> =
+        chm_harness_sdk::adapter::capabilities::canonicalize_input_modalities(modalities)
+            .into_iter()
+            .filter(|value| value == "text" || value == "image")
+            .collect();
+    let value = Value::Array(
+        pi_input
+            .into_iter()
+            .map(Value::String)
+            .collect::<Vec<Value>>(),
+    );
+    let Some(providers) = doc
+        .as_object_mut()
+        .and_then(|root| root.get_mut("providers"))
+        .and_then(Value::as_object_mut)
+    else {
+        return false;
+    };
+    let mut found = false;
+    for (pname, provider) in providers.iter_mut() {
+        if provider_id.is_some_and(|wanted| !wanted.eq_ignore_ascii_case(pname)) {
+            continue;
+        }
+        let Some(models) = provider.get_mut("models").and_then(Value::as_array_mut) else {
+            continue;
+        };
+        for model in models.iter_mut() {
+            if model.get("id").and_then(Value::as_str) != Some(model_id) {
+                continue;
+            }
+            let Some(obj) = model.as_object_mut() else {
+                continue;
+            };
+            obj.insert("input".into(), value.clone());
+            found = true;
+        }
+    }
+    found
+}
+
 /// Ensure a provider has a secret-free API-key reference. Pi resolves
 /// environment names and `!command` values when it sends a request; CHM
 /// writes the actual key to auth.json in the apply coordinator.

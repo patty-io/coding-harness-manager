@@ -76,6 +76,7 @@ fn route_capabilities(spec: &DetectionSpec) -> RouteDeploymentCapabilities {
                 max_input: false,
                 max_output: false,
                 thinking: false,
+                images: false,
             },
         },
         "cursor" => RouteDeploymentCapabilities {
@@ -91,6 +92,7 @@ fn route_capabilities(spec: &DetectionSpec) -> RouteDeploymentCapabilities {
                 max_input: false,
                 max_output: false,
                 thinking: false,
+                images: false,
             },
         },
         "amp" => RouteDeploymentCapabilities::unsupported(),
@@ -109,6 +111,7 @@ fn route_capabilities(spec: &DetectionSpec) -> RouteDeploymentCapabilities {
                 max_input: true,
                 max_output: true,
                 thinking: false,
+                images: false,
             },
         },
         // Qwen, Continue, Reasonix, and Goose have isolated harness-owned
@@ -126,6 +129,7 @@ fn route_capabilities(spec: &DetectionSpec) -> RouteDeploymentCapabilities {
                 max_input: true,
                 max_output: true,
                 thinking: false,
+                images: false,
             },
         },
         "aider" => RouteDeploymentCapabilities {
@@ -148,6 +152,7 @@ fn route_capabilities(spec: &DetectionSpec) -> RouteDeploymentCapabilities {
                 max_input: true,
                 max_output: true,
                 thinking: false,
+                images: false,
             },
         },
         "goose" => RouteDeploymentCapabilities {
@@ -163,6 +168,7 @@ fn route_capabilities(spec: &DetectionSpec) -> RouteDeploymentCapabilities {
                 max_input: true,
                 max_output: true,
                 thinking: false,
+                images: false,
             },
         },
         _ => RouteDeploymentCapabilities::unsupported(),

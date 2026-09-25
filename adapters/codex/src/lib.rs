@@ -43,6 +43,7 @@ impl HarnessAdapter for CodexAdapter {
                     max_input: false,
                     max_output: false,
                     thinking: true,
+                    images: false,
                 },
             })
             .with_models(true)

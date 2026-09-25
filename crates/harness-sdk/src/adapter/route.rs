@@ -58,6 +58,14 @@ pub struct ModelMetadataCapabilities {
     /// configuration (e.g. reasoning effort, thinking level map) into the
     /// native config.
     pub thinking: bool,
+    /// Whether this adapter can carry input modalities (the
+    /// `capabilities.input_modalities` declaration) into the native config.
+    ///
+    /// Unlike context/output limits — where a mismatch silently drops data —
+    /// a false value here is a documentation-only no-op: the model still
+    /// deploys, it just arrives without a modality declaration and the harness
+    /// falls back to its own default.
+    pub images: bool,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -84,6 +92,7 @@ impl RouteDeploymentCapabilities {
                 max_input: false,
                 max_output: false,
                 thinking: false,
+                images: false,
             },
         }
     }
